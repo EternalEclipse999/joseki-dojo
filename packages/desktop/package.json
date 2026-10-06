@@ -1,0 +1,27 @@
+{
+  "name": "@joseki-dojo/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "productName": "Joseki Dojo",
+  "description": "Joseki trainer for Go against a human-like KataGo",
+  "author": "Oleg Kushmantsev",
+  "license": "MIT",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node build.mjs && electron .",
+    "dist": "node build.mjs && electron-builder --config electron-builder.config.cjs --publish never",
+    "release": "node build.mjs && electron-builder --config electron-builder.config.cjs --publish always"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "electron-updater": "^6.8.9"
+  },
+  "devDependencies": {
+    "@joseki-dojo/server": "*",
+    "@joseki-dojo/shared": "*",
+    "electron": "44.5.1",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2"
+  }
+}
