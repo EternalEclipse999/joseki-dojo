@@ -18,6 +18,7 @@ const fixtures: InstallFixture[] = []
 const engines: KataGoEngine[] = []
 
 afterEach(async () => {
+  vi.restoreAllMocks()
   await Promise.all(engines.splice(0).map((e) => e.stop()))
   await Promise.all(fixtures.splice(0).map((f) => f.close()))
 })
@@ -168,6 +169,48 @@ describe('InstallerService', () => {
     expect(switchTo).not.toHaveBeenCalled()
     expect(existsSync(configFile)).toBe(false)
     expect(health.get().state).toBe('failed')
+  })
+
+  it('waits for a running switchTo on close: nothing touches the engine afterwards and no KataGo is left', async () => {
+    const { installer, deps, configFile } = await setup()
+    const live = engines[0]
+    const original = deps.settings.switchTo.bind(deps.settings)
+    let switching = false
+    let switched = false
+    vi.spyOn(deps.settings, 'switchTo').mockImplementation(async (...args) => {
+      switching = true
+      await new Promise((r) => setTimeout(r, 300))
+      const r = await original(...args)
+      switched = true
+      return r
+    })
+    const started: KataGoEngine[] = []
+    const calls: string[] = []
+    for (const method of ['start', 'reset', 'stop', 'analyze'] as const) {
+      const real = KataGoEngine.prototype[method] as (this: KataGoEngine, ...a: never[]) => unknown
+      vi.spyOn(KataGoEngine.prototype, method as 'start').mockImplementation(function (this: KataGoEngine, ...a: never[]) {
+        if (method === 'start' && this !== live) started.push(this)
+        if (this === live) calls.push(method)
+        return real.apply(this, a)
+      } as never)
+    }
+
+    installer.start()
+    await vi.waitFor(() => expect(switching, JSON.stringify(installer.status())).toBe(true), { timeout: 10_000, interval: 10 })
+    expect(switched).toBe(false)
+    await installer.close()
+    expect(switched).toBe(true) // close resolved only after switchTo settled
+    const callsAtClose = calls.length
+    await new Promise((r) => setTimeout(r, 400))
+    expect(calls).toHaveLength(callsAtClose) // nothing is called on the engine afterwards
+    expect(existsSync(configFile)).toBe(true) // switchTo finished its work, as it must not be cut in half
+    // The benchmark KataGos started by the installer are gone; the live engine may keep its own process.
+    const benches = started.filter((e) => e !== live)
+    expect(benches.length).toBeGreaterThan(0)
+    for (const e of benches) {
+      const proc = (e as unknown as { proc: { exitCode: number | null } | null }).proc
+      expect(proc === null || proc.exitCode !== null).toBe(true)
+    }
   })
 
   it('reports the reason when KataGo rejects the chosen build and leaves the config alone', async () => {
