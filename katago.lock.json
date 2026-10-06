@@ -1,0 +1,69 @@
+{
+  "katago": {
+    "version": "1.18.1",
+    "builds": [
+      {
+        "id": "eigenavx2",
+        "platform": "win32",
+        "kind": "cpu",
+        "label": "CPU (AVX2) — работает на любом компьютере, медленнее всего",
+        "url": "https://github.com/lightvector/KataGo/releases/download/v1.18.1/katago-v1.18.1-eigenavx2-windows-x64.zip",
+        "sha256": "0d62ffa41ee04dd89dd1b80fe45e306c837231cb1e2dccb4f5780d0ca7c313db"
+      },
+      {
+        "id": "opencl",
+        "platform": "win32",
+        "kind": "gpu",
+        "label": "OpenCL — видеокарты AMD, NVIDIA и Intel",
+        "url": "https://github.com/lightvector/KataGo/releases/download/v1.18.1/katago-v1.18.1-opencl-windows-x64.zip",
+        "sha256": "1710db1903ab921aa6837a9599c8474f8a59f057650217c5d9bc125ee393a9ff"
+      },
+      {
+        "id": "cuda",
+        "platform": "win32",
+        "kind": "gpu",
+        "label": "CUDA 12.8 + cuDNN 9.8 — NVIDIA (CUDA и cuDNN должны быть установлены)",
+        "url": "https://github.com/lightvector/KataGo/releases/download/v1.18.1/katago-v1.18.1-cuda12.8-cudnn9.8.0-windows-x64.zip",
+        "sha256": "8caabc5675950f52d285a686c19727f7a56a982313a7f055ade060ba78df552e"
+      },
+      {
+        "id": "eigenavx2",
+        "platform": "linux",
+        "kind": "cpu",
+        "label": "CPU (AVX2) — работает на любом компьютере, медленнее всего",
+        "url": "https://github.com/lightvector/KataGo/releases/download/v1.18.1/katago-v1.18.1-eigenavx2-linux-x64.zip",
+        "sha256": "33e79780dbe3bf6ee859e16f64952cdfc90f7210c8f71ad978ffcba85ad20d79"
+      },
+      {
+        "id": "opencl",
+        "platform": "linux",
+        "kind": "gpu",
+        "label": "OpenCL — видеокарты AMD, NVIDIA и Intel",
+        "url": "https://github.com/lightvector/KataGo/releases/download/v1.18.1/katago-v1.18.1-opencl-linux-x64.zip",
+        "sha256": "81ecea81526adb412a392ec728dbdf9627e754df7cf1a7a3dbb8ef220182184a"
+      },
+      {
+        "id": "cuda",
+        "platform": "linux",
+        "kind": "gpu",
+        "label": "CUDA 12.8 + cuDNN 9.8 — NVIDIA (CUDA и cuDNN должны быть установлены)",
+        "url": "https://github.com/lightvector/KataGo/releases/download/v1.18.1/katago-v1.18.1-cuda12.8-cudnn9.8.0-linux-x64.zip",
+        "sha256": "f84222594101abbde8a0df885c54fd8fcfe90a3c1a9ab140e0354fc28cbfa61c"
+      }
+    ]
+  },
+  "models": {
+    "main": {
+      "file": "kata1-b18c384nbt-s9996604416-d4316597426.bin.gz",
+      "url": "https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b18c384nbt-s9996604416-d4316597426.bin.gz",
+      "sha256": "9d7a6afed8ff5b74894727e156f04f0cd36060a24824892008fbb6e0cba51f1d",
+      "size": 97898094
+    },
+    "human": {
+      "file": "b18c384nbt-humanv0.bin.gz",
+      "url": "https://github.com/lightvector/KataGo/releases/download/v1.15.0/b18c384nbt-humanv0.bin.gz",
+      "sha256": "637746e44f0efe00ad1245a50aa9bbf0716efe364c43965ead97bd6835d84ab5",
+      "size": 99066230
+    }
+  }
+}

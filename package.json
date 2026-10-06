@@ -1,0 +1,28 @@
+{
+  "name": "joseki-dojo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "workspaces": ["packages/shared", "packages/server", "packages/web"],
+  "engines": { "node": ">=22.12" },
+  "scripts": {
+    "setup": "tsx scripts/setup/setup.ts",
+    "dev": "concurrently -k -n server,web -c blue,green \"npm run dev -w @joseki-dojo/server\" \"npm run dev -w @joseki-dojo/web\"",
+    "build": "npm run build -w @joseki-dojo/web",
+    "start": "npm run build && npm run start -w @joseki-dojo/server",
+    "test": "vitest run",
+    "test:katago": "vitest run -c vitest.katago.config.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^24.0.0",
+    "concurrently": "^10.0.5",
+    "extract-zip": "^2.0.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}

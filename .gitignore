@@ -1,0 +1,9 @@
+node_modules/
+dist/
+data/
+engines/
+config.local.json
+e2e/.data/
+test-results/
+playwright-report/
+*.log
