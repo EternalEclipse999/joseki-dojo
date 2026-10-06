@@ -63,7 +63,7 @@ export class KataGoEngine implements AnalysisEngine {
   private readonly watchdogIntervalMs: number
 
   constructor(
-    private readonly cmd: EngineCommand,
+    private cmd: EngineCommand,
     private readonly log: (line: string) => void = () => {},
     options: EngineOptions = {},
   ) {
@@ -113,6 +113,21 @@ export class KataGoEngine implements AnalysisEngine {
   reset(): void {
     this.failedReason = null
     this.crashes = 0
+    this.start()
+  }
+
+  /**
+   * Switches to another command (new paths). The old process is terminated without counting as a crash
+   * (it is no longer the current process); pending queries are resent to the new one. Clears a failure.
+   */
+  async restartWith(cmd: EngineCommand): Promise<void> {
+    this.cmd = cmd
+    this.failedReason = null
+    this.crashes = 0
+    this.stopWatchdog()
+    const old = this.proc
+    this.proc = null
+    if (old) await this.terminate(old)
     this.start()
   }
 
