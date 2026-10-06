@@ -18,6 +18,8 @@ export interface SettingsView {
   lockedVersion: string
   runningVersion: string | null
   versionWarning: string | null
+  /** `bot.defaultRank` from the config: the rank preselected on the start screen. */
+  defaultBotRank: string
 }
 
 export interface SettingsUpdate {

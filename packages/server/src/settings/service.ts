@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import type { AnalysisSettings, SettingsResponse, SettingsUpdate, SettingsView } from '@joseki-dojo/shared'
 import type { AppConfig, KataGoSettings } from '../config'
 import { engineCommand } from '../engine/command'
@@ -49,6 +49,7 @@ export class SettingsService {
       lockedVersion: this.d.lock.katago.version,
       runningVersion: running,
       versionWarning: versionWarning(this.d.lock, running),
+      defaultBotRank: this.d.config.bot.defaultRank,
     }
   }
 
@@ -58,11 +59,13 @@ export class SettingsService {
     if (invalid) return { ok: false, reason: invalid }
     this.applying = true
     try {
+      // Relative paths mean "relative to the config file", like in loadConfig, not to the process's working directory.
+      const base = dirname(resolve(this.d.configFile))
       const katago: KataGoSettings = {
-        path: resolve(update.katago.path),
-        analysisConfig: resolve(update.katago.analysisConfig),
-        mainModel: resolve(update.katago.mainModel),
-        humanModel: resolve(update.katago.humanModel),
+        path: resolve(base, update.katago.path),
+        analysisConfig: resolve(base, update.katago.analysisConfig),
+        mainModel: resolve(base, update.katago.mainModel),
+        humanModel: resolve(base, update.katago.humanModel),
       }
       const analysis: AnalysisSettings = { reviewVisits: update.analysis.reviewVisits, endVisits: update.analysis.endVisits }
       const candidate: AppConfig = { ...this.d.config, katago, analysis }
@@ -70,12 +73,18 @@ export class SettingsService {
       if (missing) return { ok: false, reason: missing }
 
       const previous = this.commandFor(this.d.config)
-      await this.d.engine.restartWith(this.commandFor(candidate))
-      const health = await checkEngine(candidate, this.d.engine)
-      if (health.state !== 'ready') {
-        await this.d.engine.restartWith(previous)
-        await this.d.health.check()
-        return { ok: false, reason: health.reason ?? 'KataGo не запустился' }
+      let failure: string | null = null
+      try {
+        await this.d.engine.restartWith(this.commandFor(candidate))
+        const health = await checkEngine(candidate, this.d.engine)
+        if (health.state !== 'ready') failure = health.reason ?? 'KataGo не запустился'
+      } catch (e) {
+        failure = e instanceof Error ? e.message : String(e)
+      }
+      if (failure !== null) {
+        await this.d.engine.restartWith(previous).catch(() => undefined)
+        await this.d.health.check().catch(() => undefined)
+        return { ok: false, reason: failure }
       }
 
       const prevKatago = this.d.config.katago

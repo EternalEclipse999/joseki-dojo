@@ -52,7 +52,6 @@ export class KataGoEngine implements AnalysisEngine {
   /** Set by `stop()`; queries are refused until `start()`/`reset()` is called explicitly. */
   private stopped = false
   private failedReason: string | null = null
-  private spawnedAt = 0
   private replied = false
   /** Last output from the current process, or the moment pending went from empty to non-empty. */
   private lastProgressAt = 0
@@ -77,6 +76,11 @@ export class KataGoEngine implements AnalysisEngine {
     return this.failedReason
   }
 
+  /** Queries sent and not yet answered. */
+  get pendingCount(): number {
+    return this.pending.size
+  }
+
   get failed(): boolean {
     return this.failedReason !== null
   }
@@ -84,15 +88,21 @@ export class KataGoEngine implements AnalysisEngine {
   start(): void {
     if (this.proc || this.failedReason) return
     this.stopped = false
-    const proc = spawn(this.cmd.command, this.cmd.args, {
-      env: { ...process.env, ...this.cmd.env },
-      stdio: 'pipe',
-      windowsHide: true,
-    })
+    let proc: ChildProcessWithoutNullStreams
+    try {
+      proc = spawn(this.cmd.command, this.cmd.args, {
+        env: { ...process.env, ...this.cmd.env },
+        stdio: 'pipe',
+        windowsHide: true,
+      })
+    } catch (err) {
+      // Windows throws synchronously for a non-executable file (EFTYPE) or a .cmd/.bat (EINVAL).
+      this.onCrash(err instanceof Error ? err.message : String(err))
+      return
+    }
     this.proc = proc
-    this.spawnedAt = Date.now()
     this.replied = false
-    this.lastProgressAt = this.spawnedAt
+    this.lastProgressAt = Date.now()
     this.watchdog = setInterval(() => this.checkHang(), this.watchdogIntervalMs)
     this.watchdog.unref()
     let gone = false
@@ -178,7 +188,8 @@ export class KataGoEngine implements AnalysisEngine {
       if (now - this.lastProgressAt <= this.queryTimeoutMs) return
       limit = this.queryTimeoutMs
     } else {
-      if (now - this.spawnedAt <= this.startupTimeoutMs) return
+      // From the last activity, not from the spawn: an idle respawned process must not be killed by the first query.
+      if (now - this.lastProgressAt <= this.startupTimeoutMs) return
       limit = this.startupTimeoutMs
     }
     const err = `KataGo не ответил за ${Math.round(limit / 1000)} с`
@@ -244,6 +255,11 @@ export class KataGoEngine implements AnalysisEngine {
   private handleExit(proc: ChildProcessWithoutNullStreams, why: string): void {
     if (proc !== this.proc) return // a replaced or intentionally stopped process
     this.proc = null
+    this.onCrash(why)
+  }
+
+  /** Counts a crash of the current process (or a failed spawn): restart, or fail for good past `maxRestarts`. */
+  private onCrash(why: string): void {
     this.stopWatchdog()
     this.crashes++
     this.log(`KataGo exited (${why}), crash #${this.crashes}`)

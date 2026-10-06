@@ -1,12 +1,15 @@
+import { useState } from 'preact/hooks'
 import type { HealthResponse } from '@joseki-dojo/shared'
 
 export interface EngineScreenProps {
   health: HealthResponse
-  onRetry: () => void
+  /** Re-checks KataGo; resolves when the check is done. */
+  onRetry: () => Promise<void>
   onSettings: () => void
 }
 
 export function EngineScreen({ health, onRetry, onSettings }: EngineScreenProps) {
+  const [checking, setChecking] = useState(false)
   if (health.state === 'starting') {
     return (
       <main class="engine">
@@ -25,7 +28,15 @@ export function EngineScreen({ health, onRetry, onSettings }: EngineScreenProps)
         <button class="primary" onClick={onSettings}>
           Открыть настройки
         </button>
-        <button onClick={onRetry}>Проверить снова</button>
+        <button
+          disabled={checking}
+          onClick={() => {
+            setChecking(true)
+            void onRetry().finally(() => setChecking(false))
+          }}
+        >
+          {checking ? 'Проверяю…' : 'Проверить снова'}
+        </button>
       </div>
     </main>
   )

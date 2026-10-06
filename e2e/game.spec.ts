@@ -40,7 +40,24 @@ test('settings show the pinned version and refuse a missing network', async ({ p
   await expect(page.getByText(/Проверенная версия KataGo: 1\.18\.1/)).toBeVisible()
   await page.getByLabel('Основная сеть').fill('/nope/missing.bin.gz')
   await page.getByRole('button', { name: 'Сохранить и проверить' }).click()
-  await expect(page.locator('.hint.error')).toBeVisible()
+  await expect(page.locator('.hint.error')).toContainText('KataGo не найден')
   await page.getByRole('button', { name: 'Назад' }).click()
   await expect(page.getByRole('button', { name: 'Начать' })).toBeVisible()
+})
+
+test('the board fills a narrow window', async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 900 })
+  await startAsBlackTopRight(page)
+  await expect.poll(async () => (await page.locator('.game .shudan-goban').boundingBox())?.width ?? 0).toBeGreaterThan(300)
+  // The goban root can be stretched by the layout while its vertices stay tiny: check a vertex too.
+  await expect.poll(async () => (await vertex(page, 3, 3).boundingBox())?.width ?? 0).toBeGreaterThan(15)
+})
+
+test('the board does not overlap the side panel in a wide window', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await startAsBlackTopRight(page)
+  await expect.poll(async () => (await vertex(page, 3, 3).boundingBox())?.width ?? 0).toBeGreaterThan(15)
+  const board = await page.locator('.game .shudan-goban').boundingBox()
+  const panel = await page.locator('.game .panel').boundingBox()
+  expect(board && panel && board.x + board.width <= panel.x).toBe(true)
 })

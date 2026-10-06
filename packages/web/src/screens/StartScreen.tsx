@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks'
-import { BOT_RANKS, DEFAULT_BOT_RANK, type SessionSettings } from '@joseki-dojo/shared'
+import { BOT_RANKS, DEFAULT_BOT_RANK, isBotRank, type SessionSettings } from '@joseki-dojo/shared'
 import { rankLabel } from '../format'
 
 type ColorChoice = SessionSettings['userColor']
@@ -20,9 +20,16 @@ const CORNERS: [CornerChoice, string][] = [
 const SOON_MODES = ['Случайно', 'Из списка']
 const SOON_ENVIRONMENTS = ['Фусеки', 'Лесенка', 'Смешанно']
 
-export function StartScreen({ onStart, busy }: { onStart: (settings: SessionSettings) => void; busy?: boolean }) {
+export interface StartScreenProps {
+  onStart: (settings: SessionSettings) => void
+  busy?: boolean
+  /** Rank preselected in the bot rank list (`bot.defaultRank` from the config). */
+  defaultRank?: string
+}
+
+export function StartScreen({ onStart, busy, defaultRank }: StartScreenProps) {
   const [userColor, setUserColor] = useState<ColorChoice>('B')
-  const [botRank, setBotRank] = useState(DEFAULT_BOT_RANK)
+  const [botRank, setBotRank] = useState(defaultRank && isBotRank(defaultRank) ? defaultRank : DEFAULT_BOT_RANK)
   const [corner, setCorner] = useState<CornerChoice>('random')
 
   return (

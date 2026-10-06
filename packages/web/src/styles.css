@@ -50,6 +50,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 
 .game, .review { display: grid; grid-template-columns: minmax(0, auto) minmax(280px, 1fr); gap: 24px; align-items: start; }
 @media (max-width: 900px) { .game, .review { grid-template-columns: 1fr; } }
+.board { justify-self: start; min-width: 0; }
 .panel { display: grid; gap: 12px; }
 .proposal { border: 1px solid var(--accent); border-radius: 8px; padding: 12px; display: grid; gap: 8px; }
 .summary { display: grid; gap: 4px; }

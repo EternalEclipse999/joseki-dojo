@@ -39,6 +39,12 @@ export interface ServicePaths {
   modelsDir: string
 }
 
+// The server only talks to the local browser. Checking Host defeats DNS rebinding, checking Origin stops other
+// sites from opening the WebSocket (browsers do not apply the same-origin policy to it). Any port is allowed:
+// the Vite dev server proxies from its own port.
+const LOCAL_HOST = /^(127\.0\.0\.1|localhost)(:\d+)?$/i
+const LOCAL_ORIGIN = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i
+
 export function createServices(
   config: AppConfig,
   engine: KataGoEngine,
@@ -68,6 +74,14 @@ export function createServices(
 
 export async function buildApp(services: AppServices, webDist: string | null = null): Promise<FastifyInstance> {
   const app = Fastify({ logger: false })
+  app.addHook('onRequest', async (req, reply) => {
+    const origin = req.headers.origin
+    if (!LOCAL_HOST.test(req.headers.host ?? '') || (req.url.startsWith('/ws') && origin !== undefined && !LOCAL_ORIGIN.test(origin))) {
+      // A rejected WebSocket upgrade has no keep-alive owner: close its socket once the 403 is written.
+      if (req.headers.upgrade) reply.raw.once('finish', () => req.raw.socket.end())
+      return reply.code(403).header('connection', 'close').send({ error: 'forbidden' })
+    }
+  })
   await app.register(websocket)
   app.get('/ws', { websocket: true }, (socket) => handleSocket(socket, services))
   registerHttp(app, services)

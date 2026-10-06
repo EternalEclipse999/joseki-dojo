@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { defaultKind, parseCpuAnswer } from './build-kind'
+import { defaultKind, parseCpuAnswer, parseSourceAnswer } from './build-kind'
 
 describe('defaultKind', () => {
   it('prefers the stored kind', () => {
@@ -28,5 +28,22 @@ describe('parseCpuAnswer', () => {
   })
   it('falls back to the default on anything else', () => {
     expect(parseCpuAnswer('maybe', 'cpu')).toBe('cpu')
+  })
+})
+
+describe('parseSourceAnswer', () => {
+  it('downloads when nothing is known and nothing is typed', () => {
+    expect(parseSourceAnswer('', null)).toEqual({ action: 'download' })
+  })
+  it('keeps the known path on an empty answer', () => {
+    expect(parseSourceAnswer('', 'C:/k/katago.exe')).toEqual({ action: 'known', path: 'C:/k/katago.exe' })
+  })
+  it('opens the download menu on "скачать" even when a path is known, in any case', () => {
+    expect(parseSourceAnswer('скачать', 'C:/k/katago.exe')).toEqual({ action: 'download' })
+    expect(parseSourceAnswer('  Скачать ', 'C:/k/katago.exe')).toEqual({ action: 'download' })
+    expect(parseSourceAnswer('СКАЧАТЬ', null)).toEqual({ action: 'download' })
+  })
+  it('treats anything else as a path', () => {
+    expect(parseSourceAnswer(' D:/katago/katago.exe ', 'C:/k/katago.exe')).toEqual({ action: 'typed', path: 'D:/katago/katago.exe' })
   })
 })

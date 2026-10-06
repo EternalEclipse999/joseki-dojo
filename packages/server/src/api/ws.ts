@@ -30,8 +30,8 @@ export function handleSocket(socket: WebSocket, deps: SocketDeps): void {
         return
       }
       case 'resync': {
+        deps.hub.watch(socket, msg.sessionId) // before the await: updates published meanwhile must not be missed
         if (deps.health.get().state === 'failed') await deps.health.recover()
-        deps.hub.watch(socket, msg.sessionId)
         send({ type: 'sessionState', session: deps.sessions.resync(msg.sessionId) })
         return
       }

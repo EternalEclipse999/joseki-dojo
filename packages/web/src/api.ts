@@ -6,6 +6,13 @@ export async function fetchHealth(): Promise<HealthResponse> {
   return (await res.json()) as HealthResponse
 }
 
+/** Restarts a failed engine and runs the startup checks again; resolves when they are done. */
+export async function recheckHealth(): Promise<HealthResponse> {
+  const res = await fetch('/api/health/recheck', { method: 'POST' })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return (await res.json()) as HealthResponse
+}
+
 /** Null while the review is still being prepared (HTTP 409). */
 export async function fetchReview(sessionId: string): Promise<ReviewData | null> {
   const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/review`)

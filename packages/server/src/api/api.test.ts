@@ -1,3 +1,4 @@
+import { request } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import type { FastifyInstance } from 'fastify'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -113,6 +114,43 @@ describe('API', () => {
     c.send(START)
     const m = await c.next((x) => x.type === 'error')
     expect(m).toMatchObject({ type: 'error', code: 'engine_error' })
+  })
+
+  it('re-checks KataGo on demand', async () => {
+    services.health = new HealthMonitor(services.config, services.engine)
+    expect(services.health.get().state).toBe('starting')
+    const res = await fetch(`http://${host}/api/health/recheck`, { method: 'POST' })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ state: 'ready', reason: null })
+    expect(services.health.get().state).toBe('ready')
+  })
+
+  it('refuses requests addressed to a foreign host name (DNS rebinding)', async () => {
+    const status = await new Promise<number>((resolve, reject) => {
+      const req = request({ host: '127.0.0.1', port: Number(host.split(':')[1]), path: '/api/health', headers: { host: 'evil.example' } }, (res) => {
+        res.resume()
+        resolve(res.statusCode ?? 0)
+      })
+      req.on('error', reject)
+      req.end()
+    })
+    expect(status).toBe(403)
+  })
+
+  it('refuses a WebSocket from a foreign origin but accepts a local one', async () => {
+    const ws = new WebSocket(`ws://${host}/ws`, { origin: 'http://evil.example' })
+    await expect(
+      new Promise<void>((resolve, reject) => {
+        ws.once('open', () => resolve())
+        ws.once('error', reject)
+      }),
+    ).rejects.toThrow()
+    const local = new WebSocket(`ws://${host}/ws`, { origin: `http://${host}` })
+    await new Promise<void>((resolve, reject) => {
+      local.once('open', () => resolve())
+      local.once('error', reject)
+    })
+    local.close()
   })
 
   it('returns 404 for an unknown review', async () => {

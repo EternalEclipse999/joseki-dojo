@@ -13,3 +13,17 @@ export function parseCpuAnswer(answer: string, fallback: BuildKind): BuildKind {
   if (a === 'n') return 'gpu'
   return fallback
 }
+
+export type SourceChoice = { action: 'download' } | { action: 'known' | 'typed'; path: string }
+
+/**
+ * Parses the answer to the first setup question: "скачать" always opens the download menu (also to switch
+ * CPU to GPU on a re-run), an empty answer keeps the known path (or downloads when there is none), anything
+ * else is a path typed by the user.
+ */
+export function parseSourceAnswer(answer: string, knownPath: string | null): SourceChoice {
+  const a = answer.trim()
+  if (a.toLowerCase() === 'скачать') return { action: 'download' }
+  if (a) return { action: 'typed', path: a }
+  return knownPath ? { action: 'known', path: knownPath } : { action: 'download' }
+}

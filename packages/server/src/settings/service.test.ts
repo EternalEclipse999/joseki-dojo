@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { SettingsUpdate } from '@joseki-dojo/shared'
 import { FAKE_KATAGO, fakeEngine, tempDir, testConfig } from '../../test/helpers'
@@ -77,6 +77,7 @@ describe('SettingsService', () => {
     expect(v.versionWarning).toBeNull()
     expect(v.models).toEqual([inst.broken, inst.human, inst.main, inst.next].sort())
     expect(v.analysis).toEqual({ reviewVisits: 10, endVisits: 5 })
+    expect(v.defaultBotRank).toBe('7k')
   })
 
   it('rejects invalid input without touching the engine', async () => {
@@ -130,5 +131,42 @@ describe('SettingsService', () => {
     expect(health.get().state).toBe('ready')
     expect(await engine.version()).toBe('1.18.1')
     expect((await settings.apply(update(inst.main))).ok).toBe(false) // guard was released: still reaches persist, not 'already applying'
+  })
+
+  it('resolves relative paths against the config file directory, not the working directory', async () => {
+    const { settings, inst, config } = await setup()
+    const rel = (p: string): string => relative(inst.dir, p)
+    const r = await settings.apply({
+      katago: { path: rel(inst.katago), analysisConfig: rel(inst.cfg), mainModel: rel(inst.next), humanModel: rel(inst.human) },
+      analysis: { reviewVisits: 40, endVisits: 20 },
+    })
+    expect(r.ok).toBe(true)
+    expect(config.katago.mainModel).toBe(inst.next)
+    expect(config.katago.path).toBe(inst.katago)
+  })
+
+  it('rolls back when the candidate cannot even be spawned', async () => {
+    const { inst, config, configFile, health, engine } = await setup()
+    const nul = String.fromCharCode(0)
+    const settings = new SettingsService({
+      config,
+      configFile,
+      modelsDir: inst.models,
+      engine,
+      health,
+      lock: loadLock(),
+      commandFor: (c) => (c.katago.mainModel.endsWith('next.bin.gz') ? { command: `bad${nul}command`, args: [] } : commandFor(c)),
+    })
+    const before = config.katago.mainModel
+    const r = await settings.apply({
+      katago: { path: inst.katago, analysisConfig: inst.cfg, mainModel: inst.next, humanModel: inst.human },
+      analysis: { reviewVisits: 40, endVisits: 20 },
+    })
+    expect(r.ok).toBe(false)
+    expect(config.katago.mainModel).toBe(before)
+    expect(existsSync(configFile)).toBe(false)
+    expect(health.get().state).toBe('ready')
+    expect(engine.pendingCount).toBe(0)
+    expect(await engine.version()).toBe('1.18.1')
   })
 })

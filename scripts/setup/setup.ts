@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { KataGoEngine } from '../../packages/server/src/engine/engine'
 import { compareVersions, MIN_KATAGO_VERSION } from '../../packages/server/src/engine/health'
 import { buildsFor, loadLock, versionWarning, type LockedBuild } from '../../packages/server/src/engine/lock'
-import { defaultKind, parseCpuAnswer } from './build-kind'
+import { defaultKind, parseCpuAnswer, parseSourceAnswer } from './build-kind'
 import { measureVisitsPerSecond, visitsForBudget } from './calibrate'
 import { download, findKatagoBinary, unzip } from './download'
 import { analysisConfigText, searchThreadsFor } from './katago-config'
@@ -62,13 +62,16 @@ async function main(): Promise<void> {
   const knownPath = typeof existingKatago.path === 'string' && existsSync(existingKatago.path) ? existingKatago.path : null
 
   console.log(`Настройка KataGo ${lock.katago.version} для Joseki Dojo (версии из katago.lock.json)\n`)
-  const answer = await rl.ask(`Путь к установленной KataGo (Enter — ${knownPath ?? 'скачать проверенную версию'}): `)
+  const prompt = knownPath
+    ? `Путь к установленной KataGo (Enter — ${knownPath}, «скачать» — скачать заново): `
+    : 'Путь к установленной KataGo (Enter — скачать проверенную версию): '
+  const source = parseSourceAnswer(await rl.ask(prompt), knownPath)
   let katagoPath: string
   let kind: LockedBuild['kind']
-  if (answer || knownPath) {
-    katagoPath = resolve(answer || (knownPath as string))
+  if (source.action !== 'download') {
+    katagoPath = resolve(source.path)
     if (!existsSync(katagoPath)) throw new Error(`Файл не найден: ${katagoPath}`)
-    const storedKind = answer ? undefined : ((existing.setup ?? {}) as Json).kind
+    const storedKind = source.action === 'typed' ? undefined : ((existing.setup ?? {}) as Json).kind
     const fallback = defaultKind(storedKind, katagoPath)
     kind = parseCpuAnswer(await rl.ask(`Это CPU-сборка (eigen)? ${fallback === 'cpu' ? '[Y/n]' : '[y/N]'}: `), fallback)
   } else {

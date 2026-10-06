@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { fakeEngine, tempDir } from '../../test/helpers'
-import type { KataGoEngine } from './engine'
+import { FAKE_KATAGO, fakeEngine, tempDir } from '../../test/helpers'
+import { KataGoEngine } from './engine'
 import { baseQuery } from './query'
 
 const engines: KataGoEngine[] = []
@@ -98,5 +98,28 @@ describe('KataGoEngine', () => {
   it('rejects a query when KataGo never answers after startup', async () => {
     const e = track(fakeEngine({ FAKE_KATAGO_SILENT: '1' }, [], { startupTimeoutMs: 300, watchdogIntervalMs: 50 }))
     await expect(e.version()).rejects.toMatchObject({ code: 'engine_failed' })
+  })
+
+  it('measures the startup timeout from the first query, not from the spawn of an idle process', async () => {
+    const e = track(fakeEngine({ FAKE_KATAGO_HANG: '1' }, [], { startupTimeoutMs: 400, watchdogIntervalMs: 50 }))
+    await new Promise((r) => setTimeout(r, 600))
+    const sent = Date.now()
+    await expect(e.analyze(baseQuery([]))).rejects.toMatchObject({ code: 'engine_failed' })
+    expect(Date.now() - sent).toBeGreaterThanOrEqual(300)
+  })
+
+  it('treats a synchronous spawn failure as a crash instead of throwing', async () => {
+    const logs: string[] = []
+    const e = new KataGoEngine({ command: 'bad\0command', args: [] }, (l) => logs.push(l))
+    engines.push(e)
+    expect(() => e.start()).not.toThrow()
+    await expect(e.version()).rejects.toMatchObject({ code: 'engine_failed' })
+    expect(e.failed).toBe(true)
+    expect(e.pendingCount).toBe(0)
+    e.reset()
+    expect(e.failed).toBe(true) // still the same bad command
+    await e.restartWith({ command: process.execPath, args: [FAKE_KATAGO] })
+    expect(e.failed).toBe(false)
+    expect(await e.version()).toBe('1.18.1')
   })
 })

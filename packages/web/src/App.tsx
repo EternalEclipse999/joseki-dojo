@@ -1,7 +1,7 @@
 import type { JSX } from 'preact'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import type { ClientMessage, HealthResponse, ReviewData, SessionView } from '@joseki-dojo/shared'
-import { DojoSocket, fetchHealth, fetchReview, fetchSettings } from './api'
+import { DojoSocket, fetchHealth, fetchReview, fetchSettings, recheckHealth } from './api'
 import { ErrorBanner } from './components/ErrorBanner'
 import { EngineScreen } from './screens/EngineScreen'
 import { GameScreen } from './screens/GameScreen'
@@ -25,6 +25,7 @@ export function App() {
   const [connected, setConnected] = useState(true)
   const [showSettings, setShowSettings] = useState(false)
   const [versionWarning, setVersionWarning] = useState<string | null>(null)
+  const [defaultRank, setDefaultRank] = useState<string | undefined>(undefined)
   // True from sending startSession/replayFrom until the server answers (sessionState/error) or the link drops.
   const [starting, setStarting] = useState(false)
 
@@ -92,7 +93,10 @@ export function App() {
   useEffect(() => {
     if (!ready) return
     fetchSettings()
-      .then((s) => setVersionWarning(s.versionWarning))
+      .then((s) => {
+        setVersionWarning(s.versionWarning)
+        setDefaultRank(s.defaultBotRank)
+      })
       .catch(() => undefined)
   }, [ready, healthTick])
 
@@ -136,13 +140,22 @@ export function App() {
     setError(null)
   }
 
+  const retryHealth = async (): Promise<void> => {
+    await recheckHealth().catch(() => undefined) // a failed request is shown by the re-poll below
+    setHealthTick((n) => n + 1)
+  }
+
   let screen: JSX.Element
   if (showSettings) screen = <SettingsScreen onClose={() => setShowSettings(false)} onSaved={() => setHealthTick((n) => n + 1)} />
   else if (!health) screen = <main><p class="status">Загрузка…</p></main>
   else if (health.state !== 'ready')
-    screen = <EngineScreen health={health} onRetry={() => setHealthTick((n) => n + 1)} onSettings={() => setShowSettings(true)} />
+    screen = <EngineScreen health={health} onRetry={retryHealth} onSettings={() => setShowSettings(true)} />
   else if (!session) screen = (
-      <StartScreen busy={starting || !connected} onStart={(settings) => sendStarting({ type: 'startSession', settings })} />
+      <StartScreen
+        key={defaultRank}
+        defaultRank={defaultRank}
+        busy={starting || !connected}
+        onStart={(settings) => sendStarting({ type: 'startSession', settings })} />
     )
   else if (session.status === 'playing') screen = <GameScreen session={session} errorSeq={errorSeq} send={send} />
   else
