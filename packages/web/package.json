@@ -1,0 +1,16 @@
+{
+  "name": "@joseki-dojo/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "vite", "build": "vite build" },
+  "dependencies": {
+    "@joseki-dojo/shared": "*",
+    "@sabaki/shudan": "^1.8.0",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "vite": "^8.3.3"
+  }
+}
