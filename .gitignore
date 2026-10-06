@@ -4,6 +4,7 @@ data/
 engines/
 config.local.json
 e2e/.data/
+e2e/.install/
 test-results/
 playwright-report/
 *.log

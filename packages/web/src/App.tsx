@@ -1,10 +1,12 @@
 import type { JSX } from 'preact'
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import type { ClientMessage, HealthResponse, ReviewData, SessionView } from '@joseki-dojo/shared'
-import { DojoSocket, fetchHealth, fetchReview, fetchSettings, recheckHealth } from './api'
+import type { ClientMessage, HealthResponse, InstallStatus, ReviewData, SessionView } from '@joseki-dojo/shared'
+import { DojoSocket, fetchHealth, fetchInstall, fetchReview, fetchSettings, recheckHealth } from './api'
+import { AppUpdateBanner } from './components/AppUpdateBanner'
 import { ErrorBanner } from './components/ErrorBanner'
 import { EngineScreen } from './screens/EngineScreen'
 import { GameScreen } from './screens/GameScreen'
+import { InstallScreen } from './screens/InstallScreen'
 import { ReviewScreen } from './screens/ReviewScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { StartScreen } from './screens/StartScreen'
@@ -28,6 +30,10 @@ export function App() {
   const [defaultRank, setDefaultRank] = useState<string | undefined>(undefined)
   // True from sending startSession/replayFrom until the server answers (sessionState/error) or the link drops.
   const [starting, setStarting] = useState(false)
+  const [install, setInstall] = useState<InstallStatus | null>(null)
+  const [installChecked, setInstallChecked] = useState(false)
+  // An engine update started from the banner is on screen.
+  const [engineUpdate, setEngineUpdate] = useState(false)
 
   const socket = useMemo(
     () =>
@@ -83,6 +89,22 @@ export function App() {
       }
     }
     void poll()
+    return () => {
+      cancelled = true
+    }
+  }, [healthTick])
+
+  // Spec 5.1: is KataGo installed at all, and is the installer's KataGo older than katago.lock.json?
+  useEffect(() => {
+    let cancelled = false
+    fetchInstall()
+      .then((s) => {
+        if (!cancelled) setInstall(s)
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setInstallChecked(true)
+      })
     return () => {
       cancelled = true
     }
@@ -145,9 +167,16 @@ export function App() {
     setHealthTick((n) => n + 1)
   }
 
+  const afterInstall = (): void => {
+    setEngineUpdate(false)
+    setHealthTick((n) => n + 1)
+  }
+
   let screen: JSX.Element
   if (showSettings) screen = <SettingsScreen onClose={() => setShowSettings(false)} onSaved={() => setHealthTick((n) => n + 1)} />
-  else if (!health) screen = <main><p class="status">Загрузка…</p></main>
+  else if (engineUpdate) screen = <InstallScreen update onDone={afterInstall} onClose={() => setEngineUpdate(false)} />
+  else if (!health || (health.state !== 'ready' && !installChecked)) screen = <main><p class="status">Загрузка…</p></main>
+  else if (health.state !== 'ready' && install && !install.installed) screen = <InstallScreen update={false} onDone={afterInstall} />
   else if (health.state !== 'ready')
     screen = <EngineScreen health={health} onRetry={retryHealth} onSettings={() => setShowSettings(true)} />
   else if (!session) screen = (
@@ -178,14 +207,25 @@ export function App() {
           send({ type: 'resync', sessionId: session.id })
         }
       : undefined
+  // Spec 5.1: offered outside a game, when the installer's KataGo is not the one pinned in katago.lock.json.
+  const offerEngineUpdate = ready && install?.updateAvailable === true && !engineUpdate && !inGame && !showSettings
 
   return (
     <>
+      <AppUpdateBanner />
       {bannerText && <ErrorBanner message={bannerText} onRetry={retry} />}
-      {!inGame && !showSettings && (
+      {!inGame && !showSettings && !engineUpdate && (
         <header class="topbar">
           <button onClick={() => setShowSettings(true)}>Настройки</button>
         </header>
+      )}
+      {offerEngineUpdate && (
+        <div class="bar">
+          <span>Доступна новая проверенная версия KataGo</span>
+          <button class="primary" onClick={() => setEngineUpdate(true)}>
+            Обновить движок
+          </button>
+        </div>
       )}
       {versionWarning && !showSettings && <p class="notice">{versionWarning}</p>}
       {screen}
