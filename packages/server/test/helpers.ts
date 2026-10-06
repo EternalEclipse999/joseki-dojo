@@ -3,11 +3,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gtpToVertex, vertexToIndex } from '@joseki-dojo/shared'
+import type { ServiceOptions } from '../src/app'
 import { DEFAULT_CONFIG, type AppConfig } from '../src/config'
+import { engineCommand } from '../src/engine/command'
 import { KataGoEngine, type AnalysisEngine, type EngineOptions } from '../src/engine/engine'
+import { loadLock } from '../src/engine/lock'
 import type { AnalysisResponse, KataGoQueryBody } from '../src/engine/katago-types'
 
 export const FAKE_KATAGO = fileURLToPath(new URL('./fake-katago.mjs', import.meta.url))
+
+/** The repository's katago.lock.json (product code always receives the lock path explicitly). */
+export const REPO_LOCK = fileURLToPath(new URL('../../../katago.lock.json', import.meta.url))
 
 export const tempDir = (): string => mkdtempSync(join(tmpdir(), 'joseki-dojo-'))
 
@@ -21,6 +27,17 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     dataDir: tempDir(),
     katago: { ...DEFAULT_CONFIG.katago, commandOverride: [process.execPath, FAKE_KATAGO] },
     analysis: { reviewVisits: 10, endVisits: 5 },
+    ...overrides,
+  }
+}
+
+/** createServices options for a test config: files under its data folder, the repository lock, the real command line. */
+export function serviceOptions(config: AppConfig, overrides: Partial<ServiceOptions> = {}): ServiceOptions {
+  return {
+    configFile: join(config.dataDir, 'config.local.json'),
+    enginesDir: join(config.dataDir, 'engines'),
+    lock: loadLock(REPO_LOCK),
+    commandFor: engineCommand,
     ...overrides,
   }
 }

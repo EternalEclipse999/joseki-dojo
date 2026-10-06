@@ -1,3 +1,18 @@
+/**
+ * Schema migrations in order, applied by `migrate`. They live in code rather than in .sql files so that the bundled
+ * desktop app needs no files next to its JavaScript. Never edit a shipped migration: add the next one.
+ */
+export interface Migration {
+  version: number
+  name: string
+  sql: string
+}
+
+export const MIGRATIONS: readonly Migration[] = [
+  {
+    version: 1,
+    name: '001_init.sql',
+    sql: `
 CREATE TABLE sessions (
   id TEXT PRIMARY KEY,
   created_at TEXT NOT NULL,
@@ -46,3 +61,6 @@ CREATE TABLE missed_punishments (
 );
 
 CREATE INDEX missed_punishments_session ON missed_punishments (session_id);
+`,
+  },
+]

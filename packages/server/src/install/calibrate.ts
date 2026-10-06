@@ -1,6 +1,6 @@
 import type { Move } from '@joseki-dojo/shared'
-import type { AnalysisEngine } from '../../packages/server/src/engine/engine'
-import { baseQuery } from '../../packages/server/src/engine/query'
+import type { AnalysisEngine } from '../engine/engine'
+import { baseQuery } from '../engine/query'
 
 /** Spec 6.4: about `seconds` per reviewed position; the end check uses half of that. */
 export function visitsForBudget(visitsPerSecond: number, seconds = 2): { reviewVisits: number; endVisits: number } {

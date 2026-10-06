@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WebSocket from 'ws'
 import type { ClientMessage, ServerMessage } from '@joseki-dojo/shared'
-import { fakeEngine, testConfig } from '../../test/helpers'
+import { fakeEngine, serviceOptions, testConfig } from '../../test/helpers'
 import { buildApp, createServices, type AppServices } from '../app'
 import { HealthMonitor } from '../engine/health'
 
@@ -65,7 +65,8 @@ const startSession = async (c: Client): Promise<string> => {
 }
 
 beforeEach(async () => {
-  services = createServices(testConfig(), fakeEngine())
+  const config = testConfig()
+  services = createServices(config, fakeEngine(), serviceOptions(config))
   await services.health.check()
   app = await buildApp(services)
   await app.listen({ port: 0, host: '127.0.0.1' })

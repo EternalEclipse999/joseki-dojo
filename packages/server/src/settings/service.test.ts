@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { SettingsUpdate } from '@joseki-dojo/shared'
-import { FAKE_KATAGO, fakeEngine, tempDir, testConfig } from '../../test/helpers'
+import { FAKE_KATAGO, fakeEngine, REPO_LOCK, tempDir, testConfig } from '../../test/helpers'
 import type { AppConfig } from '../config'
 import type { EngineCommand, KataGoEngine } from '../engine/engine'
 import { HealthMonitor } from '../engine/health'
@@ -60,7 +60,7 @@ async function setup() {
   const health = new HealthMonitor(config, engine)
   await health.check()
   const configFile = join(inst.dir, 'config.local.json')
-  const settings = new SettingsService({ config, configFile, modelsDir: inst.models, engine, health, lock: loadLock(), commandFor })
+  const settings = new SettingsService({ config, configFile, modelsDir: inst.models, engine, health, lock: loadLock(REPO_LOCK), commandFor })
   const update = (mainModel: string, analysis: Partial<SettingsUpdate['analysis']> = {}): SettingsUpdate => ({
     katago: { path: inst.katago, analysisConfig: inst.cfg, mainModel, humanModel: inst.human },
     analysis: { reviewVisits: 40, endVisits: 20, ...analysis },
@@ -133,6 +133,28 @@ describe('SettingsService', () => {
     expect((await settings.apply(update(inst.main))).ok).toBe(false) // guard was released: still reaches persist, not 'already applying'
   })
 
+  it('lets a switchTo wait for an apply in progress instead of refusing it', async () => {
+    const { settings, update, inst, config } = await setup()
+    const order: string[] = []
+    const first = settings.apply(update(inst.next)).then((r) => (order.push('apply'), r))
+    const second = settings
+      .switchTo({ ...config.katago, path: inst.katago, analysisConfig: inst.cfg, mainModel: inst.main, humanModel: inst.human }, { reviewVisits: 33, endVisits: 11 })
+      .then((r) => (order.push('switchTo'), r))
+    const [a, b] = await Promise.all([first, second])
+    expect(a.ok).toBe(true)
+    expect(b.ok).toBe(true)
+    expect(order).toEqual(['apply', 'switchTo'])
+    expect(config.katago.mainModel).toBe(inst.main)
+    expect(config.analysis.reviewVisits).toBe(33)
+  })
+
+  it('writes the config atomically: no temp file is left and the file is valid JSON', async () => {
+    const { settings, update, inst, configFile } = await setup()
+    expect((await settings.apply(update(inst.next))).ok).toBe(true)
+    expect(existsSync(`${configFile}.tmp`)).toBe(false)
+    expect(JSON.parse(readFileSync(configFile, 'utf8')).katago.mainModel).toBe(inst.next)
+  })
+
   it('resolves relative paths against the config file directory, not the working directory', async () => {
     const { settings, inst, config } = await setup()
     const rel = (p: string): string => relative(inst.dir, p)
@@ -154,7 +176,7 @@ describe('SettingsService', () => {
       modelsDir: inst.models,
       engine,
       health,
-      lock: loadLock(),
+      lock: loadLock(REPO_LOCK),
       commandFor: (c) => (c.katago.mainModel.endsWith('next.bin.gz') ? { command: `bad${nul}command`, args: [] } : commandFor(c)),
     })
     const before = config.katago.mainModel
@@ -168,5 +190,33 @@ describe('SettingsService', () => {
     expect(health.get().state).toBe('ready')
     expect(engine.pendingCount).toBe(0)
     expect(await engine.version()).toBe('1.18.1')
+  })
+})
+
+describe('SettingsService.switchTo', () => {
+  it('switches to an installed engine and records who set it up, keeping other config fields', async () => {
+    const { settings, inst, config, configFile } = await setup()
+    writeFileSync(configFile, JSON.stringify({ bot: { defaultRank: '5k' }, setup: { kind: 'cpu' } }))
+    const katago = { path: inst.katago, analysisConfig: inst.cfg, mainModel: inst.main, humanModel: inst.human }
+    const r = await settings.switchTo(katago, { reviewVisits: 300, endVisits: 150 }, { kind: 'gpu', lockId: '1.18.1/aaaaaaaaaaaa/bbbbbbbbbbbb' })
+    expect(r.ok).toBe(true)
+    expect(config.setup).toEqual({ kind: 'gpu', lockId: '1.18.1/aaaaaaaaaaaa/bbbbbbbbbbbb' })
+    expect(config.analysis).toEqual({ reviewVisits: 300, endVisits: 150 })
+    const saved = JSON.parse(readFileSync(configFile, 'utf8'))
+    expect(saved).toEqual({
+      bot: { defaultRank: '5k' },
+      setup: { kind: 'gpu', lockId: '1.18.1/aaaaaaaaaaaa/bbbbbbbbbbbb' },
+      katago,
+      analysis: { reviewVisits: 300, endVisits: 150 },
+    })
+  })
+
+  it('creates the folder of a config file that does not exist yet', async () => {
+    const { inst, config, engine, health } = await setup()
+    const configFile = join(inst.dir, 'profile', 'config.json')
+    const settings = new SettingsService({ config, configFile, modelsDir: inst.models, engine, health, lock: loadLock(REPO_LOCK), commandFor })
+    const katago = { path: inst.katago, analysisConfig: inst.cfg, mainModel: inst.main, humanModel: inst.human }
+    expect((await settings.switchTo(katago, { reviewVisits: 300, endVisits: 150 })).ok).toBe(true)
+    expect(JSON.parse(readFileSync(configFile, 'utf8')).katago).toEqual(katago)
   })
 })

@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -6,16 +6,17 @@ import { fileURLToPath } from 'node:url'
 import { KataGoEngine } from '../../packages/server/src/engine/engine'
 import { compareVersions, MIN_KATAGO_VERSION } from '../../packages/server/src/engine/health'
 import { buildsFor, loadLock, versionWarning, type LockedBuild } from '../../packages/server/src/engine/lock'
+import { measureVisitsPerSecond, visitsForBudget } from '../../packages/server/src/install/calibrate'
+import { download, extractBuild } from '../../packages/server/src/install/download'
+import { analysisConfigText, searchThreadsFor } from '../../packages/server/src/install/katago-config'
 import { defaultKind, parseCpuAnswer, parseSourceAnswer } from './build-kind'
-import { measureVisitsPerSecond, visitsForBudget } from './calibrate'
-import { download, findKatagoBinary, unzip } from './download'
-import { analysisConfigText, searchThreadsFor } from './katago-config'
 
 type Json = Record<string, unknown>
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const configFile = join(root, 'config.local.json')
 const enginesDir = join(root, 'engines')
+const log = (line: string): void => console.log(line)
 
 /**
  * Line-queue prompter. Unlike readline's question(), it keeps lines that arrive before the question
@@ -48,7 +49,7 @@ function prompter(): { ask: (question: string) => Promise<string>; close: () => 
 }
 
 async function main(): Promise<void> {
-  const lock = loadLock()
+  const lock = loadLock(join(root, 'katago.lock.json'))
   const rl = prompter()
   let existing: Json = {}
   if (existsSync(configFile)) {
@@ -81,13 +82,8 @@ async function main(): Promise<void> {
     const build = options[Number(await rl.ask(`Бэкенд [1-${options.length}]: `)) - 1]
     if (!build) throw new Error('Нет такого варианта')
     const zip = join(enginesDir, 'downloads', basename(new URL(build.url).pathname))
-    await download(build.url, zip, build.sha256)
-    const dir = join(enginesDir, `katago-${lock.katago.version}-${build.id}`)
-    await unzip(zip, dir)
-    const bin = findKatagoBinary(dir)
-    if (!bin) throw new Error(`В архиве нет исполняемого файла KataGo: ${zip}`)
-    if (process.platform !== 'win32') chmodSync(bin, 0o755)
-    katagoPath = bin
+    await download(build.url, zip, build.sha256, { log })
+    katagoPath = await extractBuild(zip, join(enginesDir, `katago-${lock.katago.version}-${build.id}`))
     kind = build.kind
   }
   const customModel = await rl.ask(`Путь к своей основной сети (Enter — ${lock.models.main.file}): `)
@@ -95,9 +91,9 @@ async function main(): Promise<void> {
 
   const mainModel = customModel ? resolve(customModel) : join(enginesDir, 'models', lock.models.main.file)
   if (customModel && !existsSync(mainModel)) throw new Error(`Файл основной сети не найден: ${mainModel}`)
-  if (!customModel) await download(lock.models.main.url, mainModel, lock.models.main.sha256)
+  if (!customModel) await download(lock.models.main.url, mainModel, lock.models.main.sha256, { log })
   const humanModel = join(enginesDir, 'models', lock.models.human.file)
-  await download(lock.models.human.url, humanModel, lock.models.human.sha256)
+  await download(lock.models.human.url, humanModel, lock.models.human.sha256, { log })
 
   const logDir = join(root, 'data', 'katago-logs')
   mkdirSync(logDir, { recursive: true })

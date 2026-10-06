@@ -1,15 +1,17 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { strToU8, zipSync } from 'fflate'
 import { afterEach, describe, expect, it } from 'vitest'
-import { download, findKatagoBinary, sha256File } from './download'
+import { download, extractBuild, findKatagoBinary, sha256File } from './download'
 
 const temp = (): string => mkdtempSync(join(tmpdir(), 'joseki-setup-'))
 const sha = (b: Buffer): string => createHash('sha256').update(b).digest('hex')
 const closers: (() => Promise<void>)[] = []
+const EXE = process.platform === 'win32' ? 'katago.exe' : 'katago'
 
 async function serve(body: Buffer): Promise<string> {
   const server = createServer((_req, res) => {
@@ -28,16 +30,19 @@ afterEach(async () => {
 describe('download', () => {
   const body = Buffer.from('katago network bytes')
 
-  it('downloads a file and verifies its checksum', async () => {
+  it('downloads a file, reports progress and verifies its checksum', async () => {
     const dest = join(temp(), 'net.bin.gz')
-    await download(await serve(body), dest, sha(body), () => undefined)
+    const progress: [number, number][] = []
+    await download(await serve(body), dest, sha(body), { onProgress: (received, total) => progress.push([received, total]) })
     expect(readFileSync(dest)).toEqual(body)
     expect(await sha256File(dest)).toBe(sha(body))
+    expect(progress[0]).toEqual([0, body.length])
+    expect(progress.at(-1)).toEqual([body.length, body.length])
   })
 
   it('rejects a wrong checksum and leaves nothing behind', async () => {
     const dest = join(temp(), 'net.bin.gz')
-    await expect(download(await serve(body), dest, sha(Buffer.from('other')), () => undefined)).rejects.toThrow(/SHA-256/)
+    await expect(download(await serve(body), dest, sha(Buffer.from('other')))).rejects.toThrow(/SHA-256/)
     expect(existsSync(dest)).toBe(false)
     expect(existsSync(`${dest}.part`)).toBe(false)
   })
@@ -46,14 +51,26 @@ describe('download', () => {
     const dest = join(temp(), 'net.bin.gz')
     writeFileSync(dest, body)
     const logs: string[] = []
-    await download('https://invalid.example/never-fetched', dest, sha(body), (l) => logs.push(l))
+    const progress: [number, number][] = []
+    await download('https://invalid.example/never-fetched', dest, sha(body), {
+      log: (l) => logs.push(l),
+      onProgress: (received, total) => progress.push([received, total]),
+    })
     expect(logs).toEqual(['Уже скачано и проверено: net.bin.gz'])
+    expect(progress).toEqual([[body.length, body.length]])
   })
 
   it('refuses an existing file with a different checksum', async () => {
     const dest = join(temp(), 'net.bin.gz')
     writeFileSync(dest, 'tampered')
-    await expect(download('https://invalid.example/never-fetched', dest, sha(body), () => undefined)).rejects.toThrow(/katago\.lock\.json/)
+    await expect(download('https://invalid.example/never-fetched', dest, sha(body))).rejects.toThrow(/katago\.lock\.json/)
+  })
+
+  it('downloads again over a mismatched file when asked to', async () => {
+    const dest = join(temp(), 'net.bin.gz')
+    writeFileSync(dest, 'tampered')
+    await download(await serve(body), dest, sha(body), { replaceMismatched: true })
+    expect(readFileSync(dest)).toEqual(body)
   })
 })
 
@@ -78,7 +95,7 @@ describe('download failures', () => {
       setTimeout(() => res.destroy(), 50)
     })
     const dest = join(temp(), 'net.bin.gz')
-    await expect(download(url, dest, sha(body), () => undefined)).rejects.toThrow()
+    await expect(download(url, dest, sha(body))).rejects.toThrow()
     expect(existsSync(dest)).toBe(false)
     expect(existsSync(`${dest}.part`)).toBe(false)
   })
@@ -90,7 +107,7 @@ describe('download failures', () => {
     await new Promise<void>((resolve) => probe.close(() => resolve()))
     const url = `http://127.0.0.1:${port}/file.bin`
     const dest = join(temp(), 'net.bin.gz')
-    await expect(download(url, dest, sha(body), () => undefined)).rejects.toThrow(url)
+    await expect(download(url, dest, sha(body))).rejects.toThrow(url)
     expect(existsSync(`${dest}.part`)).toBe(false)
   })
 
@@ -100,7 +117,7 @@ describe('download failures', () => {
       res.write(body)
     })
     const dest = join(temp(), 'net.bin.gz')
-    await expect(download(url, dest, sha(body), () => undefined, 300)).rejects.toThrow(/завис/)
+    await expect(download(url, dest, sha(body), { stallTimeoutMs: 300 })).rejects.toThrow(/завис/)
     expect(existsSync(dest)).toBe(false)
     expect(existsSync(`${dest}.part`)).toBe(false)
   })
@@ -108,12 +125,12 @@ describe('download failures', () => {
   it('aborts when headers never arrive', async () => {
     const url = await serveRaw(() => undefined)
     const dest = join(temp(), 'net.bin.gz')
-    await expect(download(url, dest, sha(body), () => undefined, 300)).rejects.toThrow(/завис/)
+    await expect(download(url, dest, sha(body), { stallTimeoutMs: 300 })).rejects.toThrow(/завис/)
   })
 
   it('accepts an upper-case checksum', async () => {
     const dest = join(temp(), 'net.bin.gz')
-    await download(await serve(body), dest, sha(body).toUpperCase(), () => undefined)
+    await download(await serve(body), dest, sha(body).toUpperCase())
     expect(existsSync(dest)).toBe(true)
   })
 })
@@ -123,9 +140,40 @@ describe('findKatagoBinary', () => {
     const dir = temp()
     const nested = join(dir, 'katago-v1.18.1', 'bin')
     mkdirSync(nested, { recursive: true })
-    const name = process.platform === 'win32' ? 'katago.exe' : 'katago'
-    writeFileSync(join(nested, name), '')
-    expect(findKatagoBinary(dir)).toBe(join(nested, name))
+    writeFileSync(join(nested, EXE), '')
+    expect(findKatagoBinary(dir)).toBe(join(nested, EXE))
     expect(findKatagoBinary(temp())).toBeNull()
+  })
+})
+
+describe('extractBuild', () => {
+  const archive = (files: Record<string, string>): string => {
+    const zip = join(temp(), 'build.zip')
+    const entries = Object.fromEntries(Object.entries(files).map(([name, text]) => [name, strToU8(text)]))
+    writeFileSync(zip, zipSync({ 'katago-v1.18.1': entries }))
+    return zip
+  }
+
+  it('unpacks the archive and returns the executable', async () => {
+    const dir = join(temp(), 'katago-1.18.1-eigenavx2')
+    const bin = await extractBuild(archive({ [EXE]: 'fake', 'README.txt': 'r' }), dir)
+    expect(bin).toBe(join(dir, 'katago-v1.18.1', EXE))
+    expect(readFileSync(bin, 'utf8')).toBe('fake')
+    expect(existsSync(`${dir}.part`)).toBe(false)
+  })
+
+  it('keeps a folder that already has the executable', async () => {
+    const zip = archive({ [EXE]: 'fake' })
+    const dir = join(temp(), 'katago')
+    const bin = await extractBuild(zip, dir)
+    rmSync(zip)
+    expect(await extractBuild(zip, dir)).toBe(bin)
+  })
+
+  it('rejects an archive without KataGo and leaves nothing behind', async () => {
+    const dir = join(temp(), 'katago')
+    await expect(extractBuild(archive({ 'README.txt': 'r' }), dir)).rejects.toThrow(/нет исполняемого файла KataGo/)
+    expect(existsSync(dir)).toBe(false)
+    expect(existsSync(`${dir}.part`)).toBe(false)
   })
 })

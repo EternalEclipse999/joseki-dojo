@@ -1,6 +1,7 @@
 import type { Vertex } from '@joseki-dojo/shared'
 import { describe, expect, it } from 'vitest'
 import { migrate, openDb } from './db'
+import { MIGRATIONS } from './migrations'
 import { movesBefore, type MissedPunishmentRow, type SessionRecord, type StoredAnalysis } from './records'
 import { SessionRepo } from './repo'
 
@@ -31,6 +32,14 @@ describe('migrations', () => {
     expect(tables.map((t) => t.name)).toEqual(
       expect.arrayContaining(['sessions', 'moves', 'analyses', 'missed_punishments', 'schema_migrations']),
     )
+  })
+
+  it('applies only the migrations not recorded yet', () => {
+    const db = openDb(':memory:')
+    const next = { version: 2, name: '002_extra.sql', sql: 'CREATE TABLE extra (id INTEGER PRIMARY KEY)' }
+    expect(migrate(db, [...MIGRATIONS, next])).toEqual([2])
+    expect(migrate(db, [...MIGRATIONS, next])).toEqual([])
+    expect(db.prepare('SELECT name FROM schema_migrations ORDER BY version').all()).toEqual([{ name: '001_init.sql' }, { name: '002_extra.sql' }])
   })
 })
 

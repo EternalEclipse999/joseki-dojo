@@ -1,5 +1,4 @@
 import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 
 export interface LockedBuild {
   id: string
@@ -22,11 +21,10 @@ export interface KataGoLock {
   models: { main: LockedFile; human: LockedFile }
 }
 
-export const LOCK_FILE = fileURLToPath(new URL('../../../../katago.lock.json', import.meta.url))
-
 const SHA256 = /^[0-9a-f]{64}$/
 
-export function loadLock(file: string = LOCK_FILE): KataGoLock {
+/** Reads and checks katago.lock.json; the caller says where it is (the repository root, or the desktop app's resources). */
+export function loadLock(file: string): KataGoLock {
   const lock = JSON.parse(readFileSync(file, 'utf8')) as KataGoLock
   if (!/^\d+\.\d+\.\d+$/.test(lock.katago?.version ?? '')) throw new Error(`${file}: katago.version must look like 1.18.1`)
   if (!lock.katago.builds?.length) throw new Error(`${file}: no KataGo builds`)
@@ -45,3 +43,7 @@ export function versionWarning(lock: KataGoLock, running: string | null): string
   if (!running || running === lock.katago.version) return null
   return `Запущена KataGo ${running}, а проверена ${lock.katago.version}. Работать будет, но эта версия не проверялась.`
 }
+
+/** Spec 5.1: names the pinned KataGo version and networks: `<version>/<main sha256, 12>/<human sha256, 12>`. */
+export const lockId = (lock: KataGoLock): string =>
+  `${lock.katago.version}/${lock.models.main.sha256.slice(0, 12)}/${lock.models.human.sha256.slice(0, 12)}`
