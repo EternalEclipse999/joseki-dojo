@@ -31,4 +31,6 @@ export interface InstallStatus {
   updateAvailable: boolean
   /** The build chosen by the last successful installation. */
   kind: 'cpu' | 'gpu' | null
+  /** A thing the player should know after a successful installation (e.g. the video card did not start), or null. */
+  note: string | null
 }

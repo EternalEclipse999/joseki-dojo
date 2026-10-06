@@ -6,18 +6,18 @@ Joseki Dojo helps you practise joseki (standard corner sequences in Go). You pla
 
 ## Install on Windows
 
-1. Open the [latest release](https://github.com/EternalEclipse999/joseki-dojo/releases/latest) and download `Joseki-Dojo-Setup-X.Y.Z.exe` (X.Y.Z is the version number).
-2. Run the downloaded file.
-3. Windows may show **"Windows protected your PC"**. This happens because the app is not signed by a paid certificate. Click **More info**, then **Run anyway**. You only see this the first time: updates install themselves later.
+1. Open the [latest release](https://github.com/EternalEclipse999/joseki-dojo/releases/latest). Scroll down to **Assets** and click `Joseki-Dojo-Setup-X.Y.Z.exe` (X.Y.Z is the version number, for example 0.1.0). Ignore the other files. The file lands in your **Downloads** folder; double-click it there.
+2. Your browser may say the file is "not commonly downloaded". This happens because the app is new and not signed with a paid certificate. Open the browser's download list, click **Keep**, then **Keep anyway**.
+3. Windows may show **"Windows protected your PC"**. Click **More info**, then **Run anyway**. You will not see this again when you update from inside the app.
 4. The app installs for your Windows user only (no administrator password needed), adds shortcuts to the Start menu and the desktop, and opens.
-5. On the first start the app says **«Нужно скачать движок KataGo»** (KataGo needs to be downloaded). Click **«Установить»** (Install). The app downloads about 200 MB, checks every file, and finds out whether your processor or your graphics card runs KataGo faster. Setting up a graphics card can take a few minutes. Then the start screen opens and you can play.
+5. On the first launch the app says **«Нужно скачать движок KataGo»** (KataGo needs to be downloaded). Click **«Установить»** (Install). The app downloads about 210 MB (two KataGo builds and two neural networks), checks every file, and finds out whether your processor or your graphics card runs KataGo faster. The download takes a few minutes, and setting up a graphics card can take a few more: the first start can take 5-10 minutes in total. Keep the window open. When it is done, the start screen opens and you can play.
 
 ## Install on Linux
 
-1. Open the [latest release](https://github.com/EternalEclipse999/joseki-dojo/releases/latest) and download `Joseki-Dojo-X.Y.Z.AppImage`.
+1. Open the [latest release](https://github.com/EternalEclipse999/joseki-dojo/releases/latest), scroll down to **Assets** and download `Joseki-Dojo-X.Y.Z.AppImage`.
 2. Allow it to run: right-click the file, choose **Properties → Permissions**, and tick **Allow executing file as program**. Or in a terminal: `chmod +x Joseki-Dojo-*.AppImage`
 3. Double-click the file to start the app.
-4. On the first start click **«Установить»** (Install), as on Windows (step 5 above).
+4. On the first launch the app says **«Нужно скачать движок KataGo»** (KataGo needs to be downloaded). Click **«Установить»** (Install). The app downloads about 280 MB, checks every file, and finds out whether your processor or your graphics card runs KataGo faster. The download takes a few minutes: the first start can take 5-10 minutes in total. Keep the window open. When it is done, the start screen opens and you can play.
 
 ## Updating
 
@@ -27,7 +27,7 @@ Sometimes a new version also brings a newer tested KataGo. Then the bar says **�
 
 ## Uninstall
 
-- **Windows:** open **Settings → Apps → Installed apps**, find **Joseki Dojo**, and choose **Uninstall**.
+- **Windows:** open **Settings → Apps** (Windows 10: **Apps & features**), find **Joseki Dojo**, and choose **Uninstall**.
 - **Linux:** delete the AppImage file.
 
 Uninstalling keeps your data (KataGo, settings, training history). To remove it as well, delete this folder:
@@ -37,9 +37,11 @@ Uninstalling keeps your data (KataGo, settings, training history). To remove it 
 
 ## Troubleshooting
 
-- **The analysis after a game is slow.** KataGo runs on the processor: either it was faster than your graphics card, or the graphics card could not run KataGo (often an old graphics driver without OpenCL). To switch to the graphics card by hand, open **«Настройки»** (Settings) and enter the graphics card build that the installer keeps in the data folder (see [Uninstall](#uninstall)): the KataGo file in `engines/katago-<version>-opencl/` and the analysis config `engines/analysis-gpu.cfg`. The app restarts KataGo and keeps the change only if it works. Owners of NVIDIA cards with CUDA and cuDNN installed can enter a CUDA build of KataGo they downloaded themselves. On the same screen, fewer visits per position make the analysis faster (and less precise).
+- **The analysis after a game is slow.** Open **«Настройки»** (Settings) and lower **«Визиты на позицию в разборе»** (visits per position in the review), for example to 100: the analysis gets faster and a little less precise. To use your graphics card, press **«Подобрать движок заново»** (Pick the engine again): the app measures the processor and the graphics card once more and keeps the faster one. If your graphics card could not run KataGo (often an old graphics driver without OpenCL), the processor is used.
 - **"Install" fails.** The screen says why. Most often it is the internet connection: check it and click **«Попробовать снова»** (Try again). Files that were already downloaded and checked are not downloaded again.
 - **The AppImage does not start on Linux.** Some distributions need FUSE 2 for AppImages, e.g. on Ubuntu: `sudo apt install libfuse2t64` (Ubuntu 24.04) or `sudo apt install libfuse2` (22.04).
+- **Double-clicking the AppImage does nothing (Ubuntu 24.04 or newer).** If it does not start, open a terminal in the folder with the file and run `./Joseki-Dojo-X.Y.Z.AppImage --no-sandbox`. Newer Ubuntu releases restrict the sandbox that Electron apps use; this option turns it off for this app.
+- **The engine screen says KataGo does not work.** Press **«Подобрать движок заново»** (Pick the engine again): the app repairs the setup by itself.
 - **Logs** are in the data folder (see [Uninstall](#uninstall)): `data/joseki-dojo.log` for the app, `data/katago-logs/` for KataGo.
 
 ## For developers
@@ -75,7 +77,7 @@ npm test             # unit tests
 npm run typecheck
 npm run e2e          # browser tests with a fake KataGo (once: npx playwright install chromium)
 npm run test:katago  # checks against a real KataGo (needs config.local.json)
-npm run desktop      # the desktop app from sources (data in the Electron profile, see Uninstall)
+npm run desktop      # the desktop app from sources; it uses the same data folder as the installed app (see Uninstall)
 npm run dist         # the installer for this OS in packages/desktop/release/
 ```
 
@@ -98,11 +100,13 @@ npm version patch                    # or minor / major: bumps the version, comm
 git push -u origin release-0.1.1 --follow-tags
 ```
 
+`npm version` creates an annotated tag, and `--follow-tags` pushes it together with the commit.
+
 1. The tag starts the **Release** workflow: tests, then the Windows installer and the Linux AppImage are built and uploaded to a **draft** release `v0.1.1`.
 2. Open a pull request from `release-0.1.1` and merge it with **Create a merge commit** (so the tagged commit is on `main`).
-3. Check the draft on the Releases page and click **Publish release**. Only then do players see the update: the updater ignores drafts.
+3. Wait for the **Release** run on the **Actions** tab to turn green. Install the draft's `.exe` and start it once to check that it works. Then press **Publish** on the draft. Only then do players see the update: the updater ignores drafts.
 
-Every pull request to `main` runs the **CI** workflow (unit tests, type check, e2e).
+Every pull request to `main` runs the **CI** workflow (unit tests, type check, the desktop bundle, e2e).
 
 ## License
 

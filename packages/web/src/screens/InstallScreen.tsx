@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'preact/hooks'
 import type { InstallStatus } from '@joseki-dojo/shared'
 import { fetchInstall, startInstall } from '../api'
-import { fileProgressText, INSTALL_STEP_TEXT, isInstalling } from '../install-format'
+import { canStartInstall, downloadSizeText, fileProgressText, INSTALL_STEP_TEXT, installFinishedAtOnce, isInstalling } from '../install-format'
 
 export interface InstallScreenProps {
-  /** An engine update from the banner: it starts at once and can be left after a failure. */
+  /** An engine update from the banner or a re-pick: it starts at once and can be left after a failure. */
   update: boolean
+  /** The player asked to pick the engine again (the title says so instead of "update"). */
+  repick?: boolean
   /** The installation finished and KataGo runs. */
   onDone: () => void
   /** Leaves a failed engine update (the previous KataGo keeps working). */
@@ -13,7 +15,7 @@ export interface InstallScreenProps {
 }
 
 /** Spec 5: downloads and sets up KataGo with one button, polling the server once a second. */
-export function InstallScreen({ update, onDone, onClose }: InstallScreenProps) {
+export function InstallScreen({ update, repick = false, onDone, onClose }: InstallScreenProps) {
   const [status, setStatus] = useState<InstallStatus | null>(null)
   const [requestError, setRequestError] = useState<string | null>(null)
   // A first install watches from the start (an installation may already run). An update watches only after its
@@ -43,10 +45,11 @@ export function InstallScreen({ update, onDone, onClose }: InstallScreenProps) {
         const s = await fetchInstall()
         if (cancelled) return
         setStatus(s)
-        if (s.step === 'done') {
+        if (installFinishedAtOnce(s)) {
           onDone()
           return
         }
+        if (s.step === 'done') return // a note to read: the «Продолжить» button leaves
       } catch {
         // transient failure: try again on the next tick
       }
@@ -62,16 +65,16 @@ export function InstallScreen({ update, onDone, onClose }: InstallScreenProps) {
   const step = status?.step ?? 'idle'
   const running = isInstalling(step)
   const failed = step === 'failed' || requestError !== null
-  const canStart = !running && step !== 'done' && (!update || failed)
+  const canStart = canStartInstall({ update, running, failed, installed: status?.installed })
 
   return (
     <main class="install">
-      <h1>{update ? 'Обновление KataGo' : 'Нужно скачать движок KataGo'}</h1>
-      {!update && !running && step !== 'done' && (
+      <h1>{repick ? 'Подбор движка KataGo' : update ? 'Обновление KataGo' : 'Нужно скачать движок KataGo'}</h1>
+      {!update && !running && (
         <p>
-          Joseki Dojo играет и считает с помощью KataGo — сильной программы для игры в го. Её нужно один раз скачать (около
-          200 МБ). Дальше всё произойдёт само: программа проверит файлы и выберет, что на этом компьютере работает быстрее —
-          процессор или видеокарта.
+          Joseki Dojo играет и считает с помощью KataGo — сильной программы для игры в го. Её нужно один раз скачать (
+          {downloadSizeText(/linux/i.test(navigator.userAgent))}) — это займёт несколько минут. Дальше всё произойдёт само: программа
+          проверит файлы и выберет, что на этом компьютере работает быстрее — процессор или видеокарта.
         </p>
       )}
       {(running || step === 'done') && <p class="status">{INSTALL_STEP_TEXT[step]}</p>}
@@ -88,6 +91,7 @@ export function InstallScreen({ update, onDone, onClose }: InstallScreenProps) {
           ))}
         </ul>
       )}
+      {step === 'done' && status?.note && <p class="hint">{status.note}</p>}
       {step === 'failed' && (
         <>
           <p class="status error">{INSTALL_STEP_TEXT.failed}</p>
@@ -99,6 +103,11 @@ export function InstallScreen({ update, onDone, onClose }: InstallScreenProps) {
         {canStart && (
           <button class="primary" onClick={() => void start()}>
             {failed ? 'Попробовать снова' : 'Установить'}
+          </button>
+        )}
+        {step === 'done' && status?.note && (
+          <button class="primary" onClick={onDone}>
+            Продолжить
           </button>
         )}
         {update && failed && onClose && <button onClick={onClose}>Назад</button>}

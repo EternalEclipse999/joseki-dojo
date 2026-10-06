@@ -100,14 +100,16 @@ describe('download failures', () => {
     expect(existsSync(`${dest}.part`)).toBe(false)
   })
 
-  it('names the URL when the connection is refused', async () => {
+  it('says the server is unavailable and logs the URL when the connection is refused', async () => {
     const probe = createServer()
     await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve))
     const port = (probe.address() as AddressInfo).port
     await new Promise<void>((resolve) => probe.close(() => resolve()))
     const url = `http://127.0.0.1:${port}/file.bin`
     const dest = join(temp(), 'net.bin.gz')
-    await expect(download(url, dest, sha(body))).rejects.toThrow(url)
+    const logs: string[] = []
+    await expect(download(url, dest, sha(body), { log: (l) => logs.push(l) })).rejects.toThrow('Нет подключения к интернету или сервер недоступен')
+    expect(logs.join(' | ')).toContain(url)
     expect(existsSync(`${dest}.part`)).toBe(false)
   })
 
@@ -175,5 +177,45 @@ describe('extractBuild', () => {
     await expect(extractBuild(archive({ 'README.txt': 'r' }), dir)).rejects.toThrow(/нет исполняемого файла KataGo/)
     expect(existsSync(dir)).toBe(false)
     expect(existsSync(`${dir}.part`)).toBe(false)
+  })
+})
+
+describe('download: injected fetch and network errors', () => {
+  const body = Buffer.from('katago network bytes')
+
+  it('uses the injected fetch instead of the global one', async () => {
+    const calls: string[] = []
+    const injected = (async (input: string | URL | Request) => {
+      calls.push(String(input))
+      return new Response(body, { headers: { 'content-length': String(body.length) } })
+    }) as typeof fetch
+    const dest = join(temp(), 'net.bin.gz')
+    await download('https://example.invalid/file.bin', dest, sha(body), { fetch: injected })
+    expect(calls).toEqual(['https://example.invalid/file.bin'])
+    expect(readFileSync(dest)).toEqual(body)
+  })
+
+  it.each(['ENOTFOUND', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT'])('says the network is unavailable on %s and logs the cause with the URL', async (code) => {
+    const failing = (async () => {
+      throw new TypeError('fetch failed', { cause: Object.assign(new Error(`getaddrinfo ${code} host`), { code }) })
+    }) as typeof fetch
+    const logs: string[] = []
+    const dest = join(temp(), 'net.bin.gz')
+    await expect(download('https://example.invalid/f.bin', dest, sha(body), { fetch: failing, log: (l) => logs.push(l) })).rejects.toThrow(
+      'Нет подключения к интернету или сервер недоступен',
+    )
+    expect(logs.join('\n')).toContain('https://example.invalid/f.bin')
+    expect(logs.join('\n')).toContain(code)
+  })
+
+  it('also recognises a bare "fetch failed" and Chromium net errors', async () => {
+    for (const msg of ['fetch failed', 'net::ERR_NAME_NOT_RESOLVED', 'net::ERR_INTERNET_DISCONNECTED']) {
+      const failing = (async () => {
+        throw new TypeError(msg)
+      }) as typeof fetch
+      await expect(download('https://example.invalid/f.bin', join(temp(), 'x.bin'), sha(body), { fetch: failing })).rejects.toThrow(
+        'Нет подключения к интернету или сервер недоступен',
+      )
+    }
   })
 })

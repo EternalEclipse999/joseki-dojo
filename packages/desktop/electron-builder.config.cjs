@@ -18,7 +18,11 @@ module.exports = {
   // better-sqlite3 13 ships N-API prebuilds that Electron loads as they are: nothing to rebuild.
   npmRebuild: false,
   publish: [{ provider: 'github', owner: 'EternalEclipse999', repo: 'joseki-dojo', releaseType: 'draft' }],
-  win: { target: [{ target: 'nsis', arch: ['x64'] }] },
+  // better-sqlite3 ships a prebuild for every platform: each package keeps only the one it runs on.
+  win: {
+    target: [{ target: 'nsis', arch: ['x64'] }],
+    files: ['!**/node_modules/better-sqlite3/prebuilds/{darwin-*,linux-*,linuxmusl-*,win32-arm64}.node'],
+  },
   nsis: {
     oneClick: true,
     perMachine: false,
@@ -28,6 +32,11 @@ module.exports = {
     runAfterFinish: true,
     artifactName: 'Joseki-Dojo-Setup-${version}.${ext}',
   },
-  linux: { target: [{ target: 'AppImage', arch: ['x64'] }], category: 'Game', executableName: 'joseki-dojo' },
+  linux: {
+    target: [{ target: 'AppImage', arch: ['x64'] }],
+    category: 'Game',
+    executableName: 'joseki-dojo',
+    files: ['!**/node_modules/better-sqlite3/prebuilds/{darwin-*,win32-*,linuxmusl-*,linux-arm64}.node'],
+  },
   appImage: { artifactName: 'Joseki-Dojo-${version}.${ext}' },
 }

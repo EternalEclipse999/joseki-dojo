@@ -220,3 +220,34 @@ describe('SettingsService.switchTo', () => {
     expect(JSON.parse(readFileSync(configFile, 'utf8')).katago).toEqual(katago)
   })
 })
+
+describe('SettingsService: installer record after a manual change', () => {
+  it('drops setup from the live config and the file when a KataGo path changes', async () => {
+    const { settings, update, inst, config, configFile } = await setup()
+    config.setup = { kind: 'cpu', lockId: '1.17.0/aaaaaaaaaaaa/bbbbbbbbbbbb' }
+    writeFileSync(configFile, JSON.stringify({ setup: config.setup, bot: { defaultRank: '5k' } }))
+    expect((await settings.apply(update(inst.next))).ok).toBe(true)
+    expect(config.setup).toBeUndefined()
+    const saved = JSON.parse(readFileSync(configFile, 'utf8'))
+    expect(saved).not.toHaveProperty('setup')
+    expect(saved.bot).toEqual({ defaultRank: '5k' })
+  })
+
+  it('keeps setup when only the visit counts change', async () => {
+    const { settings, update, inst, config, configFile } = await setup()
+    expect((await settings.apply(update(inst.main))).ok).toBe(true) // paths are now the ones in `update`
+    config.setup = { kind: 'gpu', lockId: 'x' }
+    writeFileSync(configFile, JSON.stringify({ ...JSON.parse(readFileSync(configFile, 'utf8')), setup: config.setup }))
+    expect((await settings.apply(update(inst.main, { reviewVisits: 77 }))).ok).toBe(true)
+    expect(config.setup).toEqual({ kind: 'gpu', lockId: 'x' })
+    expect(JSON.parse(readFileSync(configFile, 'utf8')).setup).toEqual({ kind: 'gpu', lockId: 'x' })
+  })
+
+  it('restores setup when the change is rolled back', async () => {
+    const { settings, update, inst, config, configFile } = await setup()
+    config.setup = { kind: 'cpu', lockId: 'x' }
+    writeFileSync(configFile, '{not json')
+    expect((await settings.apply(update(inst.next))).ok).toBe(false)
+    expect(config.setup).toEqual({ kind: 'cpu', lockId: 'x' })
+  })
+})

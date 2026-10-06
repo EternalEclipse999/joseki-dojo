@@ -9,7 +9,7 @@ import { buildsFor, loadLock, versionWarning, type LockedBuild } from '../../pac
 import { measureVisitsPerSecond, visitsForBudget } from '../../packages/server/src/install/calibrate'
 import { download, extractBuild } from '../../packages/server/src/install/download'
 import { analysisConfigText, searchThreadsFor } from '../../packages/server/src/install/katago-config'
-import { defaultKind, parseCpuAnswer, parseSourceAnswer } from './build-kind'
+import { defaultKind, parseCpuAnswer, parseSourceAnswer, setupRecord } from './build-kind'
 
 type Json = Record<string, unknown>
 
@@ -117,7 +117,7 @@ async function main(): Promise<void> {
     const { commandOverride: _ignored, ...katagoRest } = existingKatago
     const config = {
       ...existing,
-      setup: { ...((existing.setup ?? {}) as Json), kind },
+      setup: setupRecord(kind),
       katago: { ...katagoRest, path: katagoPath, analysisConfig, mainModel, humanModel },
       analysis: { ...((existing.analysis ?? {}) as Json), ...visits },
     }

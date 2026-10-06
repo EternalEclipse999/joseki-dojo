@@ -14,6 +14,8 @@ export function analysisConfigText(o: AnalysisCfgOptions): string {
     'reportAnalysisWinratesAs = BLACK',
     `numAnalysisThreads = ${ANALYSIS_THREADS}`,
     `numSearchThreadsPerAnalysisThread = ${o.searchThreadsPerAnalysisThread}`,
+    // The OpenCL/CUDA backends refuse to start without it; one batch can hold every search thread's query.
+    `nnMaxBatchSize = ${Math.max(8, ANALYSIS_THREADS * o.searchThreadsPerAnalysisThread)}`,
     'nnCacheSizePowerOfTwo = 21',
     'nnMutexPoolSizePowerOfTwo = 17',
     'nnRandomize = true',

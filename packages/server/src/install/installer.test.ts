@@ -83,8 +83,31 @@ describe('InstallerService', () => {
   it('falls back to the CPU when the OpenCL build crashes', async () => {
     const { installer, configFile } = await setup({ gpu: CRASH })
     installer.start()
-    expect(await installer.settled()).toMatchObject({ step: 'done', kind: 'cpu', error: null })
+    expect(await installer.settled()).toMatchObject({
+      step: 'done',
+      kind: 'cpu',
+      error: null,
+      note: 'Используется процессор: видеокарта не запустилась.',
+    })
     expect(JSON.parse(readFileSync(configFile, 'utf8')).setup.kind).toBe('cpu')
+  })
+
+  it('has no note when the GPU build works, and clears it on the next run', async () => {
+    const { installer } = await setup({ cpu: SLOW })
+    expect(installer.status().note).toBeNull()
+    installer.start()
+    expect((await installer.settled()).note).toBeNull()
+  })
+
+  it('writes nnMaxBatchSize in both analysis configs and rewrites an old config it finds', async () => {
+    const { installer, enginesDir } = await setup()
+    mkdirSync(enginesDir, { recursive: true })
+    writeFileSync(join(enginesDir, 'analysis-gpu.cfg'), 'numAnalysisThreads = 2')
+    writeFileSync(join(enginesDir, 'analysis-cpu.cfg'), 'numAnalysisThreads = 2')
+    installer.start()
+    expect(await installer.settled()).toMatchObject({ step: 'done' })
+    expect(readFileSync(join(enginesDir, 'analysis-gpu.cfg'), 'utf8')).toContain('nnMaxBatchSize = 16')
+    expect(readFileSync(join(enginesDir, 'analysis-cpu.cfg'), 'utf8')).toMatch(/nnMaxBatchSize = \d+/)
   })
 
   it('fails when no build starts and leaves the settings alone', async () => {
@@ -243,6 +266,73 @@ describe('InstallerService', () => {
     installer.start()
     expect(await installer.settled()).toMatchObject({ step: 'done', updateAvailable: false })
     expect(JSON.parse(readFileSync(configFile, 'utf8')).setup.lockId).toBe(lockId(fixture.lock))
+  })
+})
+
+describe('InstallerService: re-pick in update mode', () => {
+  /** An installed profile whose live engine runs the build the first installation chose. */
+  async function installed(env: Parameters<typeof fakeBuildCommand>[0] = { cpu: SLOW }) {
+    const s = await setup(env)
+    const deps = { ...s.deps, engine: engines[0], health: s.health }
+    s.installer = new InstallerService(deps)
+    s.installer.start()
+    expect(await s.installer.settled()).toMatchObject({ step: 'done' })
+    expect(s.health.get().state).toBe('ready')
+    return { ...s, deps, live: engines[0] }
+  }
+  const stopped = (e: KataGoEngine): boolean => (e as unknown as { proc: unknown }).proc === null
+
+  it('stops the live engine before benchmarking and runs it on the chosen build afterwards', async () => {
+    const { installer, live, health, config, fixture } = await installed()
+    fixture.requests.length = 0
+    installer.start()
+    await vi.waitFor(() => expect(installer.status().step).toBe('benchmarking-cpu'), { timeout: 10_000, interval: 5 })
+    expect(stopped(live)).toBe(true)
+    const s = await installer.settled()
+    expect(s).toMatchObject({ step: 'done', error: null })
+    expect(fixture.requests).toEqual([]) // verified downloads are skipped
+    expect(health.get().state).toBe('ready')
+    expect(config.setup?.lockId).toBe(lockId(fixture.lock))
+    expect(await live.version()).toBe('1.18.1')
+  })
+
+  it('restores the live engine on its previous command when the re-pick fails', async () => {
+    const { installer, live, health, deps, config } = await installed()
+    const before = { ...config.katago }
+    vi.spyOn(deps.settings, 'switchTo').mockResolvedValue({ ok: false, reason: 'не прошла проверка' })
+    installer.start()
+    const s = await installer.settled()
+    expect(s).toMatchObject({ step: 'failed', error: 'не прошла проверка' })
+    expect(stopped(live)).toBe(false)
+    expect(health.get().state).toBe('ready')
+    expect(await live.version()).toBe('1.18.1')
+    expect(config.katago).toEqual(before)
+  })
+
+  it('leaves the engine alone on a first installation', async () => {
+    const { deps, health } = await setup()
+    const stop = vi.spyOn(engines[0], 'stop')
+    const installer = new InstallerService({ ...deps, engine: engines[0], health })
+    installer.start()
+    expect(await installer.settled()).toMatchObject({ step: 'done' })
+    expect(stop).not.toHaveBeenCalled()
+  })
+})
+
+describe('InstallerService: injected fetch', () => {
+  it('downloads through the fetch it is given', async () => {
+    const { deps, fixture } = await setup()
+    const urls: string[] = []
+    const installer = new InstallerService({
+      ...deps,
+      fetch: ((input: string | URL | Request, init?: RequestInit) => {
+        urls.push(String(input))
+        return fetch(input, init)
+      }) as typeof fetch,
+    })
+    installer.start()
+    expect(await installer.settled()).toMatchObject({ step: 'done' })
+    expect(urls.sort()).toEqual([fixture.lock.katago.builds[0].url, fixture.lock.katago.builds[1].url, fixture.lock.models.main.url, fixture.lock.models.human.url].sort())
   })
 })
 

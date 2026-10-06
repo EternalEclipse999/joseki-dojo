@@ -52,6 +52,7 @@ describe('startServer', () => {
       installed: true,
       updateAvailable: false,
       kind: null,
+      note: null,
     })
 
     await server.close()

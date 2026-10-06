@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import type { AnalysisSettings, SettingsResponse, SettingsUpdate, SettingsView } from '@joseki-dojo/shared'
 import type { AppConfig, KataGoSettings, SetupInfo } from '../config'
@@ -6,6 +6,7 @@ import { engineCommand } from '../engine/command'
 import type { EngineCommand, KataGoEngine } from '../engine/engine'
 import { checkEngine, missingFiles, type HealthMonitor } from '../engine/health'
 import { versionWarning, type KataGoLock } from '../engine/lock'
+import { renameRetrying } from '../install/download'
 
 export interface SettingsServiceDeps {
   config: AppConfig
@@ -65,20 +66,25 @@ export class SettingsService {
       mainModel: resolve(base, update.katago.mainModel),
       humanModel: resolve(base, update.katago.humanModel),
     }
-    return this.switchTo(katago, { reviewVisits: update.analysis.reviewVisits, endVisits: update.analysis.endVisits })
+    // A KataGo the installer did not choose is not the installer's any more: forget its record (no engine-update offer).
+    const cur = this.d.config.katago
+    const keys = ['path', 'analysisConfig', 'mainModel', 'humanModel'] as const
+    const changed = keys.some((k) => katago[k] !== resolve(cur[k]))
+    return this.switchTo(katago, { reviewVisits: update.analysis.reviewVisits, endVisits: update.analysis.endVisits }, changed ? null : undefined)
   }
 
   /**
    * Restarts KataGo with `katago` and keeps the change only if it passes the startup checks; then updates the live
-   * config and saves it, with `setup` when given (the installer's record). On any failure the previous engine stays.
+   * config and saves it, with `setup` when given (the installer's record; `null` removes the record). On any failure
+   * the previous engine stays.
    */
-  switchTo(katago: KataGoSettings, analysis: AnalysisSettings, setup?: SetupInfo): Promise<SettingsResponse> {
+  switchTo(katago: KataGoSettings, analysis: AnalysisSettings, setup?: SetupInfo | null): Promise<SettingsResponse> {
     const run = this.tail.then(() => this.doSwitch(katago, analysis, setup))
     this.tail = run.catch(() => undefined)
     return run
   }
 
-  private async doSwitch(katago: KataGoSettings, analysis: AnalysisSettings, setup?: SetupInfo): Promise<SettingsResponse> {
+  private async doSwitch(katago: KataGoSettings, analysis: AnalysisSettings, setup?: SetupInfo | null): Promise<SettingsResponse> {
     const candidate: AppConfig = { ...this.d.config, katago, analysis }
     const missing = missingFiles(candidate)
     if (missing) return { ok: false, reason: missing }
@@ -105,14 +111,16 @@ export class SettingsService {
       this.d.config.katago = katago // a test-only commandOverride is dropped here on purpose
       Object.assign(this.d.config.analysis, analysis) // the scheduler holds this same object
       if (setup) this.d.config.setup = { ...prevSetup, ...setup }
-      this.persist(katago, analysis, setup)
+      else if (setup === null) delete this.d.config.setup
+      await this.persist(katago, analysis, setup)
       await this.d.health.check()
       return { ok: true, settings: await this.view() }
     } catch (e) {
       // A change is kept only if everything succeeds: put the previous engine and config back.
       this.d.config.katago = prevKatago
       Object.assign(this.d.config.analysis, prevAnalysis)
-      this.d.config.setup = prevSetup
+      if (prevSetup) this.d.config.setup = prevSetup
+      else delete this.d.config.setup
       await this.d.engine.restartWith(previous).catch(() => undefined)
       await this.d.health.check().catch(() => undefined)
       return { ok: false, reason: `Не удалось сохранить настройки: ${e instanceof Error ? e.message : String(e)}` }
@@ -127,15 +135,16 @@ export class SettingsService {
       .sort()
   }
 
-  private persist(katago: KataGoSettings, analysis: AnalysisSettings, setup?: SetupInfo): void {
+  private async persist(katago: KataGoSettings, analysis: AnalysisSettings, setup?: SetupInfo | null): Promise<void> {
     const raw = (existsSync(this.d.configFile) ? JSON.parse(readFileSync(this.d.configFile, 'utf8')) : {}) as Record<string, unknown>
     const { commandOverride: _dropped, ...oldKatago } = (raw.katago ?? {}) as Record<string, unknown>
     raw.katago = { ...oldKatago, ...katago }
     raw.analysis = { ...((raw.analysis ?? {}) as Record<string, unknown>), ...analysis }
     if (setup) raw.setup = { ...((raw.setup ?? {}) as Record<string, unknown>), ...setup }
+    else if (setup === null) delete raw.setup
     mkdirSync(dirname(this.d.configFile), { recursive: true })
     const tmp = `${this.d.configFile}.tmp`
     writeFileSync(tmp, `${JSON.stringify(raw, null, 2)}\n`)
-    renameSync(tmp, this.d.configFile)
+    await renameRetrying(tmp, this.d.configFile)
   }
 }

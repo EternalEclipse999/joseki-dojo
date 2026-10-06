@@ -20,5 +20,8 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run typecheck
+      # The desktop bundle fails on esbuild warnings (the web UI is built by `npm run e2e` below).
+      - run: npm run build
+      - run: npm run build -w @joseki-dojo/desktop
       - run: npx playwright install --with-deps chromium
       - run: npm run e2e

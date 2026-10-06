@@ -176,3 +176,27 @@ describe('settings API', () => {
     expect(typeof body.reason).toBe('string')
   })
 })
+
+describe('cross-site requests', () => {
+  const post = (origin: string | undefined): Promise<number> =>
+    new Promise((resolve, reject) => {
+      const headers: Record<string, string> = origin ? { origin } : {}
+      const req = request({ host: '127.0.0.1', port: Number(host.split(':')[1]), path: '/api/health/recheck', method: 'POST', headers }, (res) => {
+        res.resume()
+        resolve(res.statusCode ?? 0)
+      })
+      req.on('error', reject)
+      req.end()
+    })
+
+  it('rejects a POST whose Origin is a foreign site', async () => {
+    expect(await post('http://evil.example')).toBe(403)
+    expect(await post('http://127.0.0.1.evil.example')).toBe(403)
+  })
+
+  it('accepts a POST without Origin or from a local origin of any port', async () => {
+    expect(await post(undefined)).toBe(200)
+    expect(await post(`http://${host}`)).toBe(200)
+    expect(await post('http://localhost:5173')).toBe(200)
+  })
+})

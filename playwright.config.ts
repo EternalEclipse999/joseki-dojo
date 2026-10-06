@@ -21,5 +21,12 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
     },
+    {
+      // Spec 9: KataGo is installed from an older katago.lock.json: the engine-update bar and the re-pick button.
+      command: 'npx tsx e2e/repick-server.ts',
+      url: 'http://127.0.0.1:5182/api/health',
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
   ],
 })

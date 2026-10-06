@@ -9,3 +9,4 @@ release/
 test-results/
 playwright-report/
 *.log
+e2e/.repick/

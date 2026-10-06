@@ -18,7 +18,7 @@ const VISIT_FIELDS: { key: VisitsKey; label: string }[] = [
   { key: 'endVisits', label: 'Визиты для проверки конца дзёсеки' },
 ]
 
-export function SettingsScreen({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+export function SettingsScreen({ onClose, onSaved, onRepick }: { onClose: () => void; onSaved: () => void; onRepick: () => void }) {
   const [view, setView] = useState<SettingsView | null>(null)
   const [form, setForm] = useState<SettingsUpdate | null>(null)
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
@@ -91,6 +91,16 @@ export function SettingsScreen({ onClose, onSaved }: { onClose: () => void; onSa
         <p class="hint">
           Сети из папки engines/models можно выбрать из списка. Браузер не сообщает полный путь к файлу из окна выбора, поэтому путь вводится текстом.
         </p>
+      </fieldset>
+      <fieldset>
+        <legend>Подбор движка</legend>
+        <p class="hint">
+          Программа ещё раз проверит скорость на процессоре и на видеокарте и выберет быстрее. Файлы заново не скачиваются. Это занимает
+          пару минут, а на видеокарте при первом запуске — дольше.
+        </p>
+        <div class="row">
+          <button onClick={onRepick}>Подобрать движок заново</button>
+        </div>
       </fieldset>
       <fieldset>
         <legend>Анализ</legend>

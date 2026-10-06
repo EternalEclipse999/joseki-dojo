@@ -10,7 +10,7 @@ import extractZip from 'extract-zip'
 const RETRY = { maxRetries: 5, retryDelay: 200 } as const
 const LOCK_CODES = new Set(['EPERM', 'EBUSY', 'EACCES'])
 
-async function renameRetrying(from: string, to: string): Promise<void> {
+export async function renameRetrying(from: string, to: string): Promise<void> {
   for (let attempt = 0; ; attempt++) {
     try {
       renameSync(from, to)
@@ -47,6 +47,25 @@ export interface DownloadOptions {
   stallTimeoutMs?: number
   /** Aborts the download at once and removes the partial file. */
   signal?: AbortSignal
+  /** The HTTP client; the desktop app passes Electron's `net.fetch` (system proxy and certificates). Default: the global `fetch`. */
+  fetch?: typeof fetch
+}
+
+export const OFFLINE_MESSAGE = 'Нет подключения к интернету или сервер недоступен'
+const NETWORK_CODES = /(ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|UND_ERR_CONNECT_TIMEOUT|ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_CONNECTION_CLOSED|ERR_CONNECTION_TIMED_OUT|ERR_NETWORK_CHANGED|ERR_NETWORK_ACCESS_DENIED|ERR_PROXY_CONNECTION_FAILED|ERR_TIMED_OUT)/
+
+/** The technical cause of a failed fetch (undici hides it in `cause`), for the log. */
+function causeText(cause: unknown): string {
+  if (!(cause instanceof Error)) return String(cause)
+  const inner = cause.cause as (Error & { code?: string }) | undefined
+  const code = inner?.code ?? (cause as Error & { code?: string }).code
+  const text = inner?.message ?? cause.message
+  return code && !text.includes(code) ? `${code}: ${text}` : text
+}
+
+const isNetworkFailure = (cause: unknown): boolean => {
+  if (!(cause instanceof Error)) return false
+  return NETWORK_CODES.test(causeText(cause)) || NETWORK_CODES.test(cause.message) || /^fetch failed$/i.test(cause.message)
 }
 
 /**
@@ -54,7 +73,7 @@ export interface DownloadOptions {
  * Any failure removes the partial file.
  */
 export async function download(url: string, dest: string, sha256: string, options: DownloadOptions = {}): Promise<void> {
-  const { log = () => undefined, onProgress = () => undefined, replaceMismatched = false, stallTimeoutMs = 60_000, signal } = options
+  const { log = () => undefined, onProgress = () => undefined, replaceMismatched = false, stallTimeoutMs = 60_000, signal, fetch: fetchImpl = fetch } = options
   const name = basename(dest)
   const expected = sha256.toLowerCase()
   if (existsSync(dest)) {
@@ -89,7 +108,11 @@ export async function download(url: string, dest: string, sha256: string, option
     if (signal?.aborted) return new Error(`Загрузка ${url} остановлена`)
     if (stalled) return new Error(`Не удалось скачать ${url}: загрузка зависла, нет данных ${Math.round(stallTimeoutMs / 1000)} с`)
     if (cause instanceof Error && cause.message.startsWith('Не удалось скачать')) return cause
-    const detail = cause instanceof Error ? ((cause.cause as Error | undefined)?.message ?? cause.message) : String(cause)
+    const detail = causeText(cause)
+    if (isNetworkFailure(cause)) {
+      log(`Не удалось скачать ${url}: ${detail}`)
+      return new Error(OFFLINE_MESSAGE)
+    }
     return new Error(`Не удалось скачать ${url}: ${detail}`)
   }
   try {
@@ -97,7 +120,7 @@ export async function download(url: string, dest: string, sha256: string, option
     arm()
     let res: Response
     try {
-      res = await fetch(url, { signal: controller.signal })
+      res = await fetchImpl(url, { signal: controller.signal })
     } catch (err) {
       throw fail(err)
     }

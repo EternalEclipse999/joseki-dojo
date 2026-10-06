@@ -5,7 +5,7 @@ import { closeSync, existsSync, mkdirSync, openSync, renameSync, writeFileSync, 
 import { join } from 'node:path'
 import { startServer, type RunningServer } from '@joseki-dojo/server'
 import type { AppUpdateState } from '@joseki-dojo/shared'
-import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, net, session, shell, type IpcMainInvokeEvent } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { CHANNELS } from './channels'
 import { runInstall, sameOrigin, withTimeout } from './lifecycle'
@@ -134,7 +134,10 @@ const updates = new UpdateController(
         closeTimeoutMs: CLOSE_TIMEOUT_MS,
       }),
   },
-  (state: AppUpdateState) => mainWindow?.webContents.send(CHANNELS.state, state),
+  (state: AppUpdateState) => {
+    const contents = mainWindow?.webContents
+    if (contents && !contents.isDestroyed()) contents.send(CHANNELS.state, state)
+  },
 )
 
 function setUpUpdates(): void {
@@ -191,12 +194,19 @@ async function boot(): Promise<void> {
     webDist,
     port: 0,
     log,
+    // Chromium's network stack honours the system proxy and the Windows certificate store
+    // (HTTPS-scanning antivirus), unlike Node's global fetch.
+    fetch: (input, init) => net.fetch(input as string | Request, init),
   })
   server = await starting
   if (closing) return // a quit arrived while the server was starting: closeAll stops it
   const origin = server.url
   localOrigin = origin
   log(`Server: ${origin}`)
+
+  // The window asks for no camera, location or the like: refuse every permission request.
+  session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
+  if (app.isPackaged) Menu.setApplicationMenu(null)
 
   const win = new BrowserWindow({
     width: 1280,
@@ -221,7 +231,11 @@ async function boot(): Promise<void> {
   }
   win.webContents.on('will-navigate', guard(true))
   win.webContents.on('will-redirect', guard(false))
-  win.webContents.on('will-frame-navigate', guard(false))
+  // A main-frame navigation is `will-navigate`'s job (it also opens web links outside); this one is for subframes.
+  win.webContents.on('will-frame-navigate', (event) => {
+    if (event.isMainFrame) return
+    guard(false)(event)
+  })
   win.once('ready-to-show', () => win.show())
   win.on('session-end', () => void shutdown()) // Windows logoff or shutdown
   win.on('closed', () => {

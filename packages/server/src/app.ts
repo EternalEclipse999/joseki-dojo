@@ -44,6 +44,8 @@ export interface ServiceOptions {
   /** Builds the KataGo command line for a config; tests substitute the fake KataGo. */
   commandFor: (config: AppConfig) => EngineCommand
   log?: (line: string) => void
+  /** The HTTP client for KataGo downloads; default: the global `fetch`. */
+  fetch?: typeof fetch
 }
 
 // The server only talks to the local browser. Checking Host defeats DNS rebinding, checking Origin stops other
@@ -71,9 +73,9 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
     },
   })
   const health = new HealthMonitor(config, engine)
-  const { configFile, enginesDir, lock, commandFor, log } = options
+  const { configFile, enginesDir, lock, commandFor, log, fetch } = options
   const settings = new SettingsService({ config, engine, health, lock, configFile, modelsDir: join(enginesDir, 'models'), commandFor })
-  const installer = new InstallerService({ config, lock, enginesDir, settings, commandFor, log })
+  const installer = new InstallerService({ config, lock, enginesDir, settings, commandFor, log, engine, health, fetch })
   return { config, db, engine, health, sessions, reviews, settings, installer, hub }
 }
 
@@ -81,7 +83,10 @@ export async function buildApp(services: AppServices, webDist: string | null = n
   const app = Fastify({ logger: false })
   app.addHook('onRequest', async (req, reply) => {
     const origin = req.headers.origin
-    if (!LOCAL_HOST.test(req.headers.host ?? '') || (req.url.startsWith('/ws') && origin !== undefined && !LOCAL_ORIGIN.test(origin))) {
+    // Another site's page can POST to 127.0.0.1 (CORS does not stop "simple" requests): refuse any changing request
+    // that names a foreign Origin. Requests without Origin (curl, the desktop window's own fetch) pass.
+    const foreignOrigin = origin !== undefined && !LOCAL_ORIGIN.test(origin) && (req.url.startsWith('/ws') || (req.method !== 'GET' && req.method !== 'HEAD'))
+    if (!LOCAL_HOST.test(req.headers.host ?? '') || foreignOrigin) {
       // A rejected WebSocket upgrade has no keep-alive owner: close its socket once the 403 is written.
       if (req.headers.upgrade) reply.raw.once('finish', () => req.raw.socket.end())
       return reply.code(403).header('connection', 'close').send({ error: 'forbidden' })

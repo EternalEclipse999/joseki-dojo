@@ -8,7 +8,7 @@ on:
     tags: ['v*']
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
@@ -31,6 +31,8 @@ jobs:
   draft:
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Create the draft release
         env:
@@ -42,6 +44,8 @@ jobs:
 
   build:
     needs: draft
+    permissions:
+      contents: write
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest]

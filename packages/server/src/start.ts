@@ -26,6 +26,8 @@ export interface ServerOptions {
   lock?: KataGoLock
   /** Tests and e2e only: build the KataGo command line (e.g. the fake KataGo). */
   commandFor?: (config: AppConfig) => EngineCommand
+  /** The HTTP client for KataGo downloads: the desktop app passes Electron's `net.fetch` (proxy, antivirus certificates). Default: the global `fetch`. */
+  fetch?: typeof fetch
 }
 
 export interface RunningServer {
@@ -45,7 +47,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
   const lock = options.lock ?? loadLock(options.lockFile)
   const commandFor = options.commandFor ?? engineCommand
   const engine = new KataGoEngine(commandFor(config), (line) => log(`[katago] ${line}`))
-  const services = createServices(config, engine, { configFile: options.configFile, enginesDir: options.enginesDir, lock, commandFor, log })
+  const services = createServices(config, engine, { configFile: options.configFile, enginesDir: options.enginesDir, lock, commandFor, log, fetch: options.fetch })
   let app: FastifyInstance | undefined
   try {
     app = await buildApp(services, options.webDist)

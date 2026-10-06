@@ -27,3 +27,6 @@ export function parseSourceAnswer(answer: string, knownPath: string | null): Sou
   if (a) return { action: 'typed', path: a }
   return knownPath ? { action: 'known', path: knownPath } : { action: 'download' }
 }
+
+/** The `setup` record of a manual setup: only the kind. The installer's `lockId` must not survive a manual change. */
+export const setupRecord = (kind: BuildKind): { kind: BuildKind } => ({ kind })

@@ -32,8 +32,9 @@ export function App() {
   const [starting, setStarting] = useState(false)
   const [install, setInstall] = useState<InstallStatus | null>(null)
   const [installChecked, setInstallChecked] = useState(false)
-  // An engine update started from the banner is on screen.
+  // An engine update (from the banner) or a re-pick (Settings, engine screen) is on screen.
   const [engineUpdate, setEngineUpdate] = useState(false)
+  const [repick, setRepick] = useState(false)
 
   const socket = useMemo(
     () =>
@@ -167,18 +168,47 @@ export function App() {
     setHealthTick((n) => n + 1)
   }
 
-  const afterInstall = (): void => {
+  // The installer is done: read the state it left before leaving its screen, so that the engine screen does not flash
+  // and a stale "engine update" bar does not come back. (Health is ready by now; the loop only covers a slow check.)
+  const afterInstall = async (): Promise<void> => {
+    let h: HealthResponse | null = null
+    for (let attempt = 0; attempt < 10; attempt++) {
+      h = await fetchHealth().catch(() => null)
+      if (h && h.state !== 'starting') break
+      await new Promise((r) => setTimeout(r, 500))
+    }
+    const i = await fetchInstall().catch(() => null)
+    if (h) setHealth(h)
+    if (i) setInstall(i)
     setEngineUpdate(false)
+    setRepick(false)
     setHealthTick((n) => n + 1)
+  }
+  const startRepick = (): void => {
+    setRepick(true)
+    setEngineUpdate(true)
+  }
+  const closeUpdate = (): void => {
+    setEngineUpdate(false)
+    setRepick(false)
   }
 
   let screen: JSX.Element
-  if (showSettings) screen = <SettingsScreen onClose={() => setShowSettings(false)} onSaved={() => setHealthTick((n) => n + 1)} />
-  else if (engineUpdate) screen = <InstallScreen update onDone={afterInstall} onClose={() => setEngineUpdate(false)} />
+  // The install screen comes first: a re-pick from Settings returns to Settings when it is done.
+  if (engineUpdate) screen = <InstallScreen update repick={repick} onDone={() => void afterInstall()} onClose={closeUpdate} />
+  else if (showSettings)
+    screen = <SettingsScreen onClose={() => setShowSettings(false)} onSaved={() => setHealthTick((n) => n + 1)} onRepick={startRepick} />
   else if (!health || (health.state !== 'ready' && !installChecked)) screen = <main><p class="status">Загрузка…</p></main>
-  else if (health.state !== 'ready' && install && !install.installed) screen = <InstallScreen update={false} onDone={afterInstall} />
+  else if (health.state !== 'ready' && install && !install.installed) screen = <InstallScreen update={false} onDone={() => void afterInstall()} />
   else if (health.state !== 'ready')
-    screen = <EngineScreen health={health} onRetry={retryHealth} onSettings={() => setShowSettings(true)} />
+    screen = (
+      <EngineScreen
+        health={health}
+        onRetry={retryHealth}
+        onSettings={() => setShowSettings(true)}
+        onRepick={install?.installed ? startRepick : undefined}
+      />
+    )
   else if (!session) screen = (
       <StartScreen
         key={defaultRank}
@@ -208,7 +238,9 @@ export function App() {
         }
       : undefined
   // Spec 5.1: offered outside a game, when the installer's KataGo is not the one pinned in katago.lock.json.
-  const offerEngineUpdate = ready && install?.updateAvailable === true && !engineUpdate && !inGame && !showSettings
+  // Not while a review is being prepared: the update stops KataGo, and the review needs it.
+  const reviewPending = session?.status === 'finished' && review === null
+  const offerEngineUpdate = ready && install?.updateAvailable === true && !engineUpdate && !inGame && !showSettings && !reviewPending
 
   return (
     <>

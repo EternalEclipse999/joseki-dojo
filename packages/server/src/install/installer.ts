@@ -4,7 +4,7 @@ import { basename, join } from 'node:path'
 import type { InstallFile, InstallStatus, InstallStep } from '@joseki-dojo/shared'
 import type { AppConfig } from '../config'
 import { KataGoEngine, type EngineCommand } from '../engine/engine'
-import { compareVersions, missingFiles, MIN_KATAGO_VERSION } from '../engine/health'
+import { compareVersions, missingFiles, MIN_KATAGO_VERSION, type HealthMonitor } from '../engine/health'
 import { buildsFor, lockId, type KataGoLock, type LockedBuild } from '../engine/lock'
 import type { SettingsService } from '../settings/service'
 import { measureVisitsPerSecond, visitsForBudget } from './calibrate'
@@ -24,6 +24,15 @@ export interface InstallerDeps {
   /** Builds the KataGo command line; tests substitute the fake KataGo. */
   commandFor: (config: AppConfig) => EngineCommand
   log?: (line: string) => void
+  /**
+   * The live engine and its health monitor. With them, a re-run over an installed KataGo (update mode) stops the live
+   * engine before benchmarking, so the GPU benchmark gets the video memory, and starts it again on the chosen build
+   * (or on its previous command when the installation fails).
+   */
+  engine?: KataGoEngine
+  health?: HealthMonitor
+  /** The HTTP client for downloads (the desktop app passes Electron's `net.fetch`); default: the global `fetch`. */
+  fetch?: typeof fetch
   /** Defaults: the current OS, its logical cores, an 800-visit timed search, 60 s without download progress. */
   platform?: NodeJS.Platform
   cores?: number
@@ -63,6 +72,7 @@ export class InstallerService {
   private files: InstallFile[] = []
   private error: string | null = null
   private kind: BuildKind | null = null
+  private note: string | null = null
   private running: Promise<void> | null = null
   private bench: KataGoEngine | null = null
   private closed = false
@@ -81,6 +91,7 @@ export class InstallerService {
       installed: missingFiles(this.d.config) === null,
       updateAvailable: engineUpdateAvailable(this.d.config, this.d.lock),
       kind: this.kind,
+      note: this.note,
     }
   }
 
@@ -89,6 +100,7 @@ export class InstallerService {
     if (this.running || this.closed) return this.status()
     this.error = null
     this.kind = null
+    this.note = null
     let plan: Plan
     try {
       plan = this.plan()
@@ -149,6 +161,7 @@ export class InstallerService {
   }
 
   private async run(plan: Plan): Promise<void> {
+    let liveStopped = false
     try {
       for (const [i, d] of plan.downloads.entries()) {
         const file = this.files[i]
@@ -156,6 +169,8 @@ export class InstallerService {
           replaceMismatched: true,
           stallTimeoutMs: this.d.stallTimeoutMs,
           signal: this.abort.signal,
+          fetch: this.d.fetch,
+          log: this.log,
           onProgress: (received, total) => {
             file.received = received
             if (total > 0) file.total = total
@@ -171,6 +186,12 @@ export class InstallerService {
       for (const b of plan.builds) {
         this.alive()
         binaries.set(b.kind, await extractBuild(b.zip, b.dir))
+      }
+
+      // Update mode: KataGo is installed and probably running. Free the GPU (and the CPU) for the benchmarks.
+      if (this.d.engine && missingFiles(this.d.config) === null) {
+        liveStopped = true
+        await this.d.engine.stop()
       }
 
       const speeds = new Map<BuildKind, number>()
@@ -200,9 +221,21 @@ export class InstallerService {
       const r = await this.d.settings.switchTo(katago, visitsForBudget(vps), { kind, lockId: lockId(this.d.lock) })
       if (!r.ok) throw new Error(r.reason)
       this.kind = kind
+      if (binaries.has('gpu') && !speeds.has('gpu')) this.note = 'Используется процессор: видеокарта не запустилась.'
       this.step = 'done'
     } catch (err) {
       this.fail(err)
+      if (liveStopped && !this.closed) await this.restoreLive()
+    }
+  }
+
+  /** The installation failed after the live engine was stopped: run it again on the command it had before. */
+  private async restoreLive(): Promise<void> {
+    try {
+      await this.d.engine?.restartWith(this.d.commandFor(this.d.config))
+      await this.d.health?.check()
+    } catch (err) {
+      this.log(`[install] не удалось вернуть прежний KataGo: ${message(err)}`)
     }
   }
 
