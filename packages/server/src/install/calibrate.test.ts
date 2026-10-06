@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { StubEngine } from '../../packages/server/test/helpers'
+import { StubEngine } from '../../test/helpers'
 import { measureVisitsPerSecond, visitsForBudget } from './calibrate'
 
 describe('visitsForBudget', () => {

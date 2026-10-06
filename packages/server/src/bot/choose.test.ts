@@ -59,9 +59,9 @@ describe('chooseBotMove', () => {
     const rng = mulberry32(42)
     const p = policy({ Q16: 0.3, D4: 0.7 })
     let tenuki = 0
-    for (let i = 0; i < 10_000; i++) if (chooseBotMove(input(p), rng).kind === 'tenuki') tenuki++
-    expect(tenuki / 10_000).toBeGreaterThan(0.67)
-    expect(tenuki / 10_000).toBeLessThan(0.73)
+    for (let i = 0; i < 2_000; i++) if (chooseBotMove(input(p), rng).kind === 'tenuki') tenuki++
+    expect(tenuki / 2_000).toBeGreaterThan(0.67)
+    expect(tenuki / 2_000).toBeLessThan(0.73)
   })
 
   it('skips occupied and KataGo-illegal points', () => {

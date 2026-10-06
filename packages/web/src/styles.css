@@ -72,3 +72,10 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .settings input[type='text'] { width: 100%; }
 .settings input[type='number'] { width: 120px; }
 .error { color: var(--critical); }
+.bar { display: flex; gap: 12px; align-items: center; justify-content: space-between; max-width: 1168px; margin: 8px auto 0; padding: 8px 12px; border-left: 4px solid var(--accent); background: var(--surface-2); }
+.bar.error { border-left-color: var(--critical); }
+.install { display: grid; gap: 12px; max-width: 640px; }
+.install .files { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.install .files li { display: grid; gap: 4px; }
+.install .files .row { justify-content: space-between; }
+.install progress { width: 100%; height: 8px; accent-color: var(--accent); }

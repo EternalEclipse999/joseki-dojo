@@ -66,4 +66,10 @@ describe('loadConfig', () => {
     expect(() => loadConfig(configFile({ analysis: { endVisits: 0 } }))).toThrow(ConfigError)
     expect(() => loadConfig(configFile({ maxSessionMoves: -1 }))).toThrow(ConfigError)
   })
+
+  it('keeps the installer record', () => {
+    const setup = { kind: 'gpu', lockId: '1.18.1/9d7a6afed8ff/637746e44f0e' }
+    expect(loadConfig(configFile({ setup })).setup).toEqual(setup)
+    expect(loadConfig(configFile()).setup).toBeUndefined()
+  })
 })

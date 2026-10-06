@@ -18,6 +18,13 @@ export interface Thresholds {
   punished: number
 }
 
+/** Who set KataGo up: the installer writes both fields, `npm run setup` only `kind`. */
+export interface SetupInfo {
+  kind?: 'cpu' | 'gpu'
+  /** Spec 5.1: fingerprint of the katago.lock.json the installer used (see `lockId`); absent for a manual setup. */
+  lockId?: string
+}
+
 export interface AppConfig {
   port: number
   dataDir: string
@@ -26,6 +33,7 @@ export interface AppConfig {
   thresholds: Thresholds
   bot: { defaultRank: string; temperature: number }
   maxSessionMoves: number
+  setup?: SetupInfo
 }
 
 export const MAIN_MODEL_FILE = 'kata1-b18c384nbt-s9996604416-d4316597426.bin.gz'

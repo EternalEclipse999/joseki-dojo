@@ -8,6 +8,7 @@ import { KataGoEngine } from '../src/engine/engine'
 import { checkEngine } from '../src/engine/health'
 import { loadLock } from '../src/engine/lock'
 import { baseQuery } from '../src/engine/query'
+import { REPO_LOCK } from './helpers'
 
 const CONFIG_FILE = fileURLToPath(new URL('../../../config.local.json', import.meta.url))
 const configured = existsSync(CONFIG_FILE)
@@ -36,7 +37,7 @@ describe.skipIf(!configured)('real KataGo', () => {
   })
 
   it('runs the KataGo version pinned in katago.lock.json', async () => {
-    expect(await withHuman.version()).toBe(loadLock().katago.version)
+    expect(await withHuman.version()).toBe(loadLock(REPO_LOCK).katago.version)
   })
 
   it('reports score and ownership from Black’s point of view even with White to move', async () => {

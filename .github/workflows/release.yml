@@ -1,0 +1,63 @@
+# Spec 7: a pushed tag vX.Y.Z tests the code, then builds the Windows installer and the Linux AppImage and uploads
+# them, with latest.yml / latest-linux.yml for the updater, to a DRAFT release. Players see nothing until the owner
+# presses Publish on that draft.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: The tag matches package.json
+        run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+
+  # Created once here, so that the two build jobs upload into the same draft instead of racing to create one each.
+  draft:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 ||
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Joseki Dojo $GITHUB_REF_NAME" --generate-notes
+
+  build:
+    needs: draft
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Build and upload to the draft release
+        run: npm run release
+        env:
+          GH_TOKEN: ${{ github.token }}

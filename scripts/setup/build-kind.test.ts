@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { defaultKind, parseCpuAnswer, parseSourceAnswer } from './build-kind'
+import { defaultKind, parseCpuAnswer, parseSourceAnswer, setupRecord } from './build-kind'
 
 describe('defaultKind', () => {
   it('prefers the stored kind', () => {
@@ -45,5 +45,11 @@ describe('parseSourceAnswer', () => {
   })
   it('treats anything else as a path', () => {
     expect(parseSourceAnswer(' D:/katago/katago.exe ', 'C:/k/katago.exe')).toEqual({ action: 'typed', path: 'D:/katago/katago.exe' })
+  })
+})
+
+describe('setupRecord', () => {
+  it('records only the kind: a manual setup never inherits an installer lockId', () => {
+    expect(setupRecord('gpu')).toEqual({ kind: 'gpu' })
   })
 })

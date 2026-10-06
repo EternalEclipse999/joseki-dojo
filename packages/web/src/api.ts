@@ -1,4 +1,13 @@
-import type { ClientMessage, HealthResponse, ReviewData, ServerMessage, SettingsResponse, SettingsUpdate, SettingsView } from '@joseki-dojo/shared'
+import type {
+  ClientMessage,
+  HealthResponse,
+  InstallStatus,
+  ReviewData,
+  ServerMessage,
+  SettingsResponse,
+  SettingsUpdate,
+  SettingsView,
+} from '@joseki-dojo/shared'
 
 export async function fetchHealth(): Promise<HealthResponse> {
   const res = await fetch('/api/health')
@@ -74,4 +83,18 @@ export async function saveSettings(update: SettingsUpdate): Promise<SettingsResp
   })
   if (res.status !== 200 && res.status !== 400) throw new Error(`Не удалось сохранить настройки: HTTP ${res.status}`)
   return (await res.json()) as SettingsResponse
+}
+
+/** Spec 5.3: the KataGo installer's state, also telling whether KataGo is installed at all. */
+export async function fetchInstall(): Promise<InstallStatus> {
+  const res = await fetch('/api/install')
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return (await res.json()) as InstallStatus
+}
+
+/** Starts the KataGo installer (a running installation is left alone) and returns its state. */
+export async function startInstall(): Promise<InstallStatus> {
+  const res = await fetch('/api/install', { method: 'POST' })
+  if (!res.ok) throw new Error(`Не удалось запустить установку: HTTP ${res.status}`)
+  return (await res.json()) as InstallStatus
 }
