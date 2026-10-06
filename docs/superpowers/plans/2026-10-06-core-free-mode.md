@@ -17,13 +17,16 @@
 - Preact stays on `^10` — `@sabaki/shudan` 1.8 declares `preact: ^8.4.2 || 10.x`.
 - User-facing text is Russian. Code, identifiers, comments and commit messages are English.
 - The server listens on `127.0.0.1` only. Default port `5179`.
-- KataGo `>= 1.15.0`; queries use `rules: "chinese"`, `komi: 7.5`, 19×19; the analysis config sets `reportAnalysisWinratesAs = BLACK`, so every `scoreLead` and `ownership` value is from Black's point of view.
+- KataGo `>= 1.15.0` is required; queries use `rules: "chinese"`, `komi: 7.5`, 19×19; the analysis config sets `reportAnalysisWinratesAs = BLACK`, so every `scoreLead` and `ownership` value is from Black's point of view.
+- Versions are pinned in `katago.lock.json`: KataGo `1.18.1`, main network `kata1-b18c384nbt-s9996604416-d4316597426`, human network `b18c384nbt-humanv0`, each file with its SHA-256. `npm run setup` downloads only these and verifies every checksum. A different running KataGo works (if `>= 1.15.0`) but shows a "version not verified" warning.
+- Engine paths and visit counts can be changed at runtime on the «Настройки» screen; a change is kept only if the restarted KataGo passes the startup checks, otherwise the previous paths are restored.
 - Zone = 11×11 square from the training corner: left corners `x ∈ [0, 10]`, right `x ∈ [8, 18]`, top `y ∈ [0, 10]`, bottom `y ∈ [8, 18]` (Sabaki coordinates, `y` grows downward).
 - Loss thresholds (defaults, configurable): exact `< 0.5`, inaccuracy `0.5–2`, mistake `2–5`, blunder `≥ 5`; a bot mistake is "punished" when the user's reply loses `< 1.0`.
 - Defaults: bot rank `7k`, temperature `1`, `reviewVisits` 500, `endVisits` 200, `maxSessionMoves` 60. After «Играть дальше» the end proposal may reappear only after ≥ 2 more moves.
 - Never commit KataGo binaries, networks, `config.local.json`, `data/`, `engines/`.
-- `main` is protected by a ruleset (PR only). All work happens on branch `feat/core-free-mode`; never push to `main`.
-- Every commit ends with the trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` (second `-m` in the commit commands below).
+- **Commits — one per milestone, not per task** (see `CLAUDE.md`): M1 after Task 3, M2 after Task 7, M3 after Task 11, M4 after Task 14a, M5 after Task 17a, M6 after Task 19, M7 after Task 20. Every other task ends by staging its files. Every commit ends with the trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` (the second `-m` in the commit commands).
+- **One pull request** for the whole plan, opened in Task 20. `main` is protected by a ruleset (PR only); all work happens on branch `feat/core-free-mode`; never push to `main`; the user merges.
+- Make edits in large complete blocks (whole files or whole sections) rather than many small edits.
 
 ## File Structure
 
@@ -33,12 +36,15 @@ tsconfig.json                     single typecheck project for the whole repo
 vitest.config.ts                  unit tests (excludes *.integration.test.ts)
 vitest.katago.config.ts           integration tests against a real KataGo
 playwright.config.ts              e2e with the fake KataGo
+katago.lock.json                  pinned KataGo builds and networks with SHA-256
 config.example.json               documented defaults
+CLAUDE.md                         working agreements (already committed)
 README.md
 .gitignore, .gitattributes
 packages/shared/
   src/types.ts                    domain + review + health types, ranks
   src/protocol.ts                 WebSocket message types
+  src/settings.ts                 settings screen types
   src/coords.ts                   Vertex <-> GTP <-> KataGo array index
   src/zone.ts                     corner zone geometry
   src/rules.ts                    Position (legality, captures, ko), nextColor
@@ -49,9 +55,10 @@ packages/server/
   src/errors.ts                   error -> ServerMessage mapping
   src/engine/katago-types.ts      KataGo JSON protocol types
   src/engine/query.ts             baseQuery (rules, komi, moves)
-  src/engine/engine.ts            KataGoEngine process wrapper
+  src/engine/engine.ts            KataGoEngine process wrapper (restart, restartWith)
   src/engine/command.ts           command line from config
   src/engine/health.ts            startup checks, HealthMonitor
+  src/engine/lock.ts              katago.lock.json loader, version warning
   src/store/records.ts            SessionRecord, StoredAnalysis, movesBefore
   src/store/db.ts                 openDb + migration runner
   src/store/repo.ts               SessionRepo
@@ -65,22 +72,24 @@ packages/server/
   src/session/service.ts          SessionService orchestration
   src/review/compute.ts           losses, candidates, punishment, summary
   src/review/service.ts           ReviewService (prepare + get)
+  src/settings/service.ts         SettingsService (view, apply with rollback)
   src/api/hub.ts                  socket subscriptions per session
   src/api/messages.ts             client message parsing
   src/api/ws.ts                   WebSocket handler
   src/api/http.ts                 /api/health, /api/sessions/:id/review
+  src/api/settings-routes.ts      GET/PUT /api/settings
   src/app.ts                      createServices, buildApp
   src/main.ts                     entry point
   test/fake-katago.mjs            stand-in for `katago analysis`
   test/helpers.ts                 fakeEngine, testConfig, StubEngine
-  test/katago.integration.test.ts real-KataGo checks (spec 6.5)
+  test/katago.integration.test.ts real-KataGo checks (spec 6.5, pinned version)
 packages/web/
   index.html, vite.config.ts
   src/main.tsx, src/App.tsx, src/api.ts, src/format.ts, src/board-maps.ts, src/styles.css, src/vite-env.d.ts
   src/components/Board.tsx, ErrorBanner.tsx, LossBar.tsx
-  src/screens/StartScreen.tsx, EngineScreen.tsx, GameScreen.tsx, ReviewScreen.tsx
+  src/screens/StartScreen.tsx, EngineScreen.tsx, GameScreen.tsx, ReviewScreen.tsx, SettingsScreen.tsx
 scripts/setup/
-  backends.ts, katago-config.ts, calibrate.ts, download.ts, setup.ts (+ tests)
+  katago-config.ts, calibrate.ts, download.ts, setup.ts (+ tests)
 e2e/
   config.e2e.json, game.spec.ts
 ```
@@ -283,11 +292,12 @@ Expected: PASS, 1 test.
 Run: `npm run typecheck`
 Expected: exits 0, no output.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 7: Stage the changes**
+
+No commit after this task (see "Commits" in Global Constraints):
 
 ```bash
 git add package.json package-lock.json tsconfig.json vitest.config.ts .gitignore .gitattributes packages
-git commit -m "chore: scaffold npm workspaces monorepo" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -699,11 +709,12 @@ Expected: PASS (all tests in 4 files).
 Run: `npm run typecheck`
 Expected: exits 0.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Stage the changes**
+
+No commit after this task (see "Commits" in Global Constraints):
 
 ```bash
 git add packages/shared
-git commit -m "feat(shared): add domain types, protocol, coordinates and corner zone" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -895,11 +906,11 @@ Expected: PASS.
 Run: `npm run typecheck`
 Expected: exits 0.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Milestone commit**
 
 ```bash
 git add packages/shared
-git commit -m "feat(shared): add Position rules wrapper with simple ko across passes" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(shared): scaffold monorepo; add domain types, coordinates, zone and Go rules" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1111,11 +1122,12 @@ Expected: PASS.
 Run: `npm run typecheck`
 Expected: exits 0.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Stage the changes**
+
+No commit after this task (see "Commits" in Global Constraints):
 
 ```bash
 git add packages/server/src/config.ts packages/server/src/config.test.ts config.example.json
-git commit -m "feat(server): add configuration loading with defaults and validation" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1592,11 +1604,12 @@ Expected: PASS (7 tests).
 Run: `npm run typecheck`
 Expected: exits 0.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 8: Stage the changes**
+
+No commit after this task (see "Commits" in Global Constraints):
 
 ```bash
 git add packages/server/src/engine packages/server/test
-git commit -m "feat(server): add KataGo analysis engine wrapper with restart and fake engine" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1788,11 +1801,12 @@ Expected: PASS.
 Run: `npm run typecheck`
 Expected: exits 0.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Stage the changes**
+
+No commit after this task (see "Commits" in Global Constraints):
 
 ```bash
 git add packages/server/src/engine
-git commit -m "feat(server): add KataGo health checks" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -2246,11 +2260,11 @@ Expected: PASS.
 Run: `npm run typecheck`
 Expected: exits 0.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Milestone commit**
 
 ```bash
 git add packages/server/migrations packages/server/src/store
-git commit -m "feat(server): add SQLite store with migrations and session repository" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(server): add config, KataGo engine wrapper, health checks and SQLite store" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -2638,11 +2652,12 @@ Expected: PASS.
 Run: `npm run typecheck`
 Expected: exits 0.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Stage the changes**
+
+No commit after this task (see "Commits" in Global Constraints):
 
 ```bash
 git add packages/server/src/bot packages/server/test/helpers.ts
-git commit -m "feat(server): add human-policy bot with zone and tenuki sampling" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -2829,11 +2844,12 @@ Expected: PASS.
 Run: `npm run typecheck`
 Expected: exits 0.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Stage the changes**
+
+No commit after this task (see "Commits" in Global Constraints):
 
 ```bash
 git add packages/server/src/analysis
-git commit -m "feat(server): add cached position and pass-probe analysis scheduler" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -3202,11 +3218,12 @@ Expected: PASS.
 Run: `npm run typecheck`
 Expected: exits 0.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Stage the changes**
+
+No commit after this task (see "Commits" in Global Constraints):
 
 ```bash
 git add packages/server/src/session
-git commit -m "feat(server): add session state machine and end-of-joseki rules" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -3489,11 +3506,11 @@ Expected: PASS.
 Run: `npm run typecheck`
 Expected: exits 0.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Milestone commit**
 
 ```bash
 git add packages/server/src/review
-git commit -m "feat(server): add review computation (losses, candidates, punishments)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(server): add human-like bot, analysis scheduler, session state and review computation" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -4016,11 +4033,12 @@ Expected: PASS.
 Run: `npm run typecheck`
 Expected: exits 0.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Stage the changes**
+
+No commit after this task (see "Commits" in Global Constraints):
 
 ```bash
 git add packages/server/src/errors.ts packages/server/src/errors.test.ts packages/server/src/session
-git commit -m "feat(server): add session service orchestrating bot, analysis and end proposals" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -4210,11 +4228,12 @@ Expected: PASS.
 Run: `npm run typecheck`
 Expected: exits 0.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Stage the changes**
+
+No commit after this task (see "Commits" in Global Constraints):
 
 ```bash
 git add packages/server/src/review
-git commit -m "feat(server): add review service with progress and missed-punishment storage" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -4669,11 +4688,696 @@ curl -s http://127.0.0.1:5181/api/health
 ```
 Expected: `{"state":"ready","reason":null}`. Then stop the background server.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Stage the changes**
+
+No commit after this task (see "Commits" in Global Constraints):
 
 ```bash
 git add packages/server/src
-git commit -m "feat(server): add HTTP/WebSocket API, service wiring and entry point" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 14a: KataGo lock file and engine settings (server)
+
+**Files:**
+- Create: `katago.lock.json`, `packages/shared/src/settings.ts`, `packages/server/src/engine/lock.ts`, `packages/server/src/settings/service.ts`, `packages/server/src/api/settings-routes.ts`
+- Modify: `packages/shared/src/index.ts` (append one export), `packages/server/src/engine/engine.ts` (make `cmd` mutable, add `restartWith`), `packages/server/src/app.ts` (whole file), `packages/server/src/main.ts` (whole file), `packages/server/src/api/api.test.ts` (append a describe block)
+- Test: `packages/server/src/engine/lock.test.ts`, `packages/server/src/engine/restart.test.ts`, `packages/server/src/settings/service.test.ts`
+
+**Interfaces:**
+- Consumes: `AppConfig`, `KataGoSettings`, `MAIN_MODEL_FILE`, `HUMAN_MODEL_FILE` (Task 4); `KataGoEngine`, `EngineCommand`, `engineCommand` (Task 5); `checkEngine`, `missingFiles`, `HealthMonitor` (Task 6); everything wired in Task 14.
+- Produces:
+  - shared: `EngineSettings`, `AnalysisSettings`, `SettingsView { katago; analysis; models; lockedVersion; runningVersion; versionWarning }`, `SettingsUpdate { katago; analysis }`, `SettingsResponse = { ok: true; settings } | { ok: false; reason }`
+  - lock: `LockedBuild { id; platform; kind: 'cpu' | 'gpu'; label; url; sha256 }`, `LockedFile { file; url; sha256; size }`, `KataGoLock`, `LOCK_FILE`, `loadLock(file?)`, `buildsFor(lock, platform)`, `versionWarning(lock, running)`
+  - engine: `KataGoEngine.restartWith(cmd): Promise<void>` — switches the process to another command and resends pending queries; clears a failure
+  - `SettingsServiceDeps { config; configFile; modelsDir; engine; health; lock; commandFor? }`, `class SettingsService` with `view(): Promise<SettingsView>` and `apply(update): Promise<SettingsResponse>`
+  - `registerSettingsRoutes(app, settings)`: `GET /api/settings` → `SettingsView`; `PUT /api/settings` → 200 `{ ok: true, settings }` or 400 `{ ok: false, reason }`
+  - `ServicePaths { configFile; modelsDir }`, `createServices(config, engine, paths?)` (default paths inside `config.dataDir`, used by tests), `AppServices.settings`
+
+- [ ] **Step 1: Write the lock file**
+
+`katago.lock.json` (SHA-256 of the builds come from the GitHub release metadata; the network sums were computed from the downloaded files):
+```json
+{
+  "katago": {
+    "version": "1.18.1",
+    "builds": [
+      {
+        "id": "eigenavx2",
+        "platform": "win32",
+        "kind": "cpu",
+        "label": "CPU (AVX2) — работает на любом компьютере, медленнее всего",
+        "url": "https://github.com/lightvector/KataGo/releases/download/v1.18.1/katago-v1.18.1-eigenavx2-windows-x64.zip",
+        "sha256": "0d62ffa41ee04dd89dd1b80fe45e306c837231cb1e2dccb4f5780d0ca7c313db"
+      },
+      {
+        "id": "opencl",
+        "platform": "win32",
+        "kind": "gpu",
+        "label": "OpenCL — видеокарты AMD, NVIDIA и Intel",
+        "url": "https://github.com/lightvector/KataGo/releases/download/v1.18.1/katago-v1.18.1-opencl-windows-x64.zip",
+        "sha256": "1710db1903ab921aa6837a9599c8474f8a59f057650217c5d9bc125ee393a9ff"
+      },
+      {
+        "id": "cuda",
+        "platform": "win32",
+        "kind": "gpu",
+        "label": "CUDA 12.8 + cuDNN 9.8 — NVIDIA (CUDA и cuDNN должны быть установлены)",
+        "url": "https://github.com/lightvector/KataGo/releases/download/v1.18.1/katago-v1.18.1-cuda12.8-cudnn9.8.0-windows-x64.zip",
+        "sha256": "8caabc5675950f52d285a686c19727f7a56a982313a7f055ade060ba78df552e"
+      },
+      {
+        "id": "eigenavx2",
+        "platform": "linux",
+        "kind": "cpu",
+        "label": "CPU (AVX2) — работает на любом компьютере, медленнее всего",
+        "url": "https://github.com/lightvector/KataGo/releases/download/v1.18.1/katago-v1.18.1-eigenavx2-linux-x64.zip",
+        "sha256": "33e79780dbe3bf6ee859e16f64952cdfc90f7210c8f71ad978ffcba85ad20d79"
+      },
+      {
+        "id": "opencl",
+        "platform": "linux",
+        "kind": "gpu",
+        "label": "OpenCL — видеокарты AMD, NVIDIA и Intel",
+        "url": "https://github.com/lightvector/KataGo/releases/download/v1.18.1/katago-v1.18.1-opencl-linux-x64.zip",
+        "sha256": "81ecea81526adb412a392ec728dbdf9627e754df7cf1a7a3dbb8ef220182184a"
+      },
+      {
+        "id": "cuda",
+        "platform": "linux",
+        "kind": "gpu",
+        "label": "CUDA 12.8 + cuDNN 9.8 — NVIDIA (CUDA и cuDNN должны быть установлены)",
+        "url": "https://github.com/lightvector/KataGo/releases/download/v1.18.1/katago-v1.18.1-cuda12.8-cudnn9.8.0-linux-x64.zip",
+        "sha256": "f84222594101abbde8a0df885c54fd8fcfe90a3c1a9ab140e0354fc28cbfa61c"
+      }
+    ]
+  },
+  "models": {
+    "main": {
+      "file": "kata1-b18c384nbt-s9996604416-d4316597426.bin.gz",
+      "url": "https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b18c384nbt-s9996604416-d4316597426.bin.gz",
+      "sha256": "9d7a6afed8ff5b74894727e156f04f0cd36060a24824892008fbb6e0cba51f1d",
+      "size": 97898094
+    },
+    "human": {
+      "file": "b18c384nbt-humanv0.bin.gz",
+      "url": "https://github.com/lightvector/KataGo/releases/download/v1.15.0/b18c384nbt-humanv0.bin.gz",
+      "sha256": "637746e44f0efe00ad1245a50aa9bbf0716efe364c43965ead97bd6835d84ab5",
+      "size": 99066230
+    }
+  }
+}
+```
+
+- [ ] **Step 2: Write the failing tests**
+
+`packages/server/src/engine/lock.test.ts`:
+```ts
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import { tempDir } from '../../test/helpers'
+import { HUMAN_MODEL_FILE, MAIN_MODEL_FILE } from '../config'
+import { buildsFor, loadLock, versionWarning } from './lock'
+
+describe('katago.lock.json', () => {
+  it('pins one KataGo version with builds for Windows and Linux', () => {
+    const lock = loadLock()
+    expect(lock.katago.version).toBe('1.18.1')
+    expect(buildsFor(lock, 'win32').map((b) => b.id)).toEqual(['eigenavx2', 'opencl', 'cuda'])
+    expect(buildsFor(lock, 'linux').map((b) => b.id)).toEqual(['eigenavx2', 'opencl', 'cuda'])
+    expect(buildsFor(lock, 'darwin')).toEqual([])
+    for (const b of lock.katago.builds) expect(b.url).toContain(`/v${lock.katago.version}/katago-v${lock.katago.version}-`)
+  })
+
+  it('names the same networks as the config defaults', () => {
+    const lock = loadLock()
+    expect(lock.models.main.file).toBe(MAIN_MODEL_FILE)
+    expect(lock.models.human.file).toBe(HUMAN_MODEL_FILE)
+  })
+
+  it('rejects a malformed lock', () => {
+    const lock = loadLock()
+    const file = join(tempDir(), 'lock.json')
+    writeFileSync(file, JSON.stringify({ ...lock, katago: { ...lock.katago, builds: [{ ...lock.katago.builds[0], sha256: 'abc' }] } }))
+    expect(() => loadLock(file)).toThrow(/sha256/)
+  })
+
+  it('warns only about a different running version', () => {
+    const lock = loadLock()
+    expect(versionWarning(lock, null)).toBeNull()
+    expect(versionWarning(lock, '1.18.1')).toBeNull()
+    expect(versionWarning(lock, '1.17.2')).toBe('Запущена KataGo 1.17.2, а проверена 1.18.1. Работать будет, но эта версия не проверялась.')
+  })
+})
+```
+
+`packages/server/src/engine/restart.test.ts`:
+```ts
+import { afterEach, describe, expect, it } from 'vitest'
+import { FAKE_KATAGO, fakeEngine } from '../../test/helpers'
+import type { KataGoEngine } from './engine'
+import { baseQuery } from './query'
+
+const engines: KataGoEngine[] = []
+
+afterEach(async () => {
+  await Promise.all(engines.splice(0).map((e) => e.stop()))
+})
+
+describe('KataGoEngine.restartWith', () => {
+  it('switches to another command and keeps answering', async () => {
+    const e = fakeEngine()
+    engines.push(e)
+    e.start()
+    expect(await e.version()).toBe('1.18.1')
+    await e.restartWith({ command: process.execPath, args: [FAKE_KATAGO], env: { FAKE_KATAGO_VERSION: '1.18.2' } })
+    expect(await e.version()).toBe('1.18.2')
+    expect(e.failed).toBe(false)
+  })
+
+  it('clears a failure', async () => {
+    const e = fakeEngine({ FAKE_KATAGO_ALWAYS_CRASH: '1' })
+    engines.push(e)
+    e.start()
+    await expect(e.analyze(baseQuery([]))).rejects.toMatchObject({ code: 'engine_failed' })
+    await e.restartWith({ command: process.execPath, args: [FAKE_KATAGO] })
+    expect(e.failed).toBe(false)
+    expect((await e.analyze(baseQuery([]))).moveInfos[0].move).toBe('D4')
+  })
+})
+```
+
+`packages/server/src/settings/service.test.ts`:
+```ts
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
+import type { SettingsUpdate } from '@joseki-dojo/shared'
+import { FAKE_KATAGO, fakeEngine, tempDir, testConfig } from '../../test/helpers'
+import type { AppConfig } from '../config'
+import type { EngineCommand, KataGoEngine } from '../engine/engine'
+import { HealthMonitor } from '../engine/health'
+import { loadLock } from '../engine/lock'
+import { SettingsService } from './service'
+
+/** A fake installation: real (empty) files on disk; the main network's name selects the fake engine's behaviour. */
+function install() {
+  const dir = tempDir()
+  const models = join(dir, 'models')
+  mkdirSync(models)
+  const file = (name: string): string => {
+    const p = join(dir, name)
+    writeFileSync(p, '')
+    return p
+  }
+  const model = (name: string): string => {
+    const p = join(models, name)
+    writeFileSync(p, '')
+    return p
+  }
+  return {
+    dir,
+    models,
+    katago: file('katago.exe'),
+    cfg: file('analysis.cfg'),
+    main: model('main.bin.gz'),
+    next: model('next.bin.gz'),
+    broken: model('broken.bin.gz'),
+    human: model('human.bin.gz'),
+  }
+}
+
+const commandFor = (c: AppConfig): EngineCommand => ({
+  command: process.execPath,
+  args: [FAKE_KATAGO],
+  env: c.katago.mainModel.endsWith('next.bin.gz')
+    ? { FAKE_KATAGO_VERSION: '1.18.2' }
+    : c.katago.mainModel.endsWith('broken.bin.gz')
+      ? { FAKE_KATAGO_NO_HUMAN: '1' }
+      : {},
+})
+
+const engines: KataGoEngine[] = []
+
+afterEach(async () => {
+  await Promise.all(engines.splice(0).map((e) => e.stop()))
+})
+
+async function setup() {
+  const inst = install()
+  const config = testConfig()
+  const engine = fakeEngine()
+  engines.push(engine)
+  const health = new HealthMonitor(config, engine)
+  await health.check()
+  const configFile = join(inst.dir, 'config.local.json')
+  const settings = new SettingsService({ config, configFile, modelsDir: inst.models, engine, health, lock: loadLock(), commandFor })
+  const update = (mainModel: string, analysis: Partial<SettingsUpdate['analysis']> = {}): SettingsUpdate => ({
+    katago: { path: inst.katago, analysisConfig: inst.cfg, mainModel, humanModel: inst.human },
+    analysis: { reviewVisits: 40, endVisits: 20, ...analysis },
+  })
+  return { inst, config, engine, health, configFile, settings, update }
+}
+
+describe('SettingsService', () => {
+  it('shows the paths, the networks found and the running version', async () => {
+    const { settings, inst } = await setup()
+    const v = await settings.view()
+    expect(v.lockedVersion).toBe('1.18.1')
+    expect(v.runningVersion).toBe('1.18.1')
+    expect(v.versionWarning).toBeNull()
+    expect(v.models).toEqual([inst.broken, inst.human, inst.main, inst.next].sort())
+    expect(v.analysis).toEqual({ reviewVisits: 10, endVisits: 5 })
+  })
+
+  it('rejects invalid input without touching the engine', async () => {
+    const { settings, update, inst } = await setup()
+    expect(await settings.apply(update(inst.main, { reviewVisits: 0 }))).toEqual({ ok: false, reason: 'Число визитов должно быть целым от 1 до 100000' })
+    const missing = join(inst.models, 'missing.bin.gz')
+    expect(await settings.apply(update(missing))).toEqual({ ok: false, reason: `Нет основной сети KataGo: ${missing}` })
+  })
+
+  it('switches KataGo, saves the config and warns about an unverified version', async () => {
+    const { settings, update, inst, config, configFile } = await setup()
+    const r = await settings.apply(update(inst.next))
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.settings.runningVersion).toBe('1.18.2')
+    expect(r.settings.versionWarning).toContain('1.18.2')
+    expect(config.katago.mainModel).toBe(inst.next)
+    expect(config.katago.commandOverride).toBeUndefined()
+    expect(config.analysis).toEqual({ reviewVisits: 40, endVisits: 20 })
+    const saved = JSON.parse(readFileSync(configFile, 'utf8'))
+    expect(saved.katago.mainModel).toBe(inst.next)
+    expect(saved.analysis).toEqual({ reviewVisits: 40, endVisits: 20 })
+  })
+
+  it('restores the previous engine when the new one fails its checks', async () => {
+    const { settings, update, inst, config, configFile, health, engine } = await setup()
+    const before = config.katago.mainModel
+    const r = await settings.apply(update(inst.broken))
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.reason).toContain('human')
+    expect(config.katago.mainModel).toBe(before)
+    expect(existsSync(configFile)).toBe(false)
+    expect(health.get().state).toBe('ready')
+    expect(await engine.version()).toBe('1.18.1')
+  })
+})
+```
+
+Append to `packages/server/src/api/api.test.ts`:
+```ts
+describe('settings API', () => {
+  it('shows the settings and refuses paths that do not exist', async () => {
+    const view = await (await fetch(`http://${host}/api/settings`)).json()
+    expect(view.lockedVersion).toBe('1.18.1')
+    expect(view.runningVersion).toBe('1.18.1')
+    const res = await fetch(`http://${host}/api/settings`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ katago: { ...view.katago, mainModel: '/nope/main.bin.gz' }, analysis: view.analysis }),
+    })
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.ok).toBe(false)
+    expect(typeof body.reason).toBe('string')
+  })
+})
+```
+
+- [ ] **Step 3: Run tests to verify they fail**
+
+Run: `npx vitest run packages/server/src/engine/lock.test.ts packages/server/src/engine/restart.test.ts packages/server/src/settings packages/server/src/api/api.test.ts`
+Expected: FAIL — `Failed to resolve import "./lock"`, `restartWith is not a function`, `Failed to resolve import "./service"`, and 404 from `/api/settings`.
+
+- [ ] **Step 4: Implement**
+
+`packages/shared/src/settings.ts`:
+```ts
+export interface EngineSettings {
+  path: string
+  analysisConfig: string
+  mainModel: string
+  humanModel: string
+}
+
+export interface AnalysisSettings {
+  reviewVisits: number
+  endVisits: number
+}
+
+export interface SettingsView {
+  katago: EngineSettings
+  analysis: AnalysisSettings
+  /** Network files found in engines/models (absolute paths). */
+  models: string[]
+  lockedVersion: string
+  runningVersion: string | null
+  versionWarning: string | null
+}
+
+export interface SettingsUpdate {
+  katago: EngineSettings
+  analysis: AnalysisSettings
+}
+
+export type SettingsResponse = { ok: true; settings: SettingsView } | { ok: false; reason: string }
+```
+
+Append to `packages/shared/src/index.ts`:
+```ts
+export * from './settings'
+```
+
+In `packages/server/src/engine/engine.ts`, change the constructor parameter `private readonly cmd: EngineCommand,` to `private cmd: EngineCommand,` and add this method right after `reset()`:
+```ts
+  /**
+   * Switches to another command (new paths). The old process is stopped without counting as a crash;
+   * pending queries are resent to the new process. Clears a permanent failure.
+   */
+  async restartWith(cmd: EngineCommand): Promise<void> {
+    this.cmd = cmd
+    this.failedReason = null
+    this.crashes = 0
+    const old = this.proc
+    this.proc = null
+    this.stopping = true
+    if (old && old.pid !== undefined && old.exitCode === null && old.signalCode === null) {
+      await new Promise<void>((done) => {
+        old.once('exit', () => done())
+        old.stdin.end()
+        setTimeout(() => old.kill(), 2000).unref()
+      })
+    }
+    this.start()
+  }
+```
+
+`packages/server/src/engine/lock.ts`:
+```ts
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+export interface LockedBuild {
+  id: string
+  platform: 'win32' | 'linux'
+  kind: 'cpu' | 'gpu'
+  label: string
+  url: string
+  sha256: string
+}
+
+export interface LockedFile {
+  file: string
+  url: string
+  sha256: string
+  size: number
+}
+
+export interface KataGoLock {
+  katago: { version: string; builds: LockedBuild[] }
+  models: { main: LockedFile; human: LockedFile }
+}
+
+export const LOCK_FILE = fileURLToPath(new URL('../../../../katago.lock.json', import.meta.url))
+
+const SHA256 = /^[0-9a-f]{64}$/
+
+export function loadLock(file: string = LOCK_FILE): KataGoLock {
+  const lock = JSON.parse(readFileSync(file, 'utf8')) as KataGoLock
+  if (!/^\d+\.\d+\.\d+$/.test(lock.katago?.version ?? '')) throw new Error(`${file}: katago.version must look like 1.18.1`)
+  if (!lock.katago.builds?.length) throw new Error(`${file}: no KataGo builds`)
+  if (!lock.models?.main || !lock.models?.human) throw new Error(`${file}: models.main and models.human are required`)
+  for (const entry of [...lock.katago.builds, lock.models.main, lock.models.human]) {
+    if (!entry.url?.startsWith('https://')) throw new Error(`${file}: url must be https: ${entry.url}`)
+    if (!SHA256.test(entry.sha256 ?? '')) throw new Error(`${file}: bad sha256 for ${entry.url}`)
+  }
+  return lock
+}
+
+export const buildsFor = (lock: KataGoLock, platform: string): LockedBuild[] =>
+  lock.katago.builds.filter((b) => b.platform === platform)
+
+export function versionWarning(lock: KataGoLock, running: string | null): string | null {
+  if (!running || running === lock.katago.version) return null
+  return `Запущена KataGo ${running}, а проверена ${lock.katago.version}. Работать будет, но эта версия не проверялась.`
+}
+```
+
+`packages/server/src/settings/service.ts`:
+```ts
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import type { AnalysisSettings, SettingsResponse, SettingsUpdate, SettingsView } from '@joseki-dojo/shared'
+import type { AppConfig, KataGoSettings } from '../config'
+import { engineCommand } from '../engine/command'
+import type { EngineCommand, KataGoEngine } from '../engine/engine'
+import { checkEngine, missingFiles, type HealthMonitor } from '../engine/health'
+import { versionWarning, type KataGoLock } from '../engine/lock'
+
+export interface SettingsServiceDeps {
+  config: AppConfig
+  configFile: string
+  modelsDir: string
+  engine: KataGoEngine
+  health: HealthMonitor
+  lock: KataGoLock
+  /** Tests substitute the fake KataGo; production builds the real command line. */
+  commandFor?: (config: AppConfig) => EngineCommand
+}
+
+const MODEL_FILE = /\.(bin|txt)\.gz$|\.bin$/
+
+function validateUpdate(u: SettingsUpdate): string | null {
+  const paths = u?.katago ? [u.katago.path, u.katago.analysisConfig, u.katago.mainModel, u.katago.humanModel] : []
+  if (paths.length !== 4 || paths.some((p) => typeof p !== 'string' || p.trim() === '')) return 'Укажите все пути'
+  const visits = [u.analysis?.reviewVisits, u.analysis?.endVisits]
+  if (visits.some((v) => !Number.isInteger(v) || (v as number) < 1 || (v as number) > 100_000)) {
+    return 'Число визитов должно быть целым от 1 до 100000'
+  }
+  return null
+}
+
+/** Spec 7a: shows and changes the engine paths; a change is kept only if the restarted KataGo passes its checks. */
+export class SettingsService {
+  private applying = false
+  private readonly commandFor: (config: AppConfig) => EngineCommand
+
+  constructor(private readonly d: SettingsServiceDeps) {
+    this.commandFor = d.commandFor ?? engineCommand
+  }
+
+  async view(): Promise<SettingsView> {
+    const running = this.d.health.get().state === 'ready' ? await this.d.engine.version().catch(() => null) : null
+    const { path, analysisConfig, mainModel, humanModel } = this.d.config.katago
+    return {
+      katago: { path, analysisConfig, mainModel, humanModel },
+      analysis: { ...this.d.config.analysis },
+      models: this.listModels(),
+      lockedVersion: this.d.lock.katago.version,
+      runningVersion: running,
+      versionWarning: versionWarning(this.d.lock, running),
+    }
+  }
+
+  async apply(update: SettingsUpdate): Promise<SettingsResponse> {
+    if (this.applying) return { ok: false, reason: 'Настройки уже применяются' }
+    const invalid = validateUpdate(update)
+    if (invalid) return { ok: false, reason: invalid }
+    this.applying = true
+    try {
+      const katago: KataGoSettings = {
+        path: resolve(update.katago.path),
+        analysisConfig: resolve(update.katago.analysisConfig),
+        mainModel: resolve(update.katago.mainModel),
+        humanModel: resolve(update.katago.humanModel),
+      }
+      const analysis: AnalysisSettings = { reviewVisits: update.analysis.reviewVisits, endVisits: update.analysis.endVisits }
+      const candidate: AppConfig = { ...this.d.config, katago, analysis }
+      const missing = missingFiles(candidate)
+      if (missing) return { ok: false, reason: missing }
+
+      const previous = this.commandFor(this.d.config)
+      await this.d.engine.restartWith(this.commandFor(candidate))
+      const health = await checkEngine(candidate, this.d.engine)
+      if (health.state !== 'ready') {
+        await this.d.engine.restartWith(previous)
+        await this.d.health.check()
+        return { ok: false, reason: health.reason ?? 'KataGo не запустился' }
+      }
+
+      this.d.config.katago = katago // a test-only commandOverride is dropped here on purpose
+      Object.assign(this.d.config.analysis, analysis) // the scheduler holds this same object
+      this.persist(katago, analysis)
+      await this.d.health.check()
+      return { ok: true, settings: await this.view() }
+    } finally {
+      this.applying = false
+    }
+  }
+
+  private listModels(): string[] {
+    if (!existsSync(this.d.modelsDir)) return []
+    return readdirSync(this.d.modelsDir)
+      .filter((f) => MODEL_FILE.test(f))
+      .map((f) => join(this.d.modelsDir, f))
+      .sort()
+  }
+
+  private persist(katago: KataGoSettings, analysis: AnalysisSettings): void {
+    const raw = (existsSync(this.d.configFile) ? JSON.parse(readFileSync(this.d.configFile, 'utf8')) : {}) as Record<string, unknown>
+    const { commandOverride: _dropped, ...oldKatago } = (raw.katago ?? {}) as Record<string, unknown>
+    raw.katago = { ...oldKatago, ...katago }
+    raw.analysis = { ...((raw.analysis ?? {}) as Record<string, unknown>), ...analysis }
+    writeFileSync(this.d.configFile, `${JSON.stringify(raw, null, 2)}\n`)
+  }
+}
+```
+
+`packages/server/src/api/settings-routes.ts`:
+```ts
+import type { SettingsUpdate } from '@joseki-dojo/shared'
+import type { FastifyInstance } from 'fastify'
+import type { SettingsService } from '../settings/service'
+
+export function registerSettingsRoutes(app: FastifyInstance, settings: SettingsService): void {
+  app.get('/api/settings', async () => settings.view())
+
+  app.put<{ Body: SettingsUpdate }>('/api/settings', async (req, reply) => {
+    const r = await settings.apply(req.body)
+    return r.ok ? r : reply.code(400).send(r)
+  })
+}
+```
+
+Replace `packages/server/src/app.ts` with:
+```ts
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+import fastifyStatic from '@fastify/static'
+import websocket from '@fastify/websocket'
+import type { ServerMessage } from '@joseki-dojo/shared'
+import Fastify, { type FastifyInstance } from 'fastify'
+import { AnalysisScheduler } from './analysis/scheduler'
+import { registerHttp } from './api/http'
+import { Hub } from './api/hub'
+import { registerSettingsRoutes } from './api/settings-routes'
+import { handleSocket } from './api/ws'
+import { HumanBot } from './bot/bot'
+import type { AppConfig } from './config'
+import type { KataGoEngine } from './engine/engine'
+import { HealthMonitor } from './engine/health'
+import { loadLock } from './engine/lock'
+import { toErrorMessage } from './errors'
+import { ReviewService } from './review/service'
+import { SessionService } from './session/service'
+import { SettingsService } from './settings/service'
+import { openDb, type Db } from './store/db'
+import { SessionRepo } from './store/repo'
+
+export interface AppServices {
+  config: AppConfig
+  db: Db
+  engine: KataGoEngine
+  health: HealthMonitor
+  sessions: SessionService
+  reviews: ReviewService
+  settings: SettingsService
+  hub: Hub
+}
+
+export interface ServicePaths {
+  /** Where the settings screen saves changes (config.local.json in production). */
+  configFile: string
+  /** Folder listed as "available networks" on the settings screen. */
+  modelsDir: string
+}
+
+export function createServices(
+  config: AppConfig,
+  engine: KataGoEngine,
+  paths: ServicePaths = { configFile: join(config.dataDir, 'config.local.json'), modelsDir: join(config.dataDir, 'models') },
+): AppServices {
+  const db = openDb(join(config.dataDir, 'joseki-dojo.sqlite'))
+  const repo = new SessionRepo(db)
+  const hub = new Hub()
+  const publish = (sessionId: string, msg: ServerMessage): void => hub.publish(sessionId, msg)
+  const analysis = new AnalysisScheduler(engine, repo, config.analysis)
+  const reviews = new ReviewService({ repo, analysis, config, publish })
+  const sessions = new SessionService({
+    repo,
+    analysis,
+    engine,
+    config,
+    publish,
+    bot: new HumanBot(engine),
+    onFinished: (id) => {
+      reviews.prepare(id).catch((err: unknown) => publish(id, toErrorMessage(err)))
+    },
+  })
+  const health = new HealthMonitor(config, engine)
+  const settings = new SettingsService({ config, engine, health, lock: loadLock(), ...paths })
+  return { config, db, engine, health, sessions, reviews, settings, hub }
+}
+
+export async function buildApp(services: AppServices, webDist: string | null = null): Promise<FastifyInstance> {
+  const app = Fastify({ logger: false })
+  await app.register(websocket)
+  app.get('/ws', { websocket: true }, (socket) => handleSocket(socket, services))
+  registerHttp(app, services)
+  registerSettingsRoutes(app, services.settings)
+  if (webDist && existsSync(webDist)) await app.register(fastifyStatic, { root: webDist })
+  return app
+}
+```
+
+Replace `packages/server/src/main.ts` with:
+```ts
+import { join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { buildApp, createServices } from './app'
+import { loadConfig } from './config'
+import { engineCommand } from './engine/command'
+import { KataGoEngine } from './engine/engine'
+
+const repoRoot = fileURLToPath(new URL('../../../', import.meta.url))
+const configFile = process.env.JOSEKI_CONFIG ? resolve(process.env.JOSEKI_CONFIG) : join(repoRoot, 'config.local.json')
+const config = loadConfig(configFile)
+const engine = new KataGoEngine(engineCommand(config), (line) => console.log(`[katago] ${line}`))
+const services = createServices(config, engine, { configFile, modelsDir: join(repoRoot, 'engines', 'models') })
+const app = await buildApp(services, join(repoRoot, 'packages', 'web', 'dist'))
+await app.listen({ port: config.port, host: '127.0.0.1' })
+console.log(`Joseki Dojo: http://127.0.0.1:${config.port}`)
+void services.health.check().then((h) => {
+  console.log(h.state === 'ready' ? 'KataGo готов' : `KataGo не готов: ${h.reason}`)
+})
+
+const shutdown = async (): Promise<void> => {
+  await app.close()
+  await engine.stop()
+  services.db.close()
+  process.exit(0)
+}
+process.once('SIGINT', () => void shutdown())
+process.once('SIGTERM', () => void shutdown())
+```
+
+- [ ] **Step 5: Run tests and typecheck**
+
+Run: `npx vitest run packages`
+Expected: PASS (all shared and server tests).
+Run: `npm run typecheck`
+Expected: exits 0.
+
+- [ ] **Step 6: Milestone commit**
+
+```bash
+git add katago.lock.json packages/shared packages/server
+git commit -m "feat(server): add session and review services, HTTP/WebSocket API, KataGo lock and engine settings" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -5201,11 +5905,12 @@ Expected: exits 0.
 Run: `npm run build`
 Expected: Vite prints `✓ built` and writes `packages/web/dist/index.html`.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Stage the changes**
+
+No commit after this task (see "Commits" in Global Constraints):
 
 ```bash
 git add packages/web
-git commit -m "feat(web): add app shell, API client, start and engine screens" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -5475,11 +6180,12 @@ Expected: exits 0.
 Run: `npm run build`
 Expected: `✓ built`.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Stage the changes**
+
+No commit after this task (see "Commits" in Global Constraints):
 
 ```bash
 git add packages/web
-git commit -m "feat(web): add board component and game screen" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -5774,11 +6480,383 @@ npm run dev -w @joseki-dojo/web
 ```
 Open `http://127.0.0.1:5173` in the browser pane, start a session as Black in the top-right corner, play Q16, accept the end proposal and confirm on the review screen: the summary renders; the loss bar shows two columns (one up, one down) with its legend; ◀/▶ move between moves; «Показать ветку» steps through the variation with numbered stones; «Чья территория» toggles without console errors. Stop both background processes.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Stage the changes**
+
+No commit after this task (see "Commits" in Global Constraints):
 
 ```bash
 git add packages/web
-git commit -m "feat(web): add loss bar and review screen" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 17a: Settings screen
+
+**Files:**
+- Create: `packages/web/src/screens/SettingsScreen.tsx`
+- Modify: `packages/web/src/api.ts` (import line + append), `packages/web/src/screens/EngineScreen.tsx` (whole file), `packages/web/src/App.tsx` (whole file), `packages/web/src/styles.css` (append)
+
+**Interfaces:**
+- Consumes: `SettingsView`, `SettingsUpdate`, `SettingsResponse` (Task 14a); `GET/PUT /api/settings` (Task 14a); every screen from Tasks 15–17.
+- Produces: `fetchSettings(): Promise<SettingsView>`, `saveSettings(update): Promise<SettingsResponse>`, `SettingsScreen({ onClose, onSaved })`, `EngineScreen({ health, onRetry, onSettings })`; the final `App` with a «Настройки» button outside a game and a version-warning notice.
+
+- [ ] **Step 1: Extend the API client**
+
+In `packages/web/src/api.ts` replace the first line with:
+```ts
+import type { ClientMessage, HealthResponse, ReviewData, ServerMessage, SettingsResponse, SettingsUpdate, SettingsView } from '@joseki-dojo/shared'
+```
+and append:
+```ts
+export async function fetchSettings(): Promise<SettingsView> {
+  const res = await fetch('/api/settings')
+  if (!res.ok) throw new Error(`Не удалось загрузить настройки: HTTP ${res.status}`)
+  return (await res.json()) as SettingsView
+}
+
+/** 200 and 400 both carry a SettingsResponse; anything else is a transport error. */
+export async function saveSettings(update: SettingsUpdate): Promise<SettingsResponse> {
+  const res = await fetch('/api/settings', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(update),
+  })
+  if (res.status !== 200 && res.status !== 400) throw new Error(`Не удалось сохранить настройки: HTTP ${res.status}`)
+  return (await res.json()) as SettingsResponse
+}
+```
+
+- [ ] **Step 2: Write the settings screen**
+
+`packages/web/src/screens/SettingsScreen.tsx`:
+```tsx
+import { useEffect, useState } from 'preact/hooks'
+import type { SettingsUpdate, SettingsView } from '@joseki-dojo/shared'
+import { fetchSettings, saveSettings } from '../api'
+
+type Status = { kind: 'idle' } | { kind: 'saving' } | { kind: 'saved' } | { kind: 'error'; text: string }
+type PathKey = keyof SettingsUpdate['katago']
+type VisitsKey = keyof SettingsUpdate['analysis']
+
+const PATH_FIELDS: { key: PathKey; label: string; models: boolean }[] = [
+  { key: 'path', label: 'Исполняемый файл KataGo', models: false },
+  { key: 'analysisConfig', label: 'Конфиг анализа', models: false },
+  { key: 'mainModel', label: 'Основная сеть', models: true },
+  { key: 'humanModel', label: 'Human-сеть', models: true },
+]
+
+const VISIT_FIELDS: { key: VisitsKey; label: string }[] = [
+  { key: 'reviewVisits', label: 'Визиты на позицию в разборе' },
+  { key: 'endVisits', label: 'Визиты для проверки конца дзёсеки' },
+]
+
+export function SettingsScreen({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [view, setView] = useState<SettingsView | null>(null)
+  const [form, setForm] = useState<SettingsUpdate | null>(null)
+  const [status, setStatus] = useState<Status>({ kind: 'idle' })
+
+  useEffect(() => {
+    fetchSettings()
+      .then((v) => {
+        setView(v)
+        setForm({ katago: { ...v.katago }, analysis: { ...v.analysis } })
+      })
+      .catch((e: Error) => setStatus({ kind: 'error', text: e.message }))
+  }, [])
+
+  if (!view || !form) {
+    return (
+      <main class="settings">
+        <p class={status.kind === 'error' ? 'hint error' : 'status'}>{status.kind === 'error' ? status.text : 'Загрузка настроек…'}</p>
+        <div class="row">
+          <button onClick={onClose}>Назад</button>
+        </div>
+      </main>
+    )
+  }
+
+  const setPath = (key: PathKey, value: string): void => setForm({ ...form, katago: { ...form.katago, [key]: value } })
+  const setVisits = (key: VisitsKey, value: string): void => setForm({ ...form, analysis: { ...form.analysis, [key]: Number(value) } })
+
+  const save = async (): Promise<void> => {
+    setStatus({ kind: 'saving' })
+    try {
+      const r = await saveSettings(form)
+      if (r.ok) {
+        setView(r.settings)
+        setStatus({ kind: 'saved' })
+        onSaved()
+      } else {
+        setStatus({ kind: 'error', text: r.reason })
+      }
+    } catch (e) {
+      setStatus({ kind: 'error', text: (e as Error).message })
+    }
+  }
+
+  return (
+    <main class="settings">
+      <h1>Настройки</h1>
+      <p class="meta">
+        Проверенная версия KataGo: {view.lockedVersion}. Запущена: {view.runningVersion ?? 'нет'}.
+      </p>
+      {view.versionWarning && <p class="notice">{view.versionWarning}</p>}
+      <fieldset>
+        <legend>Движок</legend>
+        {PATH_FIELDS.map((f) => (
+          <label class="field" key={f.key}>
+            {f.label}
+            <input
+              type="text"
+              spellcheck={false}
+              value={form.katago[f.key]}
+              list={f.models ? 'models' : undefined}
+              onInput={(e) => setPath(f.key, e.currentTarget.value)}
+            />
+          </label>
+        ))}
+        <datalist id="models">
+          {view.models.map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
+        <p class="hint">
+          Сети из папки engines/models можно выбрать из списка. Браузер не сообщает полный путь к файлу из окна выбора, поэтому путь вводится текстом.
+        </p>
+      </fieldset>
+      <fieldset>
+        <legend>Анализ</legend>
+        {VISIT_FIELDS.map((f) => (
+          <label class="field" key={f.key}>
+            {f.label}
+            <input type="number" min={1} value={form.analysis[f.key]} onInput={(e) => setVisits(f.key, e.currentTarget.value)} />
+          </label>
+        ))}
+      </fieldset>
+      <div class="row">
+        <button class="primary" disabled={status.kind === 'saving'} onClick={() => void save()}>
+          Сохранить и проверить
+        </button>
+        <button onClick={onClose}>Назад</button>
+      </div>
+      {status.kind === 'saving' && <p class="status">Запускаю KataGo с новыми настройками…</p>}
+      {status.kind === 'saved' && <p class="status">Сохранено, KataGo работает.</p>}
+      {status.kind === 'error' && <p class="hint error">{status.text}</p>}
+    </main>
+  )
+}
+```
+
+- [ ] **Step 3: Replace the engine screen and the app**
+
+Replace `packages/web/src/screens/EngineScreen.tsx` with:
+```tsx
+import type { HealthResponse } from '@joseki-dojo/shared'
+
+export interface EngineScreenProps {
+  health: HealthResponse
+  onRetry: () => void
+  onSettings: () => void
+}
+
+export function EngineScreen({ health, onRetry, onSettings }: EngineScreenProps) {
+  if (health.state === 'starting') {
+    return (
+      <main class="engine">
+        <p class="status">{health.reason ?? 'KataGo запускается…'}</p>
+      </main>
+    )
+  }
+  return (
+    <main class="engine">
+      <h1>KataGo не настроен</h1>
+      <p>{health.reason}</p>
+      <p>Скачайте проверенные версии командой в папке проекта и перезапустите сервер:</p>
+      <pre>npm run setup</pre>
+      <p>Или укажите пути к уже установленной KataGo и сетям в настройках.</p>
+      <div class="row">
+        <button class="primary" onClick={onSettings}>
+          Открыть настройки
+        </button>
+        <button onClick={onRetry}>Проверить снова</button>
+      </div>
+    </main>
+  )
+}
+```
+
+Replace `packages/web/src/App.tsx` with:
+```tsx
+import type { JSX } from 'preact'
+import { useEffect, useMemo, useState } from 'preact/hooks'
+import type { ClientMessage, HealthResponse, ReviewData, SessionView } from '@joseki-dojo/shared'
+import { DojoSocket, fetchHealth, fetchReview, fetchSettings } from './api'
+import { ErrorBanner } from './components/ErrorBanner'
+import { EngineScreen } from './screens/EngineScreen'
+import { GameScreen } from './screens/GameScreen'
+import { ReviewScreen } from './screens/ReviewScreen'
+import { SettingsScreen } from './screens/SettingsScreen'
+import { StartScreen } from './screens/StartScreen'
+
+interface Progress {
+  done: number
+  total: number
+}
+
+export function App() {
+  const [health, setHealth] = useState<HealthResponse | null>(null)
+  const [healthTick, setHealthTick] = useState(0)
+  const [session, setSession] = useState<SessionView | null>(null)
+  const [review, setReview] = useState<ReviewData | null>(null)
+  const [progress, setProgress] = useState<Progress | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [errorSeq, setErrorSeq] = useState(0)
+  const [connected, setConnected] = useState(true)
+  const [showSettings, setShowSettings] = useState(false)
+  const [versionWarning, setVersionWarning] = useState<string | null>(null)
+
+  const socket = useMemo(
+    () =>
+      new DojoSocket((msg) => {
+        switch (msg.type) {
+          case 'sessionState':
+            setSession(msg.session)
+            setError(null)
+            if (msg.session.status === 'playing') {
+              setReview(null)
+              setProgress(null)
+            }
+            break
+          case 'analysisProgress':
+            setProgress({ done: msg.done, total: msg.total })
+            break
+          case 'reviewReady':
+            fetchReview(msg.sessionId)
+              .then((r) => r && setReview(r))
+              .catch((e: Error) => setError(e.message))
+            break
+          case 'error':
+            setError(msg.message)
+            setErrorSeq((n) => n + 1)
+            break
+        }
+      }, setConnected),
+    [],
+  )
+
+  useEffect(() => {
+    socket.sessionId = session?.id ?? null
+  }, [socket, session?.id])
+
+  useEffect(() => {
+    let cancelled = false
+    const poll = async (): Promise<void> => {
+      try {
+        const h = await fetchHealth()
+        if (cancelled) return
+        setHealth(h)
+        if (h.state === 'starting') setTimeout(poll, 2000)
+      } catch {
+        if (!cancelled) setTimeout(poll, 2000)
+      }
+    }
+    void poll()
+    return () => {
+      cancelled = true
+    }
+  }, [healthTick])
+
+  // Spec 6.6: warn when the running KataGo is not the version pinned in katago.lock.json.
+  const ready = health?.state === 'ready'
+  useEffect(() => {
+    if (!ready) return
+    fetchSettings()
+      .then((s) => setVersionWarning(s.versionWarning))
+      .catch(() => undefined)
+  }, [ready, healthTick])
+
+  // A finished session whose review was prepared before this page loaded.
+  const finishedId = session?.status === 'finished' ? session.id : null
+  useEffect(() => {
+    if (finishedId) fetchReview(finishedId).then((r) => r && setReview(r)).catch(() => undefined)
+  }, [finishedId])
+
+  const send = (msg: ClientMessage): void => socket.send(msg)
+  const resetToStart = (): void => {
+    setSession(null)
+    setReview(null)
+    setProgress(null)
+    setError(null)
+  }
+
+  let screen: JSX.Element
+  if (showSettings) screen = <SettingsScreen onClose={() => setShowSettings(false)} onSaved={() => setHealthTick((n) => n + 1)} />
+  else if (!health) screen = <main><p class="status">Загрузка…</p></main>
+  else if (health.state !== 'ready')
+    screen = <EngineScreen health={health} onRetry={() => setHealthTick((n) => n + 1)} onSettings={() => setShowSettings(true)} />
+  else if (!session) screen = <StartScreen onStart={(settings) => send({ type: 'startSession', settings })} />
+  else if (session.status === 'playing') screen = <GameScreen session={session} errorSeq={errorSeq} send={send} />
+  else
+    screen = (
+      <ReviewScreen
+        review={review}
+        progress={progress}
+        onReplay={(turn) => send({ type: 'replayFrom', sessionId: session.id, turn })}
+        onNew={resetToStart}
+      />
+    )
+
+  const inGame = session?.status === 'playing'
+  const bannerText = connected ? error : 'Нет связи с сервером, переподключаюсь…'
+  const retry =
+    connected && session
+      ? () => {
+          setError(null)
+          send({ type: 'resync', sessionId: session.id })
+        }
+      : undefined
+
+  return (
+    <>
+      {bannerText && <ErrorBanner message={bannerText} onRetry={retry} />}
+      {!inGame && !showSettings && (
+        <header class="topbar">
+          <button onClick={() => setShowSettings(true)}>Настройки</button>
+        </header>
+      )}
+      {versionWarning && !showSettings && <p class="notice">{versionWarning}</p>}
+      {screen}
+    </>
+  )
+}
+```
+
+Append to `packages/web/src/styles.css`:
+```css
+.topbar { display: flex; justify-content: flex-end; max-width: 1200px; margin: 0 auto; padding: 8px 16px 0; }
+.notice { max-width: 1168px; margin: 8px auto 0; padding: 8px 12px; border-left: 4px solid var(--warning); background: var(--surface-2); }
+.settings { max-width: 760px; display: grid; gap: 16px; }
+.settings fieldset { border: 1px solid var(--border); border-radius: 8px; display: grid; gap: 12px; }
+.settings .field { display: grid; gap: 4px; }
+.settings input { font: 13px ui-monospace, Consolas, monospace; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+.settings input[type='text'] { width: 100%; }
+.settings input[type='number'] { width: 120px; }
+.error { color: var(--critical); }
+```
+
+- [ ] **Step 4: Typecheck, build and look at it**
+
+Run: `npm run typecheck`
+Expected: exits 0.
+Run: `npm run build`
+Expected: `✓ built`.
+With the smoke server (port 5179) and `npm run dev -w @joseki-dojo/web` running as in Task 17 Step 4, open `http://127.0.0.1:5173`, press «Настройки»: the four paths and both visit counts are shown, «Проверенная версия KataGo: 1.18.1. Запущена: 1.18.1.»; set «Основная сеть» to a path that does not exist and press «Сохранить и проверить» — the screen shows «Нет основной сети KataGo: …» and the game still starts afterwards. Stop both processes.
+
+- [ ] **Step 5: Milestone commit**
+
+```bash
+git add packages/web
+git commit -m "feat(web): add start, game, review and settings screens" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -5789,7 +6867,7 @@ git commit -m "feat(web): add loss bar and review screen" -m "Co-Authored-By: Cl
 - Create: `playwright.config.ts`, `e2e/config.e2e.json`, `e2e/game.spec.ts`
 
 **Interfaces:**
-- Consumes: the built web app (Tasks 15–17), the server entry point (Task 14), `packages/server/test/fake-katago.mjs` (Task 5).
+- Consumes: the built web app (Tasks 15–17a), the server entry point (Tasks 14, 14a), `packages/server/test/fake-katago.mjs` (Task 5).
 - Produces: `npm run e2e` — builds the web app, starts the server on `127.0.0.1:5180` with the fake engine, runs the browser tests.
 
 - [ ] **Step 1: Install the browser**
@@ -5867,61 +6945,47 @@ test('a click outside the zone shows a hint and plays nothing', async ({ page })
   await expect(page.getByText('Ходить можно только внутри выделенной зоны угла')).toBeVisible()
   await expect(page.getByText('ходов: 0')).toBeVisible()
 })
+
+test('settings show the pinned version and refuse a missing network', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Настройки' }).click()
+  await expect(page.getByText(/Проверенная версия KataGo: 1\.18\.1/)).toBeVisible()
+  await page.getByLabel('Основная сеть').fill('/nope/missing.bin.gz')
+  await page.getByRole('button', { name: 'Сохранить и проверить' }).click()
+  await expect(page.locator('.hint.error')).toBeVisible()
+  await page.getByRole('button', { name: 'Назад' }).click()
+  await expect(page.getByRole('button', { name: 'Начать' })).toBeVisible()
+})
 ```
 
 - [ ] **Step 4: Run**
 
 Run: `npm run e2e`
-Expected: `2 passed`.
+Expected: `3 passed`.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Stage the changes**
+
+No commit after this task (see "Commits" in Global Constraints):
 
 ```bash
 git add playwright.config.ts e2e
-git commit -m "test: add end-to-end browser test with the fake KataGo" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 19: KataGo setup script
+### Task 19: KataGo setup from the lock file
 
 **Files:**
-- Create: `scripts/setup/backends.ts`, `scripts/setup/katago-config.ts`, `scripts/setup/calibrate.ts`, `scripts/setup/download.ts`, `scripts/setup/setup.ts`
-- Test: `scripts/setup/backends.test.ts`, `scripts/setup/katago-config.test.ts`, `scripts/setup/calibrate.test.ts`, `scripts/setup/download.test.ts`
+- Create: `scripts/setup/katago-config.ts`, `scripts/setup/calibrate.ts`, `scripts/setup/download.ts`, `scripts/setup/setup.ts`
+- Test: `scripts/setup/katago-config.test.ts`, `scripts/setup/calibrate.test.ts`, `scripts/setup/download.test.ts`
 
 **Interfaces:**
-- Consumes: `MAIN_MODEL_FILE`, `HUMAN_MODEL_FILE` (Task 4); `KataGoEngine` (Task 5); `compareVersions`, `MIN_KATAGO_VERSION` (Task 6); `baseQuery` (Task 5); `StubEngine` (Task 8, tests only).
-- Produces: `npm run setup` (interactive) which writes `engines/…`, `engines/analysis.cfg` and `config.local.json`; helpers `BACKENDS`, `backendsFor(platform)`, `MAIN_MODEL_URL`, `HUMAN_MODEL_URL`, `analysisConfigText(opts)`, `searchThreadsFor(kind, cores)`, `visitsForBudget(vps, seconds?)`, `measureVisitsPerSecond(engine, visits?)`, `download(url, dest, log?)`, `unzip(zip, dir)`, `findKatagoBinary(dir)`.
+- Consumes: `loadLock`, `buildsFor`, `versionWarning`, `LockedBuild` (Task 14a); `KataGoEngine`, `AnalysisEngine`, `baseQuery` (Task 5); `compareVersions`, `MIN_KATAGO_VERSION` (Task 6); `StubEngine` (Task 8, tests only).
+- Produces: `npm run setup` (interactive; answers may be piped) which writes `engines/…`, `engines/analysis.cfg` and `config.local.json`; helpers `analysisConfigText(opts)`, `searchThreadsFor(kind, cores)`, `visitsForBudget(vps, seconds?)`, `measureVisitsPerSecond(engine, visits?)`, `sha256File(file)`, `download(url, dest, sha256, log?)`, `unzip(zip, dir)`, `findKatagoBinary(dir)`.
 
-Deviation from `katago benchmark` (recorded in spec 6.4): its output is meant for people, not parsing, and it optimizes threads for long searches. The script instead sets threads from the backend kind and measures visits per second with a real query, which is what the `reviewVisits` / `endVisits` budget needs.
+Every file comes from `katago.lock.json` and is accepted only if its SHA-256 matches. Threads are set from the build kind and the speed is measured with a real query instead of parsing `katago benchmark` (spec 6.4).
 
 - [ ] **Step 1: Write the failing tests**
-
-`scripts/setup/backends.test.ts`:
-```ts
-import { describe, expect, it } from 'vitest'
-import { BACKENDS, backendsFor, HUMAN_MODEL_URL, MAIN_MODEL_URL } from './backends'
-
-describe('backends', () => {
-  it('offers CPU, OpenCL and CUDA builds for Windows and Linux only', () => {
-    expect(backendsFor('win32').map((b) => b.id)).toEqual(['eigenavx2', 'opencl', 'cuda'])
-    expect(backendsFor('linux').map((b) => b.id)).toEqual(['eigenavx2', 'opencl', 'cuda'])
-    expect(backendsFor('darwin')).toEqual([])
-  })
-
-  it('points at release zips for the matching platform', () => {
-    for (const b of BACKENDS) {
-      expect(b.url).toMatch(/^https:\/\/github\.com\/lightvector\/KataGo\/releases\/download\/v1\.18\.[12]\/katago-.+\.zip$/)
-      expect(b.url).toContain(b.platform === 'win32' ? 'windows-x64' : 'linux-x64')
-    }
-  })
-
-  it('pins the networks', () => {
-    expect(MAIN_MODEL_URL).toBe('https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b18c384nbt-s9996604416-d4316597426.bin.gz')
-    expect(HUMAN_MODEL_URL).toBe('https://github.com/lightvector/KataGo/releases/download/v1.15.0/b18c384nbt-humanv0.bin.gz')
-  })
-})
-```
 
 `scripts/setup/katago-config.test.ts`:
 ```ts
@@ -5975,16 +7039,67 @@ describe('measureVisitsPerSecond', () => {
 
 `scripts/setup/download.test.ts`:
 ```ts
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
-import { download, findKatagoBinary } from './download'
+import { afterEach, describe, expect, it } from 'vitest'
+import { download, findKatagoBinary, sha256File } from './download'
 
 const temp = (): string => mkdtempSync(join(tmpdir(), 'joseki-setup-'))
+const sha = (b: Buffer): string => createHash('sha256').update(b).digest('hex')
+const closers: (() => Promise<void>)[] = []
 
-describe('download helpers', () => {
-  it('finds the KataGo binary in nested folders', () => {
+async function serve(body: Buffer): Promise<string> {
+  const server = createServer((_req, res) => {
+    res.setHeader('content-length', body.length)
+    res.end(body)
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  closers.push(() => new Promise<void>((resolve) => server.close(() => resolve())))
+  return `http://127.0.0.1:${(server.address() as AddressInfo).port}/file.bin`
+}
+
+afterEach(async () => {
+  await Promise.all(closers.splice(0).map((close) => close()))
+})
+
+describe('download', () => {
+  const body = Buffer.from('katago network bytes')
+
+  it('downloads a file and verifies its checksum', async () => {
+    const dest = join(temp(), 'net.bin.gz')
+    await download(await serve(body), dest, sha(body), () => undefined)
+    expect(readFileSync(dest)).toEqual(body)
+    expect(await sha256File(dest)).toBe(sha(body))
+  })
+
+  it('rejects a wrong checksum and leaves nothing behind', async () => {
+    const dest = join(temp(), 'net.bin.gz')
+    await expect(download(await serve(body), dest, sha(Buffer.from('other')), () => undefined)).rejects.toThrow(/SHA-256/)
+    expect(existsSync(dest)).toBe(false)
+    expect(existsSync(`${dest}.part`)).toBe(false)
+  })
+
+  it('re-checks an existing file instead of downloading it', async () => {
+    const dest = join(temp(), 'net.bin.gz')
+    writeFileSync(dest, body)
+    const logs: string[] = []
+    await download('https://invalid.example/never-fetched', dest, sha(body), (l) => logs.push(l))
+    expect(logs).toEqual(['Уже скачано и проверено: net.bin.gz'])
+  })
+
+  it('refuses an existing file with a different checksum', async () => {
+    const dest = join(temp(), 'net.bin.gz')
+    writeFileSync(dest, 'tampered')
+    await expect(download('https://invalid.example/never-fetched', dest, sha(body), () => undefined)).rejects.toThrow(/katago\.lock\.json/)
+  })
+})
+
+describe('findKatagoBinary', () => {
+  it('finds the executable in nested folders', () => {
     const dir = temp()
     const nested = join(dir, 'katago-v1.18.1', 'bin')
     mkdirSync(nested, { recursive: true })
@@ -5993,65 +7108,19 @@ describe('download helpers', () => {
     expect(findKatagoBinary(dir)).toBe(join(nested, name))
     expect(findKatagoBinary(temp())).toBeNull()
   })
-
-  it('skips files that are already downloaded', async () => {
-    const file = join(temp(), 'model.bin.gz')
-    writeFileSync(file, 'x')
-    const logs: string[] = []
-    await download('https://invalid.example/never-fetched', file, (l) => logs.push(l))
-    expect(logs).toEqual(['Уже скачано: model.bin.gz'])
-  })
 })
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `npx vitest run scripts`
-Expected: FAIL — `Failed to resolve import "./backends"` (and the other modules).
+Expected: FAIL — `Failed to resolve import "./katago-config"` (and the other modules).
 
 - [ ] **Step 3: Implement**
 
-`scripts/setup/backends.ts`:
-```ts
-import { HUMAN_MODEL_FILE, MAIN_MODEL_FILE } from '../../packages/server/src/config'
-
-export type BackendKind = 'cpu' | 'gpu'
-
-export interface Backend {
-  id: string
-  label: string
-  platform: 'win32' | 'linux'
-  kind: BackendKind
-  url: string
-}
-
-const release = (tag: string, file: string): string => `https://github.com/lightvector/KataGo/releases/download/${tag}/${file}`
-
-const LABEL = {
-  eigenavx2: 'CPU (AVX2) — работает на любом компьютере, медленнее всего',
-  opencl: 'OpenCL — видеокарты AMD, NVIDIA и Intel',
-  cuda: 'CUDA 12.8 + cuDNN 9.8 — NVIDIA (CUDA и cuDNN должны быть установлены)',
-}
-
-// v1.18.2 re-released only the CUDA builds; every other backend comes from v1.18.1.
-export const BACKENDS: readonly Backend[] = [
-  { id: 'eigenavx2', label: LABEL.eigenavx2, platform: 'win32', kind: 'cpu', url: release('v1.18.1', 'katago-v1.18.1-eigenavx2-windows-x64.zip') },
-  { id: 'opencl', label: LABEL.opencl, platform: 'win32', kind: 'gpu', url: release('v1.18.1', 'katago-v1.18.1-opencl-windows-x64.zip') },
-  { id: 'cuda', label: LABEL.cuda, platform: 'win32', kind: 'gpu', url: release('v1.18.2', 'katago-v1.18.2-cuda12.8-cudnn9.8.0-windows-x64.zip') },
-  { id: 'eigenavx2', label: LABEL.eigenavx2, platform: 'linux', kind: 'cpu', url: release('v1.18.1', 'katago-v1.18.1-eigenavx2-linux-x64.zip') },
-  { id: 'opencl', label: LABEL.opencl, platform: 'linux', kind: 'gpu', url: release('v1.18.1', 'katago-v1.18.1-opencl-linux-x64.zip') },
-  { id: 'cuda', label: LABEL.cuda, platform: 'linux', kind: 'gpu', url: release('v1.18.2', 'katago-v1.18.2-cuda12.8-cudnn9.8.0-linux-x64.zip') },
-]
-
-export const backendsFor = (platform: string): Backend[] => BACKENDS.filter((b) => b.platform === platform)
-
-export const MAIN_MODEL_URL = `https://media.katagotraining.org/uploaded/networks/models/kata1/${MAIN_MODEL_FILE}`
-export const HUMAN_MODEL_URL = release('v1.15.0', HUMAN_MODEL_FILE)
-```
-
 `scripts/setup/katago-config.ts`:
 ```ts
-import type { BackendKind } from './backends'
+import type { LockedBuild } from '../../packages/server/src/engine/lock'
 
 export const ANALYSIS_THREADS = 2
 
@@ -6075,7 +7144,7 @@ export function analysisConfigText(o: AnalysisCfgOptions): string {
 }
 
 /** CPU: split the logical cores between the analysis threads; GPU: 8 search threads per analysis thread. */
-export function searchThreadsFor(kind: BackendKind, logicalCores: number): number {
+export function searchThreadsFor(kind: LockedBuild['kind'], logicalCores: number): number {
   return kind === 'cpu' ? Math.max(1, Math.floor(logicalCores / ANALYSIS_THREADS)) : 8
 }
 ```
@@ -6113,16 +7182,36 @@ export async function measureVisitsPerSecond(engine: AnalysisEngine, visits = 80
 
 `scripts/setup/download.ts`:
 ```ts
-import { createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, statSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
-import { Readable, Transform } from 'node:stream'
+import { Readable, Transform, Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web'
 import extractZip from 'extract-zip'
 
-export async function download(url: string, dest: string, log: (line: string) => void = console.log): Promise<void> {
-  if (existsSync(dest) && statSync(dest).size > 0) {
-    log(`Уже скачано: ${basename(dest)}`)
+export async function sha256File(file: string): Promise<string> {
+  const hash = createHash('sha256')
+  await pipeline(
+    createReadStream(file),
+    new Writable({
+      write(chunk: Buffer, _encoding, done) {
+        hash.update(chunk)
+        done()
+      },
+    }),
+  )
+  return hash.digest('hex')
+}
+
+/** Downloads `url` to `dest` and accepts it only if its SHA-256 matches; an existing file is re-checked instead. */
+export async function download(url: string, dest: string, sha256: string, log: (line: string) => void = console.log): Promise<void> {
+  const name = basename(dest)
+  if (existsSync(dest)) {
+    if ((await sha256File(dest)) !== sha256) {
+      throw new Error(`${name}: контрольная сумма не совпадает с katago.lock.json (файл повреждён или другой версии). Удалите его и запустите setup снова.`)
+    }
+    log(`Уже скачано и проверено: ${name}`)
     return
   }
   mkdirSync(dirname(dest), { recursive: true })
@@ -6130,21 +7219,28 @@ export async function download(url: string, dest: string, log: (line: string) =>
   const res = await fetch(url)
   if (!res.ok || !res.body) throw new Error(`Не удалось скачать ${url}: HTTP ${res.status}`)
   const total = Number(res.headers.get('content-length') ?? 0)
+  const hash = createHash('sha256')
   let received = 0
   let shown = -1
-  const progress = new Transform({
+  const meter = new Transform({
     transform(chunk: Buffer, _encoding, done) {
+      hash.update(chunk)
       received += chunk.length
       const pct = total > 0 ? Math.floor((received / total) * 100) : -1
       if (pct >= 0 && pct % 10 === 0 && pct !== shown) {
         shown = pct
-        log(`  ${basename(dest)}: ${pct}%`)
+        log(`  ${name}: ${pct}%`)
       }
       done(null, chunk)
     },
   })
   const partial = `${dest}.part`
-  await pipeline(Readable.fromWeb(res.body as unknown as NodeReadableStream), progress, createWriteStream(partial))
+  await pipeline(Readable.fromWeb(res.body as unknown as NodeReadableStream), meter, createWriteStream(partial))
+  const actual = hash.digest('hex')
+  if (actual !== sha256) {
+    rmSync(partial, { force: true })
+    throw new Error(`${name}: SHA-256 ${actual} не совпадает с katago.lock.json (${sha256})`)
+  }
   renameSync(partial, dest)
 }
 
@@ -6174,10 +7270,9 @@ import { availableParallelism } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
-import { HUMAN_MODEL_FILE, MAIN_MODEL_FILE } from '../../packages/server/src/config'
 import { KataGoEngine } from '../../packages/server/src/engine/engine'
 import { compareVersions, MIN_KATAGO_VERSION } from '../../packages/server/src/engine/health'
-import { backendsFor, HUMAN_MODEL_URL, MAIN_MODEL_URL, type BackendKind } from './backends'
+import { buildsFor, loadLock, versionWarning, type LockedBuild } from '../../packages/server/src/engine/lock'
 import { measureVisitsPerSecond, visitsForBudget } from './calibrate'
 import { download, findKatagoBinary, unzip } from './download'
 import { analysisConfigText, searchThreadsFor } from './katago-config'
@@ -6219,42 +7314,43 @@ function prompter(): { ask: (question: string) => Promise<string>; close: () => 
 }
 
 async function main(): Promise<void> {
+  const lock = loadLock()
   const rl = prompter()
   const existing = (existsSync(configFile) ? JSON.parse(readFileSync(configFile, 'utf8')) : {}) as Json
   const existingKatago = (existing.katago ?? {}) as Json
   const knownPath = typeof existingKatago.path === 'string' && existsSync(existingKatago.path) ? existingKatago.path : null
 
-  console.log('Настройка KataGo для Joseki Dojo\n')
-  const answer = await rl.ask(`Путь к установленному KataGo (Enter — ${knownPath ?? 'скачать'}): `)
+  console.log(`Настройка KataGo ${lock.katago.version} для Joseki Dojo (версии из katago.lock.json)\n`)
+  const answer = await rl.ask(`Путь к установленной KataGo (Enter — ${knownPath ?? 'скачать проверенную версию'}): `)
   let katagoPath: string
-  let kind: BackendKind
+  let kind: LockedBuild['kind']
   if (answer || knownPath) {
     katagoPath = resolve(answer || (knownPath as string))
     if (!existsSync(katagoPath)) throw new Error(`Файл не найден: ${katagoPath}`)
     kind = (await rl.ask('Это CPU-сборка (eigen)? [y/N]: ')).toLowerCase() === 'y' ? 'cpu' : 'gpu'
   } else {
-    const options = backendsFor(process.platform)
-    if (options.length === 0) throw new Error(`Для ${process.platform} нет готовых сборок KataGo: установите его сами и укажите путь.`)
+    const options = buildsFor(lock, process.platform)
+    if (options.length === 0) throw new Error(`Для ${process.platform} нет готовых сборок KataGo: установите её сами и укажите путь.`)
     options.forEach((b, i) => console.log(`  ${i + 1}) ${b.label}`))
-    const backend = options[Number(await rl.ask(`Бэкенд [1-${options.length}]: `)) - 1]
-    if (!backend) throw new Error('Нет такого варианта')
-    const zip = join(enginesDir, 'downloads', basename(new URL(backend.url).pathname))
-    await download(backend.url, zip)
-    const dir = join(enginesDir, `katago-${backend.id}`)
+    const build = options[Number(await rl.ask(`Бэкенд [1-${options.length}]: `)) - 1]
+    if (!build) throw new Error('Нет такого варианта')
+    const zip = join(enginesDir, 'downloads', basename(new URL(build.url).pathname))
+    await download(build.url, zip, build.sha256)
+    const dir = join(enginesDir, `katago-${lock.katago.version}-${build.id}`)
     await unzip(zip, dir)
     const bin = findKatagoBinary(dir)
     if (!bin) throw new Error(`В архиве нет исполняемого файла KataGo: ${zip}`)
     if (process.platform !== 'win32') chmodSync(bin, 0o755)
     katagoPath = bin
-    kind = backend.kind
+    kind = build.kind
   }
-  const customModel = await rl.ask('Путь к своей основной сети (Enter — скачать b18c384nbt): ')
+  const customModel = await rl.ask(`Путь к своей основной сети (Enter — ${lock.models.main.file}): `)
   rl.close()
 
-  const mainModel = customModel ? resolve(customModel) : join(enginesDir, 'models', MAIN_MODEL_FILE)
-  if (!customModel) await download(MAIN_MODEL_URL, mainModel)
-  const humanModel = join(enginesDir, 'models', HUMAN_MODEL_FILE)
-  await download(HUMAN_MODEL_URL, humanModel)
+  const mainModel = customModel ? resolve(customModel) : join(enginesDir, 'models', lock.models.main.file)
+  if (!customModel) await download(lock.models.main.url, mainModel, lock.models.main.sha256)
+  const humanModel = join(enginesDir, 'models', lock.models.human.file)
+  await download(lock.models.human.url, humanModel, lock.models.human.sha256)
 
   const logDir = join(root, 'data', 'katago-logs')
   mkdirSync(logDir, { recursive: true })
@@ -6269,7 +7365,9 @@ async function main(): Promise<void> {
   engine.start()
   try {
     const version = await engine.version()
-    if (compareVersions(version, MIN_KATAGO_VERSION) < 0) throw new Error(`Нужен KataGo ${MIN_KATAGO_VERSION} или новее, установлен ${version}`)
+    if (compareVersions(version, MIN_KATAGO_VERSION) < 0) throw new Error(`Нужна KataGo ${MIN_KATAGO_VERSION} или новее, установлена ${version}`)
+    const warning = versionWarning(lock, version)
+    if (warning) console.log(`\nВнимание: ${warning}`)
     const vps = await measureVisitsPerSecond(engine)
     const visits = visitsForBudget(vps)
     console.log(`Скорость ≈ ${Math.round(vps)} визитов/с → разбор: ${visits.reviewVisits}, проверка конца: ${visits.endVisits} визитов`)
@@ -6299,11 +7397,11 @@ Expected: PASS.
 Run: `npm test && npm run typecheck`
 Expected: all unit tests pass; typecheck exits 0.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Milestone commit**
 
 ```bash
-git add scripts
-git commit -m "feat: add interactive KataGo setup with download and speed calibration" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add scripts playwright.config.ts e2e
+git commit -m "feat: add pinned KataGo setup with checksum verification; add e2e test" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -6321,7 +7419,7 @@ git commit -m "feat: add interactive KataGo setup with download and speed calibr
 
 The answers are: Enter (download), `1` (CPU AVX2 — works on any machine; the user can rerun setup with a GPU backend later), Enter (default network).
 Run: `printf '\n1\n\n' | npm run setup`
-Expected: three downloads (~6 MB zip, ~98 MB and ~99 MB networks), `Скорость ≈ … визитов/с → разбор: …`, `Готово: …config.local.json`. If KataGo fails to start, read its lines prefixed `[katago]` and fix the cause before continuing.
+Expected: three downloads (~6 MB zip, ~98 MB and ~99 MB networks), each checked against `katago.lock.json`, `Скорость ≈ … визитов/с → разбор: …`, `Готово: …config.local.json`. If KataGo fails to start, read its lines prefixed `[katago]` and fix the cause before continuing.
 
 - [ ] **Step 2: Write the integration tests**
 
@@ -6349,6 +7447,7 @@ import { loadConfig } from '../src/config'
 import { engineCommand } from '../src/engine/command'
 import { KataGoEngine } from '../src/engine/engine'
 import { checkEngine } from '../src/engine/health'
+import { loadLock } from '../src/engine/lock'
 import { baseQuery } from '../src/engine/query'
 
 const CONFIG_FILE = fileURLToPath(new URL('../../../config.local.json', import.meta.url))
@@ -6375,6 +7474,10 @@ describe.skipIf(!configured)('real KataGo', () => {
 
   it('passes the startup checks', async () => {
     expect(await checkEngine(config!, withHuman)).toEqual({ state: 'ready', reason: null })
+  })
+
+  it('runs the KataGo version pinned in katago.lock.json', async () => {
+    expect(await withHuman.version()).toBe(loadLock().katago.version)
   })
 
   it('reports score and ownership from Black’s point of view even with White to move', async () => {
@@ -6419,7 +7522,7 @@ describe.skipIf(!configured)('real KataGo', () => {
 - [ ] **Step 3: Run the integration tests**
 
 Run: `npm run test:katago`
-Expected: 4 passed.
+Expected: 5 passed.
 If only «gives the same plain analysis…» fails: **stop and report to the user** — spec 6.5 then requires a second KataGo process (one for analysis, one for the bot), which changes memory use and the server wiring; do not implement it without their decision. Any other failure is a bug to fix (use superpowers:systematic-debugging).
 
 - [ ] **Step 4: Play a real session**
@@ -6456,9 +7559,15 @@ npm start       # затем откройте http://127.0.0.1:5179
 
 `npm run setup` можно запускать повторно, например чтобы перейти с CPU на видеокарту. Уже скачанные файлы повторно не качаются.
 
+## Версии KataGo
+
+Проверенные версии KataGo и сетей записаны в `katago.lock.json` вместе с контрольными суммами SHA-256. `npm run setup` качает только их и сверяет суммы. Обновление версии — отдельный PR: правка lock-файла и успешный `npm run test:katago`.
+
 ## Настройки
 
-Файл `config.local.json` создаёт `npm run setup`; образец со значениями по умолчанию — `config.example.json`.
+Пути к KataGo и сетям и глубину анализа можно поменять на экране «Настройки». Приложение перезапустит KataGo с новыми путями и проверит его, а при ошибке вернёт прежние пути. Если запущена не та версия KataGo, что в lock-файле, приложение работает, но предупреждает об этом.
+
+Остальное настраивается в `config.local.json` (его создаёт `npm run setup`; образец со значениями по умолчанию — `config.example.json`).
 
 | Поле | Что задаёт |
 |---|---|
@@ -6508,16 +7617,18 @@ Body: what was built, the Task 20 Step 4 observations, the spec 6.5 result, how 
 
 | Spec section | Tasks |
 |---|---|
-| 3 Scope (free mode, empty board, review, replay, storage, setup) | 12, 13, 15–17, 7, 19 |
+| 3 Scope (free mode, empty board, review, replay, storage, setup, lock, settings) | 7, 12, 13, 14a, 15–17a, 19 |
 | 4 Terms (zone, tenuki, joseki started, numbering) | 2, 10 |
-| 5 Architecture (packages, modules, protocol) | 1–14 |
+| 5 Architecture (packages, modules, protocol) | 1–14a |
 | 6.1–6.3 KataGo requirements, launch, queries | 5, 6, 8, 9, 12 |
 | 6.4 Setup | 19, 20 |
 | 6.5 Human model check | 20 |
+| 6.6 Version pinning | 14a, 19, 20 |
 | 7 Start screen | 15 |
+| 7a Settings screen | 14a, 17a, 18 |
 | 8.1–8.5 Board, start, user tenuki, bot move, end of joseki | 8, 10, 12, 16 |
-| 9.1–9.6 Analysis, loss, thresholds, review screen, punishment, replay | 9, 11, 13, 17, 12 |
+| 9.1–9.6 Analysis, loss, thresholds, review screen, punishment, replay | 9, 11, 12, 13, 17 |
 | 10 Storage | 7 |
-| 11 Failure handling | 5, 6, 12, 14, 15 |
+| 11 Failure handling | 5, 6, 12, 14, 14a, 15 |
 | 12 Testing | every task; e2e 18; real engine 20 |
 | 13 Hooks for parts 2–4 | 7 (`missed_punishments`, `mode`), 11 (`ReviewData` facts), 12 (`initialMoves`) |
