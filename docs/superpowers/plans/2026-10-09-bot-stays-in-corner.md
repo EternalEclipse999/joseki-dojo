@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Constants, exact names and values: `SETTLED_SHARE = 0.7`, `CALM_SHARE = 0.2`, `MISTAKE_TENUKI_RATE = 0.05`, `LOCAL_RADIUS = 4` (Chebyshev distance).
+- Constants, exact names and values: `SETTLED_SHARE = 0.6`, `CALM_SHARE = 0.2`, `MISTAKE_TENUKI_RATE = 0.05`, `LOCAL_RADIUS = 4` (Chebyshev distance).
 - Tenuki share `s = p_out / (p_in + p_out)`: `p_in` = human policy over legal zone points, `p_out` = over legal points outside the zone plus pass.
 - Before the joseki starts the bot never tenukis (unless the zone has no legal point).
 - Local area: legal zone points within Chebyshev distance ≤ 4 of any stone in the zone; with no stone in the zone, of the corner's 4-4 point (TL `[3,3]`, TR `[15,3]`, BL `[3,15]`, BR `[15,15]`); with no legal point in the local area, the whole zone.
@@ -161,7 +161,7 @@ import { indexToVertex, inZone, PASS_INDEX, zoneVertices, type Color, type Corne
 import type { Rng } from './rng'
 
 /** At this share of the policy outside the zone the corner is settled: the bot plays elsewhere. */
-export const SETTLED_SHARE = 0.7
+export const SETTLED_SHARE = 0.6
 /** Below this share the position is sharp: the bot always answers in the corner. */
 export const CALM_SHARE = 0.2
 /** In a calm corner that is not settled the bot leaves this often: a mistake for the player to punish. */
@@ -404,4 +404,4 @@ git commit -m "feat(session): propose the end when the bot leaves the corner; dr
 
 ### Task 3 (controller): calibration on real KataGo
 
-Not a subagent task. With `config.local.json` pointing at KataGo 1.18.1, measure the tenuki share for `rank_5k`, `rank_6k`, `rank_7k`, `rank_9k` along the lines of the design's section 2 (4-4 low approach, 4-4 3-3 invasion, 3-4 low and high approach) and the screenshot position `D16`. Check: no share ≥ 0.7 in the middle of a sharp sequence; the bot's first reply to `D16` stays within 4 lines of D16. Report the numbers in the PR description; change a constant only with the user's agreement.
+Not a subagent task. With `config.local.json` pointing at KataGo 1.18.1, measure the tenuki share for `rank_5k`, `rank_6k`, `rank_7k`, `rank_9k` along the lines of the design's section 2 (4-4 low approach, 4-4 3-3 invasion, 3-4 low and high approach) and the screenshot position `D16`. Check: no share ≥ 0.6 in the middle of a sharp sequence; the bot's first reply to `D16` stays within 4 lines of D16. Report the numbers in the PR description; change a constant only with the user's agreement.
