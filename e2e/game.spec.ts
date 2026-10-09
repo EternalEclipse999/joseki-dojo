@@ -10,21 +10,32 @@ async function startAsBlackTopRight(page: Page): Promise<void> {
 
 const vertex = (page: Page, x: number, y: number) => page.locator(`.shudan-vertex[data-x="${x}"][data-y="${y}"]`)
 
-test('play a move, accept the end proposal and replay from the review', async ({ page }) => {
+test('the bot leaves the corner, the end is proposed and the review replays from a move', async ({ page }) => {
   await startAsBlackTopRight(page)
   await vertex(page, 15, 3).click()
-
-  // The fake engine's best move is D4, outside the top-right zone, so the end is proposed after the bot replies.
-  await expect(page.getByText('Похоже, дзёсеки закончилось.')).toBeVisible()
+  await expect(page.getByText('ходов: 2')).toBeVisible()
+  // Out of the bot's local area (more than 4 lines from Q16). With the joseki started, the fake engine's uniform
+  // policy puts two thirds of the mass outside the zone: the corner counts as settled and the bot leaves it.
+  await vertex(page, 8, 10).click()
+  await expect(page.getByText('Бот сыграл в другом месте.')).toBeVisible()
   await page.getByRole('button', { name: 'К разбору' }).click()
 
   await expect(page.getByText(/Вы потеряли/)).toBeVisible()
-  await expect(page.locator('.lossbar g.slot')).toHaveCount(2)
+  await expect(page.locator('.lossbar g.slot')).toHaveCount(4)
   await page.getByRole('button', { name: 'Показать ветку' }).click()
   await expect(page.getByText(/Ветка: 1 из/)).toBeVisible()
 
   await page.getByRole('button', { name: 'Переиграть с этого хода' }).click()
   await expect(page.getByText('Ваш ход (чёрные)')).toBeVisible()
+})
+
+test('«Закончить» opens the review at once', async ({ page }) => {
+  await startAsBlackTopRight(page)
+  await vertex(page, 15, 3).click()
+  await expect(page.getByText('ходов: 2')).toBeVisible()
+  await page.getByRole('button', { name: 'Закончить' }).click()
+  await expect(page.getByText(/Вы потеряли/)).toBeVisible()
+  await expect(page.locator('.lossbar g.slot')).toHaveCount(2)
 })
 
 test('a click outside the zone shows a hint and plays nothing', async ({ page }) => {

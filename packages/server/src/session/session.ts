@@ -1,6 +1,6 @@
 import { inZone, nextColor, Position, type Actor, type Color, type Corner, type Move, type MoveVertex, type PlayedMove, type SessionView } from '@joseki-dojo/shared'
 import { movesBefore, type SessionRecord } from '../store/records'
-import { josekiStartedIn } from './end-detection'
+import { josekiStartedIn } from './joseki-start'
 
 export type SessionErrorCode = 'bad_request' | 'outside_zone' | 'not_your_turn' | 'session_not_found' | 'session_finished'
 

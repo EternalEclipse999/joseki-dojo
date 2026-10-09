@@ -48,13 +48,6 @@ describe('AnalysisScheduler', () => {
     await new AnalysisScheduler(engine, repo, { reviewVisits: 50, endVisits: 5 }).position(rec, 0)
     expect(engine.queries.map((q) => q.maxVisits)).toEqual([10, 50])
   })
-
-  it('probes a pass by the side to move', async () => {
-    const { engine, rec, scheduler } = setup()
-    await scheduler.passProbe(rec, 1)
-    expect(engine.queries[0]).toMatchObject({ moves: [['B', 'Q16'], ['W', 'R14'], ['B', 'pass']], maxVisits: 5 })
-    expect(engine.queries[0].includeOwnership).toBeUndefined()
-  })
 })
 
 describe('compactAnalysis', () => {

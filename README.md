@@ -64,7 +64,7 @@ Other settings live in `config.local.json` (defaults: `config.example.json`):
 
 | Field | Meaning |
 |---|---|
-| `analysis.reviewVisits` / `endVisits` | analysis depth for the review and for the end-of-joseki check |
+| `analysis.reviewVisits` / `endVisits` | analysis depth for the review / for the Tenuki button |
 | `thresholds` | inaccuracy / mistake / blunder limits and the "punished" limit, in points |
 | `bot.defaultRank`, `bot.temperature` | the bot's default rank and the spread of its moves |
 | `maxSessionMoves` | safety limit: after this many moves the game goes to the review |

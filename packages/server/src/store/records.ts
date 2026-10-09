@@ -12,7 +12,8 @@ export interface SessionRecord {
   summary: ReviewSummary | null
 }
 
-export type AnalysisKind = 'position' | 'pass_probe'
+/** `migrations.ts` still allows `pass_probe` rows left by v0.1.0; they are never read or written now. */
+export type AnalysisKind = 'position'
 
 export interface StoredMoveInfo {
   move: string

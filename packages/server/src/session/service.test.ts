@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import { gtpToVertex, inZone, Position, zoneVertices, type ServerMessage, type SessionSettings, type SessionView, type Vertex } from '@joseki-dojo/shared'
-import { isHumanQuery, isPassProbe, isTenukiQuery, StubEngine, testConfig } from '../../test/helpers'
+import { gtpToVertex, inZone, Position, vertexToIndex, zoneVertices, type ServerMessage, type SessionSettings, type SessionView, type Vertex } from '@joseki-dojo/shared'
+import { isHumanQuery, isTenukiQuery, StubEngine, testConfig } from '../../test/helpers'
 import { AnalysisScheduler } from '../analysis/scheduler'
 import { HumanBot } from '../bot/bot'
 import { mulberry32 } from '../bot/rng'
 import type { AppConfig } from '../config'
 import { EngineError } from '../engine/engine'
+import type { KataGoQueryBody } from '../engine/katago-types'
 import { openDb } from '../store/db'
 import { SessionRepo } from '../store/repo'
 import { SessionService } from './service'
@@ -48,6 +49,23 @@ const codeOf = (fn: () => unknown): string | null => {
     return (err as { code?: string }).code ?? 'no-code'
   }
   return null
+}
+
+/** Human policy for the top-right corner: `out` of the mass on D4 (outside the zone), the rest spread over the zone. */
+function cornerPolicy(q: KataGoQueryBody, out: number): number[] {
+  const taken = new Set<number>()
+  for (const [, gtp] of q.moves) {
+    const v = gtpToVertex(gtp)
+    if (v !== 'pass') taken.add(vertexToIndex(v))
+  }
+  const free = zoneVertices('TR').map(vertexToIndex).filter((i) => !taken.has(i))
+  const p = new Array<number>(362).fill(0)
+  for (const i of taken) p[i] = -1
+  for (const i of free) p[i] = (1 - out) / free.length
+  // D4 may already be taken by an earlier tenuki: use the next free point outside the zone.
+  const spot = ([[3, 15], [3, 14], [4, 15]] as Vertex[]).map(vertexToIndex).find((i) => !taken.has(i))!
+  p[spot] = out
+  return p
 }
 
 /** A free, legal point of the TR zone in the current position. */
@@ -103,34 +121,57 @@ describe('SessionService', () => {
     engine.release()
   })
 
-  it('proposes the end when both analyses point outside the zone', async () => {
-    const { service } = setup()
+  it('proposes the end when the bot leaves the corner', async () => {
+    const { service, engine } = setup()
+    engine.human = (q) => cornerPolicy(q, 0.9)
     const v = service.start(settings())
     service.playUserMove(v.id, [15, 3])
-    await vi.waitFor(() => expect(service.view(v.id).endProposed).toBe(true))
-    expect(service.view(v.id).moves).toHaveLength(2)
+    await vi.waitFor(() => expect(service.view(v.id).moves).toHaveLength(2))
+    expect(service.view(v.id).endProposed).toBe(false) // the joseki had not started: the bot answered in the corner
+    service.playUserMove(v.id, freeZonePoint(service.view(v.id)))
+    await vi.waitFor(() => expect(service.view(v.id).moves).toHaveLength(4))
+    expect(service.view(v.id).moves[3]).toMatchObject({ actor: 'bot', inZone: false })
+    expect(service.view(v.id).endProposed).toBe(true)
   })
 
-  it('does not propose the end while the best move stays in the zone', async () => {
+  it('does not propose the end while the bot answers in the corner', async () => {
     const { service, engine } = setup()
-    engine.best = (q) => (isTenukiQuery(q) ? q.allowMoves![0].moves[0] : 'R17')
+    engine.human = (q) => cornerPolicy(q, 0.1)
     const v = service.start(settings())
     service.playUserMove(v.id, [15, 3])
-    await vi.waitFor(() => expect(engine.queries.some(isPassProbe)).toBe(true))
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await vi.waitFor(() => expect(service.view(v.id).moves).toHaveLength(2))
+    service.playUserMove(v.id, freeZonePoint(service.view(v.id)))
+    await vi.waitFor(() => expect(service.view(v.id).moves).toHaveLength(4))
+    expect(service.view(v.id).moves.every((m) => m.inZone)).toBe(true)
     expect(service.view(v.id).endProposed).toBe(false)
   })
 
-  it('proposes again only two moves after «Играть дальше»', async () => {
-    const { service } = setup()
+  it("does not propose the end for the user's own tenuki", async () => {
+    const { service, engine, published } = setup()
+    engine.human = (q) => cornerPolicy(q, 0.1)
     const v = service.start(settings())
     service.playUserMove(v.id, [15, 3])
+    await vi.waitFor(() => expect(service.view(v.id).moves).toHaveLength(2))
+    await service.tenuki(v.id)
+    await vi.waitFor(() => expect(service.view(v.id).moves).toHaveLength(4))
+    expect(service.view(v.id).moves[2]).toMatchObject({ actor: 'auto-tenuki', inZone: false })
+    // Every published state counts: the bot's reply would clear a proposal made after the user's tenuki.
+    expect(published.some((p) => p.msg.type === 'sessionState' && p.msg.session.endProposed)).toBe(false)
+  })
+
+  it('proposes again after «Играть дальше» when the bot leaves the corner again', async () => {
+    const { service, engine } = setup()
+    engine.human = (q) => cornerPolicy(q, 0.9)
+    const v = service.start(settings())
+    service.playUserMove(v.id, [15, 3])
+    await vi.waitFor(() => expect(service.view(v.id).moves).toHaveLength(2))
+    service.playUserMove(v.id, freeZonePoint(service.view(v.id)))
     await vi.waitFor(() => expect(service.view(v.id).endProposed).toBe(true))
     service.continuePlaying(v.id)
     expect(service.view(v.id).endProposed).toBe(false)
     service.playUserMove(v.id, freeZonePoint(service.view(v.id)))
-    await vi.waitFor(() => expect(service.view(v.id).moves).toHaveLength(4))
-    await vi.waitFor(() => expect(service.view(v.id).endProposed).toBe(true))
+    await vi.waitFor(() => expect(service.view(v.id).moves).toHaveLength(6))
+    expect(service.view(v.id).endProposed).toBe(true)
   })
 
   it('finishes on request, once', () => {

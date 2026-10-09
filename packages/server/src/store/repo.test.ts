@@ -83,7 +83,6 @@ describe('SessionRepo', () => {
     repo.saveAnalysis('s1', 0, 'position', 10, analysis(1))
     repo.saveAnalysis('s1', 0, 'position', 500, analysis(2))
     expect(repo.getAnalysis('s1', 0, 'position')).toEqual({ visits: 500, analysis: analysis(2) })
-    expect(repo.getAnalysis('s1', 0, 'pass_probe')).toBeNull()
   })
 
   it('replaces missed punishments', () => {

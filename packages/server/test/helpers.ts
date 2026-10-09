@@ -44,13 +44,14 @@ export function serviceOptions(config: AppConfig, overrides: Partial<ServiceOpti
 
 export const isHumanQuery = (q: KataGoQueryBody): boolean => q.overrideSettings?.humanSLProfile !== undefined
 export const isTenukiQuery = (q: KataGoQueryBody): boolean => q.allowMoves !== undefined
-export const isPassProbe = (q: KataGoQueryBody): boolean => !isHumanQuery(q) && q.moves.at(-1)?.[1] === 'pass'
 
 /** In-process engine with programmable answers (captures are not simulated). */
 export class StubEngine implements AnalysisEngine {
   readonly queries: KataGoQueryBody[] = []
   best: (q: KataGoQueryBody) => string = (q) => q.allowMoves?.[0]?.moves[0] ?? 'D4'
   lead: (q: KataGoQueryBody) => number = () => 0
+  /** Human policy override for human queries; null = the uniform policy. */
+  human: ((q: KataGoQueryBody) => number[]) | null = null
   fail: { when: (q: KataGoQueryBody) => boolean; error: Error } | null = null
   hold = false
   private readonly held: (() => void)[] = []
@@ -63,7 +64,7 @@ export class StubEngine implements AnalysisEngine {
       this.fail = null
       throw error
     }
-    return stubResponse(q, this.best(q), this.lead(q))
+    return stubResponse(q, this.best(q), this.lead(q), this.human?.(q))
   }
 
   release(): void {
@@ -72,7 +73,7 @@ export class StubEngine implements AnalysisEngine {
   }
 }
 
-export function stubResponse(q: KataGoQueryBody, best: string, lead: number): AnalysisResponse {
+export function stubResponse(q: KataGoQueryBody, best: string, lead: number, human?: number[]): AnalysisResponse {
   const taken = new Set<number>()
   for (const [, v] of q.moves) {
     const vertex = gtpToVertex(v)
@@ -93,7 +94,7 @@ export function stubResponse(q: KataGoQueryBody, best: string, lead: number): An
     const free = 361 - taken.size
     const policy = Array.from({ length: 362 }, (_, i) => (i === 361 ? 0 : taken.has(i) ? -1 : 1 / free))
     res.policy = policy
-    if (isHumanQuery(q)) res.humanPolicy = [...policy]
+    if (isHumanQuery(q)) res.humanPolicy = human ?? [...policy]
   }
   return res
 }
