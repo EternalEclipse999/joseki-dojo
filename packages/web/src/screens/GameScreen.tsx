@@ -58,7 +58,7 @@ export function GameScreen({ session, errorSeq, send }: GameScreenProps) {
         </p>
         {session.endProposed && (
           <div class="proposal" role="status">
-            <p>Похоже, дзёсеки закончилось.</p>
+            <p>Бот сыграл в другом месте.</p>
             <div class="row">
               <button class="primary" onClick={finish}>
                 К разбору

@@ -2,7 +2,7 @@ import type { Move } from '@joseki-dojo/shared'
 import type { AnalysisEngine } from '../engine/engine'
 import { baseQuery } from '../engine/query'
 
-/** Spec 6.4: about `seconds` per reviewed position; the end check uses half of that. */
+/** Spec 6.4: about `seconds` per reviewed position; the user's Tenuki button uses half of that. */
 export function visitsForBudget(visitsPerSecond: number, seconds = 2): { reviewVisits: number; endVisits: number } {
   const to50 = (n: number): number => Math.round(n / 50) * 50
   const reviewVisits = Math.min(5000, Math.max(100, to50(visitsPerSecond * seconds)))

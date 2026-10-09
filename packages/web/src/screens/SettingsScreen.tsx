@@ -15,7 +15,7 @@ const PATH_FIELDS: { key: PathKey; label: string; models: boolean }[] = [
 
 const VISIT_FIELDS: { key: VisitsKey; label: string }[] = [
   { key: 'reviewVisits', label: 'Визиты на позицию в разборе' },
-  { key: 'endVisits', label: 'Визиты для проверки конца дзёсеки' },
+  { key: 'endVisits', label: 'Визиты для кнопки «Тэнуки»' },
 ]
 
 export function SettingsScreen({ onClose, onSaved, onRepick }: { onClose: () => void; onSaved: () => void; onRepick: () => void }) {

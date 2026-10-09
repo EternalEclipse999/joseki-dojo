@@ -113,7 +113,7 @@ async function main(): Promise<void> {
     if (warning) console.log(`\nВнимание: ${warning}`)
     const vps = await measureVisitsPerSecond(engine)
     const visits = visitsForBudget(vps)
-    console.log(`Скорость ≈ ${Math.round(vps)} визитов/с → разбор: ${visits.reviewVisits}, проверка конца: ${visits.endVisits} визитов`)
+    console.log(`Скорость ≈ ${Math.round(vps)} визитов/с → разбор: ${visits.reviewVisits}, кнопка «Тэнуки»: ${visits.endVisits} визитов`)
     const { commandOverride: _ignored, ...katagoRest } = existingKatago
     const config = {
       ...existing,

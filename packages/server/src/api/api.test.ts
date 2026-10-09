@@ -86,11 +86,11 @@ describe('API', () => {
     expect(await res.json()).toEqual({ state: 'ready', reason: null })
   })
 
-  it('plays, proposes the end, finishes and serves the review', async () => {
+  it('plays, finishes and serves the review', async () => {
     const c = await connect()
     const id = await startSession(c)
     c.send({ type: 'playMove', sessionId: id, vertex: [15, 3] })
-    await c.next((m) => m.type === 'sessionState' && m.session.endProposed)
+    await c.next((m) => m.type === 'sessionState' && m.session.moves.length === 2)
     c.send({ type: 'finish', sessionId: id })
     await c.next((m) => m.type === 'reviewReady')
     const res = await fetch(`http://${host}/api/sessions/${id}/review`)

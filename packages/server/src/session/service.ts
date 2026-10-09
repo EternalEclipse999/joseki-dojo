@@ -23,7 +23,6 @@ import { baseQuery } from '../engine/query'
 import { toErrorMessage } from '../errors'
 import { movesBefore, type SessionRecord } from '../store/records'
 import type { SessionRepo } from '../store/repo'
-import { shouldProposeEnd } from './end-detection'
 import { Session, SessionError } from './session'
 
 export interface SessionServiceDeps {
@@ -163,6 +162,8 @@ export class SessionService {
   private commit(s: Session, vertex: MoveVertex, actor: Actor): void {
     const played = s.apply(vertex, actor)
     this.d.repo.insertMove(s.id, s.turn - 1, played)
+    // Spec 8.5: the bot leaving the corner ends the joseki (or is its mistake to punish); the text is the same either way.
+    if (actor === 'bot' && !played.inZone && s.canProposeEnd()) s.proposeEnd()
     this.afterPositionChanged(s)
   }
 
@@ -176,20 +177,9 @@ export class SessionService {
     if (!s.isUserTurn) void this.runBot(s)
   }
 
+  /** Spec 8.5: every position is analysed in the background for the review. */
   private scheduleAnalysis(s: Session): void {
-    const t = s.turn
-    const started = s.josekiStarted
-    this.d.analysis
-      .position(s.record, t)
-      .then(async (a) => {
-        if (!started || s.turn !== t || !s.isPlaying) return
-        const b = await this.d.analysis.passProbe(s.record, t)
-        if (s.turn === t && s.canProposeEnd() && shouldProposeEnd(a, b, s.corner)) {
-          s.proposeEnd()
-          this.publishState(s)
-        }
-      })
-      .catch((err: unknown) => this.d.publish(s.id, toErrorMessage(err)))
+    this.d.analysis.position(s.record, s.turn).catch((err: unknown) => this.d.publish(s.id, toErrorMessage(err)))
   }
 
   private async runBot(s: Session): Promise<void> {
