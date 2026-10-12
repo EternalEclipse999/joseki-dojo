@@ -175,24 +175,60 @@ describe('checkTraps', () => {
     expect(b.children(unchanged).map((c) => [b.category(c), b.loss(c)])).toEqual([['good', null], ['good', null], ['caught', null]])
   })
 
-  it('leaves a trap with an illegal position unchanged', async () => {
+  it('drops a trap with an illegal position', async () => {
     const tree: JdbTree = {
       kind: 'traps',
       verified: false,
       roots: [node('Q16', 'none', [node('Q16', 'trap', [node('P17', 'good'), node('N18', 'caught')])])],
     }
     const out = await checkTraps(base(tree), new StubEngine(), OPTS, () => {})
-    expect(out.failed).toHaveLength(1)
-    expect(out.failed[0].reason).toMatch(/^illegal path/)
+    expect(out.dropped).toEqual([{ id: trapId(['Q16', 'Q16'].map(v)), reason: 'illegal position' }])
+    expect(out.failed).toEqual([])
     expect(out.kept).toBe(0)
-    expect(out.tree.verified).toBe(false)
-    expect(decodeJdb(encodeJdb(out.tree)).nodesOf('trap')).toHaveLength(1)
+    expect(out.tree.verified).toBe(true)
+    expect(out.tree.roots).toEqual([])
   })
 
-  it('rejects when the engine fails, so nothing is written', async () => {
+  it('drops a trap with an illegal answer', async () => {
+    // O17 is taken by the trap move itself.
+    const tree: JdbTree = {
+      kind: 'traps',
+      verified: false,
+      roots: [node('Q16', 'none', [node('O17', 'trap', [node('P17', 'good'), node('O17', 'good'), node('N18', 'caught')])])],
+    }
+    const out = await checkTraps(base(tree), new StubEngine(), OPTS, () => {})
+    expect(out.dropped).toEqual([{ id: trapId(['Q16', 'O17'].map(v)), reason: 'illegal answer O17' }])
+    expect(out.failed).toEqual([])
+    expect(out.tree.verified).toBe(true)
+  })
+
+  it('retries a query once when the engine fails, and judges the trap normally', async () => {
     const engine = leadEngine({ ...TRAP1, ...TRAP2 })
-    // Trap 1 is judged first; the failure hits the zone query of trap 2 (four moves).
-    engine.fail = { when: (q) => q.allowMoves !== undefined && q.moves.length === 4, error: new EngineError('KataGo stopped', 'engine_failed') }
+    engine.fail = { when: (q) => q.allowMoves !== undefined && q.moves.length === 3, error: new EngineError('query hung', 'engine_failed') }
+    const out = await checkTraps(base(), engine, OPTS, () => {})
+    expect(out.kept).toBe(2)
+    expect(out.dropped).toEqual([])
+    expect(out.tree.verified).toBe(true)
+  })
+
+  it('rejects when a query fails twice in a row', async () => {
+    const engine = leadEngine({ ...TRAP1, ...TRAP2 })
+    const analyze = engine.analyze.bind(engine)
+    engine.analyze = async (q) => {
+      if (q.allowMoves !== undefined && q.moves.length === 3) throw new EngineError('query hung', 'engine_failed')
+      return analyze(q)
+    }
+    await expect(checkTraps(base(), engine, OPTS, () => {})).rejects.toMatchObject({ code: 'engine_failed' })
+  })
+
+  it('rejects when the engine keeps failing, so nothing is written', async () => {
+    const engine = leadEngine({ ...TRAP1, ...TRAP2 })
+    // Trap 1 is judged first; the zone query of trap 2 (four moves) fails on the retry too.
+    const analyze = engine.analyze.bind(engine)
+    engine.analyze = async (q) => {
+      if (q.allowMoves !== undefined && q.moves.length === 4) throw new EngineError('KataGo stopped', 'engine_failed')
+      return analyze(q)
+    }
     await expect(checkTraps(base(), engine, OPTS, () => {})).rejects.toMatchObject({ code: 'engine_failed' })
   })
 
@@ -283,6 +319,56 @@ describe('checkTraps', () => {
       // The answers without a trap below them are pruned.
       expect(b.find([...['Q16', 'O17', 'O18'].map(v), v('P18')])).toBeNull()
       expect(b.find([...['Q16', 'O17', 'O18'].map(v), v('N18')])).toBeNull()
+    })
+  })
+
+  describe('a trap directly under an answer of another trap', () => {
+    // Q16 O17 O18 (trap, White answers): P17 good, P18 good, Q14 trap (an answer of the outer one; Black answers: R17 good, N18 caught).
+    const direct = (): JdbTree => ({
+      kind: 'traps',
+      verified: false,
+      roots: [
+        node('Q16', 'none', [
+          node('O17', 'none', [
+            node('O18', 'trap', [node('P17', 'good'), node('P18', 'good'), node('N18', 'caught'), node('Q14', 'trap', [node('R17', 'good'), node('N18', 'caught')])]),
+          ]),
+        ]),
+      ],
+    })
+    const OUTER = trapId(['Q16', 'O17', 'O18'].map(v))
+    const INNER = trapId(['Q16', 'O17', 'O18', 'Q14'].map(v))
+    const engineFor = (outerCaught: number): StubEngine => {
+      const engine = new StubEngine()
+      engine.lead = (q) => {
+        if (q.allowMoves) return -3
+        const last = q.moves.at(-1)![1]
+        if (q.moves.length === 5) return last === 'N18' ? -6 : -3 // the inner trap, Black answers
+        return last === 'N18' ? outerCaught : -3
+      }
+      return engine
+    }
+
+    it('judges the inner trap and keeps the outer loss on its node', async () => {
+      const lines: string[] = []
+      const out = await checkTraps(base(direct()), engineFor(1), OPTS, (l) => lines.push(l))
+      expect(out.kept).toBe(2)
+      expect(out.dropped).toEqual([])
+      const b = decodeJdb(encodeJdb(out.tree))
+      const inner = b.find([...['Q16', 'O17', 'O18'].map(v), v('Q14')])!
+      expect(b.category(inner)).toBe('trap')
+      expect(b.loss(inner)).toBe(0)
+      expect(b.loss(b.find([...['Q16', 'O17', 'O18', 'Q14'].map(v), v('N18')])!)).toBe(3)
+      expect(lines.some((l) => l.startsWith('[2/2]') && l.includes(INNER))).toBe(true)
+    })
+
+    it('judges the inner trap even when the outer one is dropped', async () => {
+      const out = await checkTraps(base(direct()), engineFor(-3), OPTS, () => {})
+      expect(out.dropped.map((d) => d.id)).toEqual([OUTER])
+      expect(out.kept).toBe(1)
+      const b = decodeJdb(encodeJdb(out.tree))
+      expect(b.category(b.find(['Q16', 'O17', 'O18'].map(v))!)).toBe('none')
+      expect(b.category(b.find([...['Q16', 'O17', 'O18'].map(v), v('Q14')])!)).toBe('trap')
+      expect(b.nodesOf('trap')).toHaveLength(1)
     })
   })
 

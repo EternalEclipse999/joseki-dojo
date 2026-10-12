@@ -16,20 +16,19 @@ export interface CheckResult {
   tree: JdbTree
   kept: number
   dropped: { id: string; reason: string }[]
-  /** Traps that could not be checked because of bad data (an illegal position or a rejected query); they stay as they were. */
+  /** Traps that could not be checked because KataGo rejected a query; they stay as they were. */
   failed: { id: string; reason: string }[]
 }
 
 const vertexOf = (m: CanonicalMove): MoveVertex => (m === 'tenuki' ? 'pass' : m)
 const round1 = (x: number): number => Math.round(x * 10) / 10
-const message = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
 /** Moves of a canonical path, Black first; a tenuki is a real pass. */
 function movesOf(path: readonly CanonicalMove[]): Move[] {
   return path.map((m, i) => ({ color: (i % 2 === 0 ? 'B' : 'W') as Color, vertex: vertexOf(m) }))
 }
 
-/** A trap that cannot be judged because its data is bad (as opposed to an engine that is gone). */
+/** A trap that cannot be judged because KataGo rejected a query (as opposed to an engine that is gone). */
 class DataError extends Error {}
 
 type Verdict = { kind: 'kept'; losses: Map<JdbNode, number> } | { kind: 'dropped'; reason: string }
@@ -37,7 +36,9 @@ type Verdict = { kind: 'kept'; losses: Map<JdbNode, number> } | { kind: 'dropped
 /**
  * Spec 4.2: verifies every trap of a traps base with the engine, writes the answer losses, drops the traps
  * that fail the thresholds (and the branches left without traps) and marks the base as verified.
- * An engine failure rejects the whole run; a trap with bad data stays unchanged and the base is not marked as verified.
+ * Illegal data (a path or an answer that is not a legal move) is a permanent fact: the trap, or the answer, is dropped.
+ * A query KataGo rejects leaves the trap unchanged and the base not marked as verified.
+ * An engine failure that survives one retry rejects the whole run.
  */
 export async function checkTraps(base: JdbBase, engine: AnalysisEngine, opts: CheckOptions, log: (line: string) => void): Promise<CheckResult> {
   const dropped: { id: string; reason: string }[] = []
@@ -49,13 +50,17 @@ export async function checkTraps(base: JdbBase, engine: AnalysisEngine, opts: Ch
   /** Black-view lead -> the view of `color`. */
   const view = (lead: number, color: Color): number => colorSign(color) * lead
 
-  /** Runs a query; a query the engine rejects is bad data, any other failure aborts the run. */
+  /** Runs a query; a query KataGo rejects leaves the trap unchecked, a failed engine is retried once, then the run aborts. */
   async function ask(query: Parameters<AnalysisEngine['analyze']>[0]): ReturnType<AnalysisEngine['analyze']> {
-    try {
-      return await engine.analyze(query)
-    } catch (err) {
-      if (err instanceof EngineError && err.code === 'query_error') throw new DataError(`error: ${err.message}`)
-      throw err
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await engine.analyze(query)
+      } catch (err) {
+        if (!(err instanceof EngineError)) throw err
+        if (err.code === 'query_error') throw new DataError(`error: ${err.message}`)
+        // A hung query is rejected and the engine restarts: transient, so one more try.
+        if (err.code !== 'engine_failed' || attempt >= 1) throw err
+      }
     }
   }
 
@@ -67,8 +72,11 @@ export async function checkTraps(base: JdbBase, engine: AnalysisEngine, opts: Ch
     try {
       position = Position.fromMoves(moves)
       legal = zoneVertices('TR').filter((v) => position.isLegal(answerer, v))
-    } catch (err) {
-      throw new DataError(`illegal path: ${message(err)}`)
+    } catch {
+      return { kind: 'dropped', reason: 'illegal position' }
+    }
+    for (const a of trap.children) {
+      if (a.move !== 'tenuki' && !position.isLegal(answerer, a.move)) return { kind: 'dropped', reason: `illegal answer ${vertexToGtp(a.move)}` }
     }
     if (legal.length === 0) return { kind: 'dropped', reason: 'no legal zone move for the answer' }
     const before = await ask({
@@ -83,7 +91,6 @@ export async function checkTraps(base: JdbBase, engine: AnalysisEngine, opts: Ch
     /** The lead (answerer view) after the answer; a tenuki is the best move outside the zone, not a pass. */
     async function leadAfter(answer: JdbNode): Promise<number> {
       if (answer.move !== 'tenuki') {
-        if (!position.isLegal(answerer, answer.move)) throw new DataError(`illegal answer ${vertexToGtp(answer.move)}`)
         const after = await ask({ ...baseQuery([...moves, { color: answerer, vertex: answer.move }]), maxVisits: opts.visits })
         return view(after.rootInfo.scoreLead, answerer)
       }
@@ -128,10 +135,20 @@ export async function checkTraps(base: JdbBase, engine: AnalysisEngine, opts: Ch
     return out
   }
 
-  /** The answers of a trap with `mark` applied; traps nested below an answer are checked on their own. */
+  /**
+   * The answers of a trap with `mark` applied; traps nested below an answer are checked on their own.
+   * An answer that is itself a trap is judged as a trap too (it keeps its mark, the outer trap's loss, and stays a trap candidate).
+   */
   async function walkAnswers(trap: JdbNode, path: CanonicalMove[], mark: (a: JdbNode) => JdbNode): Promise<JdbNode[]> {
     const out: JdbNode[] = []
-    for (const a of trap.children) out.push({ ...mark(a), children: await walkAll(a.children, [...path, a.move]) })
+    for (const a of trap.children) {
+      if (a.category === 'trap') {
+        const r = await walk({ ...mark(a), category: 'trap' }, path)
+        if (r) out.push(r)
+      } else {
+        out.push({ ...mark(a), children: await walkAll(a.children, [...path, a.move]) })
+      }
+    }
     return out
   }
 
