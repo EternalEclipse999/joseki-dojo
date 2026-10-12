@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { emptyMap, isVertex, ownershipMap, pvMoves } from './board-maps'
+import { emptyMap, isVertex, ownershipMap, pvMoves, sameVertex } from './board-maps'
 
 describe('board maps', () => {
   it('creates independent rows', () => {
@@ -25,5 +25,12 @@ describe('board maps', () => {
     ])
     expect(isVertex('pass')).toBe(false)
     expect(isVertex([0, 0])).toBe(true)
+  })
+
+  it('compares moves by point', () => {
+    expect(sameVertex([3, 15], [3, 15])).toBe(true)
+    expect(sameVertex([3, 15], [15, 3])).toBe(false)
+    expect(sameVertex('pass', 'pass')).toBe(true)
+    expect(sameVertex('pass', [0, 0])).toBe(false)
   })
 })

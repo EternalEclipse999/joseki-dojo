@@ -1,13 +1,14 @@
-import { BoundedGoban, type GhostStone, type Marker } from '@sabaki/shudan'
+import { BoundedGoban, type Marker } from '@sabaki/shudan'
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
-import { zoneRanges, type Corner, type Vertex } from '@joseki-dojo/shared'
+import { zoneRanges, type Category, type Corner, type Vertex } from '@joseki-dojo/shared'
 import { relativeTo, union, type Box } from '../zone-overlay'
 
 export interface BoardProps {
   signMap: (0 | 1 | -1)[][]
   corner: Corner
   markers?: (Marker | null)[][]
-  ghosts?: (GhostStone | null)[][]
+  /** Colour of the last-move dot: the move's category in the review; the accent when absent (a game must not hint). */
+  lastTone?: Category
   /** Ownership -1..1 (Black positive); Shudan scales the paint opacity by the magnitude. */
   paint?: number[][] | null
   /** Points drawn faded (the review's weaker candidates). */
@@ -65,7 +66,7 @@ function measureOverlay(root: HTMLElement, corner: Corner): Overlay | null {
 
 const sameBox = (a: Box, b: Box): boolean => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h
 
-export function Board({ signMap, corner, markers, ghosts, paint, dimmed, selected, busy, onClick }: BoardProps) {
+export function Board({ signMap, corner, markers, lastTone, paint, dimmed, selected, busy, onClick }: BoardProps) {
   const wrap = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState(() => fit(null))
   const [overlay, setOverlay] = useState<Overlay | null>(null)
@@ -101,7 +102,7 @@ export function Board({ signMap, corner, markers, ghosts, paint, dimmed, selecte
   // The wrapper is not stretched by the layout grid, so the goban is measured at its own size.
   return (
     <div
-      class="board"
+      class={lastTone ? `board last-${lastTone}` : 'board'}
       ref={wrap}
       style={
         overlay
@@ -118,7 +119,6 @@ export function Board({ signMap, corner, markers, ghosts, paint, dimmed, selecte
         busy={busy}
         signMap={signMap}
         markerMap={markers}
-        ghostStoneMap={ghosts}
         paintMap={(paint ?? undefined) as (0 | 1 | -1)[][] | undefined}
         dimmedVertices={dimmed ?? []}
         selectedVertices={selected ?? []}

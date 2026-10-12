@@ -1,8 +1,8 @@
-import type { GhostStone, Marker } from '@sabaki/shudan'
+import type { Marker } from '@sabaki/shudan'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import { ChevronLeft, ChevronRight, GitBranch, LoaderCircle, Map as MapIcon, Plus, RotateCcw } from 'lucide-preact'
-import { colorSign, Position, type ReviewData, type Vertex } from '@joseki-dojo/shared'
-import { emptyMap, GHOST_TYPE, isVertex, ownershipMap, pvMoves } from '../board-maps'
+import { Position, type ReviewData, type Vertex } from '@joseki-dojo/shared'
+import { emptyMap, isVertex, ownershipMap, pvMoves, sameVertex } from '../board-maps'
 import { Board } from '../components/Board'
 import { LossBar } from '../components/LossBar'
 import { ACTOR_LABEL, CATEGORY_LABEL, formatPoints, moveLabel } from '../format'
@@ -106,27 +106,30 @@ function ReviewLoaded({ review, onReplay, onNew, busy }: { review: ReviewData; o
     () => (best && pvStep !== null ? pvMoves(move.color, best.pv, pvStep) : []),
     [best, pvStep, move.color],
   )
+  // The board shows the position after the selected move; a branch replaces that move with the best line.
   const signMap = useMemo(() => {
-    const base = [...review.initialMoves, ...review.moves.slice(0, turn)]
+    const before = [...review.initialMoves, ...review.moves.slice(0, turn)]
+    const shown = pvStep === null ? [...before, review.moves[turn]] : [...before, ...variation]
     try {
-      return Position.fromMoves([...base, ...variation]).signMap()
+      return Position.fromMoves(shown).signMap()
     } catch {
-      return Position.fromMoves(base).signMap()
+      return Position.fromMoves(before).signMap()
     }
-  }, [review, turn, variation])
+  }, [review, turn, pvStep, variation])
 
   const markers = emptyMap<Marker | null>(null)
-  const ghosts = emptyMap<GhostStone | null>(null)
   const dimmed: Vertex[] = []
   let selected: Vertex[] = []
   if (pvStep === null) {
+    // The letters show where to play instead of the selected move; a candidate that is the move itself keeps its dot.
     position.candidates.forEach((c, i) => {
       if (!isVertex(c.vertex)) return
+      if (i === hot) selected = [c.vertex]
+      if (sameVertex(c.vertex, move.vertex)) return
       markers[c.vertex[1]][c.vertex[0]] = { type: 'label', label: LABELS[i] }
       if (i > 0) dimmed.push(c.vertex)
-      if (i === hot) selected = [c.vertex]
     })
-    if (isVertex(move.vertex)) ghosts[move.vertex[1]][move.vertex[0]] = { sign: colorSign(move.color), type: GHOST_TYPE[move.category] }
+    if (isVertex(move.vertex)) markers[move.vertex[1]][move.vertex[0]] = { type: 'point' }
   } else {
     variation.forEach((m, i) => {
       if (isVertex(m.vertex)) markers[m.vertex[1]][m.vertex[0]] = { type: 'label', label: String(i + 1) }
@@ -138,7 +141,15 @@ function ReviewLoaded({ review, onReplay, onNew, busy }: { review: ReviewData; o
 
   return (
     <main class="layout review">
-      <Board signMap={signMap} corner={review.settings.corner} markers={markers} ghosts={ghosts} paint={paint} dimmed={dimmed} selected={selected} />
+      <Board
+        signMap={signMap}
+        corner={review.settings.corner}
+        markers={markers}
+        paint={paint}
+        dimmed={dimmed}
+        selected={selected}
+        lastTone={pvStep === null ? move.category : undefined}
+      />
       <aside class="panel">
         <div class="metrics">
           {summaryTiles(review.summary).map((t) => (
@@ -187,6 +198,7 @@ function ReviewLoaded({ review, onReplay, onNew, busy }: { review: ReviewData; o
             <li key={i} class={i === hot ? 'hot' : undefined} onMouseEnter={() => setHot(i)} onMouseLeave={() => setHot(null)}>
               <span class="letter">{LABELS[i]}</span>
               <span>{moveLabel(c.vertex)}</span>
+              {sameVertex(c.vertex, move.vertex) && <span class="badge">ваш ход</span>}
               {i === 0 ? <span class="best">лучший</span> : <span class="loss">−{formatPoints(c.loss)}</span>}
             </li>
           ))}
@@ -225,7 +237,7 @@ function ReviewLoaded({ review, onReplay, onNew, busy }: { review: ReviewData; o
         <div class="actions">
           <button class="primary" disabled={busy} onClick={() => onReplay(turn)}>
             <RotateCcw aria-hidden="true" />
-            Переиграть с этого хода
+            Переиграть этот ход
           </button>
           <button class="ghost" onClick={onNew}>
             <Plus aria-hidden="true" />

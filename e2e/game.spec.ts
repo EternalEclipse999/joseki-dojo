@@ -26,7 +26,7 @@ test('the bot leaves the corner, the end is proposed and the review replays from
   await page.getByRole('button', { name: 'Показать ветку' }).click()
   await expect(page.getByText(/Ветка: 1 из/)).toBeVisible()
 
-  await page.getByRole('button', { name: 'Переиграть с этого хода' }).click()
+  await page.getByRole('button', { name: 'Переиграть этот ход' }).click()
   await expect(page.getByRole('heading', { name: 'Ваш ход' })).toBeVisible()
 })
 
