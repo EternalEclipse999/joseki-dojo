@@ -1,6 +1,7 @@
-import { gtpToVertex, type Vertex } from '@joseki-dojo/shared'
+import { gtpToVertex, vertexToGtp, zoneVertices, type Vertex } from '@joseki-dojo/shared'
 import { describe, expect, it } from 'vitest'
 import { StubEngine } from '../../test/helpers'
+import { EngineError } from '../engine/engine'
 import { decodeJdb, encodeJdb, trapId, type CanonicalMove, type JdbBase, type JdbNode, type JdbTree } from '../jdb'
 import { checkTraps } from './check'
 import { testTrapsTree } from './fixture'
@@ -22,17 +23,25 @@ const TRAP1: Record<string, number> = {
   [key('Q16', 'O17', 'O18', 'P18')]: -2.5,
   [key('Q16', 'O17', 'O18', 'N18')]: 1,
 }
-/** Trap 2 (answer index 4, Black): best +3; losses 0, 0.5 (the tenuki) and 3. */
+/** Trap 2 (answer index 4, Black): best +3; losses 0, 0.5 (the tenuki, +2.5 outside the zone) and 3. */
 const TRAP2: Record<string, number> = {
   [key('Q16', 'O17', 'Q14', 'R18', 'R17')]: 3,
-  [key('Q16', 'O17', 'Q14', 'R18', 'pass')]: 2.5,
   [key('Q16', 'O17', 'Q14', 'R18', 'Q18')]: 0,
 }
 
-/** The restricted query returns the answerer's best (-3 before trap 1's answer, +3 before trap 2's); other queries look the position up. */
-function leadEngine(after: Record<string, number>): StubEngine {
+const ZONE = new Set(zoneVertices('TR').map(vertexToGtp))
+
+/**
+ * The zone query returns the answerer's best (-3 before trap 1's answer, +3 before trap 2's); the query among the points
+ * outside the zone (a tenuki answer) returns `tenuki`; other queries look the position up.
+ */
+function leadEngine(after: Record<string, number>, tenuki = 2.5): StubEngine {
   const engine = new StubEngine()
-  engine.lead = (q) => (q.allowMoves ? (q.moves.length === 3 ? -3 : 3) : (after[key(...q.moves.map(([, m]) => m))] ?? 0))
+  engine.lead = (q) => {
+    if (!q.allowMoves) return after[key(...q.moves.map(([, m]) => m))] ?? 0
+    if (!ZONE.has(q.allowMoves[0].moves[0])) return tenuki
+    return q.moves.length === 3 ? -3 : 3
+  }
   return engine
 }
 
@@ -86,9 +95,8 @@ describe('checkTraps', () => {
     const engine = leadEngine({
       ...TRAP1,
       [key('Q16', 'O17', 'Q14', 'R18', 'R17')]: 1.5,
-      [key('Q16', 'O17', 'Q14', 'R18', 'pass')]: 1.4,
       [key('Q16', 'O17', 'Q14', 'R18', 'Q18')]: -5,
-    })
+    }, 1.4)
     const out = await checkTraps(base(), engine, OPTS, () => {})
     expect(out.kept).toBe(1)
     expect(out.dropped).toHaveLength(1)
@@ -150,16 +158,42 @@ describe('checkTraps', () => {
     expect(out.dropped).toEqual([{ id: trapId(['Q16', 'O17'].map(v)), reason: 'no caught answer' }])
   })
 
-  it('drops a trap whose query fails and goes on with the others', async () => {
+  it('leaves a trap whose query is rejected unchanged, goes on and does not mark the base as verified', async () => {
     const engine = leadEngine(TRAP2)
     // The first zone query belongs to trap 1.
-    engine.fail = { when: (q) => q.allowMoves !== undefined, error: new Error('boom') }
+    engine.fail = { when: (q) => q.allowMoves !== undefined, error: new EngineError('boom', 'query_error') }
     const lines: string[] = []
     const out = await checkTraps(base(), engine, OPTS, (l) => lines.push(l))
-    expect(out.dropped).toEqual([{ id: ID1, reason: 'error: boom' }])
+    expect(out.dropped).toEqual([])
+    expect(out.failed).toEqual([{ id: ID1, reason: 'error: boom' }])
     expect(out.kept).toBe(1)
-    expect(out.tree.verified).toBe(true)
+    expect(out.tree.verified).toBe(false)
     expect(lines.some((l) => l.includes(ID1) && l.includes('error: boom'))).toBe(true)
+    const b = decodeJdb(encodeJdb(out.tree))
+    const unchanged = b.find(['Q16', 'O17', 'O18'].map(v))!
+    expect(b.category(unchanged)).toBe('trap')
+    expect(b.children(unchanged).map((c) => [b.category(c), b.loss(c)])).toEqual([['good', null], ['good', null], ['caught', null]])
+  })
+
+  it('leaves a trap with an illegal position unchanged', async () => {
+    const tree: JdbTree = {
+      kind: 'traps',
+      verified: false,
+      roots: [node('Q16', 'none', [node('Q16', 'trap', [node('P17', 'good'), node('N18', 'caught')])])],
+    }
+    const out = await checkTraps(base(tree), new StubEngine(), OPTS, () => {})
+    expect(out.failed).toHaveLength(1)
+    expect(out.failed[0].reason).toMatch(/^illegal path/)
+    expect(out.kept).toBe(0)
+    expect(out.tree.verified).toBe(false)
+    expect(decodeJdb(encodeJdb(out.tree)).nodesOf('trap')).toHaveLength(1)
+  })
+
+  it('rejects when the engine fails, so nothing is written', async () => {
+    const engine = leadEngine({ ...TRAP1, ...TRAP2 })
+    // Trap 1 is judged first; the failure hits the zone query of trap 2 (four moves).
+    engine.fail = { when: (q) => q.allowMoves !== undefined && q.moves.length === 4, error: new EngineError('KataGo stopped', 'engine_failed') }
+    await expect(checkTraps(base(), engine, OPTS, () => {})).rejects.toMatchObject({ code: 'engine_failed' })
   })
 
   it('prunes branches left without traps', async () => {
@@ -181,15 +215,75 @@ describe('checkTraps', () => {
     expect(b.size).toBe(7)
   })
 
-  it('appends a real pass for a tenuki answer', async () => {
-    const engine = leadEngine(TRAP2)
+  it('measures a tenuki answer as the best move outside the zone, not as a pass', async () => {
+    const engine = leadEngine(TRAP2) // outside the zone Black keeps +2.5, the zone best is +3
     const out = await checkTraps(base(), engine, OPTS, () => {})
-    const pass = engine.queries.find((q) => !q.allowMoves && q.moves.length === 5 && q.moves[4][1] === 'pass')
-    expect(pass).toBeDefined()
-    expect(pass?.moves[4][0]).toBe('B')
+    expect(engine.queries.some((q) => !q.allowMoves && q.moves.at(-1)?.[1] === 'pass')).toBe(false)
+    const outside = engine.queries.find((q) => q.allowMoves && !ZONE.has(q.allowMoves[0].moves[0]))!
+    expect(outside.moves.map(([c, m]) => `${c}${m}`)).toEqual(['BQ16', 'WO17', 'BQ14', 'WR18'])
+    expect(outside.allowMoves).toHaveLength(1)
+    expect(outside.allowMoves![0]).toMatchObject({ player: 'B', untilDepth: 1 })
+    expect(outside.allowMoves![0].moves.every((m) => !ZONE.has(m))).toBe(true)
+    expect(outside.allowMoves![0].moves.length).toBeGreaterThan(200)
+    expect(outside.maxVisits).toBe(100)
     const b = decodeJdb(encodeJdb(out.tree))
     const path: CanonicalMove[] = [...['Q16', 'O17', 'Q14', 'R18'].map(v), 'tenuki']
     expect(b.loss(b.find(path)!)).toBe(0.5)
+  })
+
+  describe('nested traps', () => {
+    // Q16 O17 O18 (trap, White answers) -> P17 (good) -> Q14 (trap, White answers: R17 good, N18 caught).
+    const nested = (): JdbTree => ({
+      kind: 'traps',
+      verified: false,
+      roots: [
+        node('Q16', 'none', [
+          node('O17', 'none', [
+            node('O18', 'trap', [
+              node('P17', 'good', [node('Q14', 'trap', [node('R17', 'good'), node('N18', 'caught')])]),
+              node('P18', 'good'),
+              node('N18', 'caught'),
+            ]),
+          ]),
+        ]),
+      ],
+    })
+    const OUTER = trapId(['Q16', 'O17', 'O18'].map(v))
+    const INNER = trapId(['Q16', 'O17', 'O18', 'P17', 'Q14'].map(v))
+    const engineFor = (outerCaught: number): StubEngine => {
+      const engine = new StubEngine()
+      engine.lead = (q) => {
+        if (q.allowMoves) return -3
+        const last = q.moves.at(-1)![1]
+        return last === 'N18' ? (q.moves.length === 4 ? outerCaught : 1) : -3
+      }
+      return engine
+    }
+
+    it('checks a nested trap and keeps it while the outer one is kept', async () => {
+      const lines: string[] = []
+      const out = await checkTraps(base(nested()), engineFor(1), OPTS, (l) => lines.push(l))
+      expect(out.kept).toBe(2)
+      expect(out.dropped).toEqual([])
+      const b = decodeJdb(encodeJdb(out.tree))
+      expect(b.nodesOf('trap')).toHaveLength(2)
+      expect(b.loss(b.find([...['Q16', 'O17', 'O18', 'P17', 'Q14'].map(v), v('N18')])!)).toBe(4)
+      expect(lines.some((l) => l.startsWith('[2/2]') && l.includes(INNER))).toBe(true)
+    })
+
+    it('keeps a nested trap when the outer one is dropped, as a plain node', async () => {
+      const out = await checkTraps(base(nested()), engineFor(-3), OPTS, () => {}) // the outer caught answer is not bad enough
+      expect(out.kept).toBe(1)
+      expect(out.dropped.map((d) => d.id)).toEqual([OUTER])
+      expect(out.tree.verified).toBe(true)
+      const b = decodeJdb(encodeJdb(out.tree))
+      expect(b.nodesOf('trap')).toHaveLength(1)
+      expect(b.category(b.find(['Q16', 'O17', 'O18'].map(v))!)).toBe('none')
+      expect(b.category(b.find(['Q16', 'O17', 'O18', 'P17', 'Q14'].map(v))!)).toBe('trap')
+      // The answers without a trap below them are pruned.
+      expect(b.find([...['Q16', 'O17', 'O18'].map(v), v('P18')])).toBeNull()
+      expect(b.find([...['Q16', 'O17', 'O18'].map(v), v('N18')])).toBeNull()
+    })
   })
 
   it('logs progress', async () => {

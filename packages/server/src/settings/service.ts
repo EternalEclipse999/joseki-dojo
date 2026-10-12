@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import type { AnalysisSettings, SettingsResponse, SettingsUpdate, SettingsView } from '@joseki-dojo/shared'
 import type { AppConfig, KataGoSettings, SetupInfo } from '../config'
@@ -6,7 +6,7 @@ import { engineCommand } from '../engine/command'
 import type { EngineCommand, KataGoEngine } from '../engine/engine'
 import { checkEngine, missingFiles, type HealthMonitor } from '../engine/health'
 import { versionWarning, type KataGoLock } from '../engine/lock'
-import { renameRetrying } from '../install/download'
+import { updateConfigFile } from './config-writer'
 
 export interface SettingsServiceDeps {
   config: AppConfig
@@ -136,15 +136,12 @@ export class SettingsService {
   }
 
   private async persist(katago: KataGoSettings, analysis: AnalysisSettings, setup?: SetupInfo | null): Promise<void> {
-    const raw = (existsSync(this.d.configFile) ? JSON.parse(readFileSync(this.d.configFile, 'utf8')) : {}) as Record<string, unknown>
-    const { commandOverride: _dropped, ...oldKatago } = (raw.katago ?? {}) as Record<string, unknown>
-    raw.katago = { ...oldKatago, ...katago }
-    raw.analysis = { ...((raw.analysis ?? {}) as Record<string, unknown>), ...analysis }
-    if (setup) raw.setup = { ...((raw.setup ?? {}) as Record<string, unknown>), ...setup }
-    else if (setup === null) delete raw.setup
-    mkdirSync(dirname(this.d.configFile), { recursive: true })
-    const tmp = `${this.d.configFile}.tmp`
-    writeFileSync(tmp, `${JSON.stringify(raw, null, 2)}\n`)
-    await renameRetrying(tmp, this.d.configFile)
+    await updateConfigFile(this.d.configFile, (raw) => {
+      const { commandOverride: _dropped, ...oldKatago } = (raw.katago ?? {}) as Record<string, unknown>
+      raw.katago = { ...oldKatago, ...katago }
+      raw.analysis = { ...((raw.analysis ?? {}) as Record<string, unknown>), ...analysis }
+      if (setup) raw.setup = { ...((raw.setup ?? {}) as Record<string, unknown>), ...setup }
+      else if (setup === null) delete raw.setup
+    })
   }
 }

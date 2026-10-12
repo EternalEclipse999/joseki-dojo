@@ -14,7 +14,7 @@ export function trapReview(
   const trickTurn = rel(trap.index)
   const answerTurn = rel(trap.index + 1)
   // A base replaced since the session was played may no longer know the trap.
-  if (!book.ids().includes(trap.id)) return { trickTurn, answerTurn, verdict: null, good: [] }
+  if (!book.has(trap.id)) return { trickTurn, answerTurn, verdict: null, good: [] }
   const placement = { corner: settings.corner, mirror: trap.mirror, swapColors: trap.swapColors }
   return {
     trickTurn,

@@ -82,10 +82,12 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
   return { url: `http://127.0.0.1:${port}`, port, services, close }
 }
 
-function loadTraps(file: string | null | undefined, log: (line: string) => void): TrapBook {
+export function loadTraps(file: string | null | undefined, log: (line: string) => void): TrapBook {
   if (!file) return TrapBook.empty()
   try {
-    return TrapBook.load(file)
+    const book = TrapBook.load(file)
+    if (book.skipped.length > 0) log(`Пропущено ловушек: ${book.skipped.length} (недопустимые позиции)`)
+    return book
   } catch (err) {
     log(`База ловушек недоступна: ${err instanceof Error ? err.message : String(err)}`)
     return TrapBook.empty()

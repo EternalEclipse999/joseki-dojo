@@ -134,6 +134,31 @@ describe('golden bytes', () => {
   })
 })
 
+describe('header and node flags', () => {
+  it('rejects base flags with bits 1 to 7 set, and accepts the verified bit', () => {
+    for (const flags of [0x02, 0x80, 0xff]) {
+      const bytes = file([1, 40, 0, 0], 1)
+      bytes[6] = flags
+      expect(() => decodeJdb(bytes)).toThrow(JdbError)
+    }
+    for (const flags of [0, 1]) {
+      const bytes = file([1, 40, 0, 0], 1)
+      bytes[6] = flags
+      expect(decodeJdb(bytes).verified).toBe(flags === 1)
+    }
+  })
+  it('rejects a non-zero reserved header byte', () => {
+    const bytes = file([1, 40, 0, 0], 1)
+    bytes[7] = 1
+    expect(() => decodeJdb(bytes)).toThrow(JdbError)
+  })
+  it('rejects a loss of -32768 on a node that has a loss', () => {
+    // none + has-loss flag (8), no children, then the i16 loss.
+    expect(() => decodeJdb(file([1, 40, 8, 0, 0x00, 0x80], 1))).toThrow(JdbError)
+    expect(decodeJdb(file([1, 40, 8, 0, 0x01, 0x80], 1)).loss(0)).toBe(-3276.7)
+  })
+})
+
 describe('decode limits', () => {
   it('rejects a node count the file cannot hold, before allocating', () => {
     const huge = file([0], 0)

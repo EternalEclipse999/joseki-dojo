@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { gtpToVertex, Position, vertexToGtp, zoneVertices, type MoveVertex, type PlayedMove, type ServerMessage, type SessionSettings, type SessionView, type Vertex } from '@joseki-dojo/shared'
 import { isHumanQuery, StubEngine, testConfig } from '../../test/helpers'
+import type { AppConfig } from '../config'
 import { AnalysisScheduler } from '../analysis/scheduler'
 import { HumanBot } from '../bot/bot'
 import { mulberry32 } from '../bot/rng'
@@ -25,12 +26,12 @@ const settings = (over: Partial<SessionSettings> = {}): SessionSettings => ({
 })
 
 /** `draws` feed `pick` and the mirror coin: 0 picks the first trap (Q16 O17 O18), 0.9 means no mirror. */
-function setup(traps: TrapBook = book(), draws: number[] = [0, 0.9]) {
+function setup(traps: TrapBook = book(), draws: number[] = [0, 0.9], over: { db?: ReturnType<typeof openDb>; config?: Partial<AppConfig> } = {}) {
   const engine = new StubEngine()
-  const db = openDb(':memory:')
+  const db = over.db ?? openDb(':memory:')
   const repo = new SessionRepo(db)
   const logs: string[] = []
-  const cfg = testConfig()
+  const cfg = testConfig(over.config)
   const published: ServerMessage[] = []
   let n = 0
   let k = 0
@@ -214,6 +215,71 @@ describe('traps sessions', () => {
     expect([...second.repo.trapShows().values()]).toEqual([1])
     const row = second.repo.getSession(id2)!.settings.trap!
     expect(second.repo.trapShows().get(row.id)).toBe(1)
+  })
+})
+
+describe('traps sessions: colours, mirror, reload and the move cap', () => {
+  it('plays the trick where place says and answers strongly when the user has the trick colour (BL corner, mirrored)', async () => {
+    // Draws: the first trap, then 0.1: the mirror coin comes up true.
+    const { service, engine, db } = setup(book(), [0, 0.1])
+    const v = service.start(settings({ userColor: 'B', corner: 'BL' }))
+    const trap = v.settings.trap!
+    expect(trap).toEqual({ id: expect.stringMatching(/^[0-9a-f]{8}$/), index: 2, mirror: true, swapColors: true })
+    // Stored Q16 O17 O18, mirrored in the diagonal and put in the bottom-left corner; the colours are swapped.
+    expect(v.initialMoves).toEqual([
+      { color: 'W', vertex: [3, 15] },
+      { color: 'B', vertex: [2, 13] },
+    ])
+    expect(v.toMove).toBe('W')
+    const after = await waitMoves(service, v.id, 1)
+    expect(after.moves[0]).toMatchObject({ color: 'W', vertex: [1, 13], actor: 'bot' })
+    expect(strongQueries(engine)).toEqual([])
+
+    // The canonical answer P17 is [16, 4] mirrored and [2, 14] in the corner.
+    service.playUserMove(v.id, [2, 14])
+    const replied = await waitMoves(service, v.id, 3)
+    expect(replied.moves[2]).toMatchObject({ color: 'W', actor: 'bot' })
+    const qs = strongQueries(engine)
+    expect(qs).toHaveLength(1)
+    expect(qs[0].allowMoves).toHaveLength(1)
+    expect(qs[0].allowMoves![0]).toMatchObject({ player: 'W', untilDepth: 1 })
+    const zone = new Set(zoneVertices('BL').map(vertexToGtp))
+    expect(qs[0].allowMoves![0].moves.length).toBeGreaterThan(0)
+    expect(qs[0].allowMoves![0].moves.every((m) => zone.has(m))).toBe(true)
+    service.finish(v.id)
+    expect(db.prepare('SELECT trap_id, result FROM trap_attempts').all()).toEqual([{ trap_id: trap.id, result: 'correct' }])
+  })
+
+  it('answers strongly after a reload: a fresh service on the same database resumes at index + 2', async () => {
+    const first = setup()
+    const id = first.service.start(settings()).id
+    await waitMoves(first.service, id, 1)
+    first.engine.hold = true // the strong reply never arrives: the process "dies" here
+    first.service.playUserMove(id, V('P17'))
+    expect(first.repo.getSession(id)!.moves).toHaveLength(2)
+
+    const second = setup(book(), [0, 0.9], { db: first.db })
+    const v = second.service.resync(id)
+    expect(v.settings.trap!.index).toBe(2)
+    const resumed = await waitMoves(second.service, id, 3)
+    expect(resumed.moves[2]).toMatchObject({ color: 'B', actor: 'bot' })
+    const qs = strongQueries(second.engine)
+    expect(qs).toHaveLength(1)
+    expect(qs[0].allowMoves![0]).toMatchObject({ player: 'B', untilDepth: 1 })
+    const zone = new Set(zoneVertices('TR').map(vertexToGtp))
+    expect(qs[0].allowMoves![0].moves.every((m) => zone.has(m))).toBe(true)
+    expect(second.engine.queries.filter(isHumanQuery)).toEqual([])
+  })
+
+  it('writes the attempt row when the move cap ends the session', async () => {
+    const { service, db } = setup(book(), [0, 0.9], { config: { maxSessionMoves: 2 } })
+    const id = service.start(settings()).id
+    await waitMoves(service, id, 1)
+    service.playUserMove(id, V('N18')) // the answer is the 2nd move: the cap finishes the session
+    expect(service.view(id).status).toBe('finished')
+    expect(db.prepare('SELECT session_id, trap_id, result FROM trap_attempts').all()).toEqual([
+      { session_id: id, trap_id: service.view(id).settings.trap!.id, result: 'caught' },
+    ])
   })
 })
 

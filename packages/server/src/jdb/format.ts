@@ -69,6 +69,7 @@ export function decodeJdb(bytes: Uint8Array): JdbBase {
   if (bytes[4] !== JDB_VERSION) throw new JdbError(`Неизвестная версия базы ходов: ${bytes[4]}`)
   const kind = (Object.keys(KIND_CODE) as JdbKind[]).find((k) => KIND_CODE[k] === bytes[5])
   if (!kind) throw new JdbError(`Неизвестный тип базы ходов: ${bytes[5]}`)
+  if ((bytes[6] & 0xfe) !== 0 || bytes[7] !== 0) throw new JdbError('Повреждённые флаги заголовка базы')
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   const count = view.getUint32(8, true)
   // Every node takes at least 3 bytes (move, flags, child count): a larger count cannot be real, and must not drive an allocation.
@@ -114,6 +115,7 @@ export function decodeJdb(bytes: Uint8Array): JdbBase {
     if (flags[n] & HAS_LOSS) {
       if (pos + 2 > bytes.length) throw new JdbError('Файл базы обрывается')
       losses[n] = view.getInt16(pos, true)
+      if (losses[n] === NO_LOSS) throw new JdbError('Недопустимая потеря в узле базы')
       pos += 2
     }
     parents[n] = top.parent

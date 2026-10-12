@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs'
 import { request } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WebSocket from 'ws'
@@ -201,6 +203,28 @@ describe('cross-site requests', () => {
     expect(await post(undefined)).toBe(200)
     expect(await post(`http://${host}`)).toBe(200)
     expect(await post('http://localhost:5173')).toBe(200)
+  })
+})
+
+describe('/api/ui', () => {
+  const put = (body: unknown): Promise<Response> =>
+    fetch(`http://${host}/api/ui`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+
+  it('saves a valid theme and serves it back', async () => {
+    expect(await (await fetch(`http://${host}/api/ui`)).json()).toEqual({ theme: 'system' })
+    const res = await put({ theme: 'dark' })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ theme: 'dark' })
+    expect(await (await fetch(`http://${host}/api/ui`)).json()).toEqual({ theme: 'dark' })
+    expect(JSON.parse(readFileSync(join(services.config.dataDir, 'config.local.json'), 'utf8')).ui).toEqual({ theme: 'dark' })
+  })
+
+  it('refuses an unknown theme with 400 and keeps the saved one', async () => {
+    await put({ theme: 'light' })
+    const res = await put({ theme: 'neon' })
+    expect(res.status).toBe(400)
+    expect(typeof (await res.json()).error).toBe('string')
+    expect(await (await fetch(`http://${host}/api/ui`)).json()).toEqual({ theme: 'light' })
   })
 })
 

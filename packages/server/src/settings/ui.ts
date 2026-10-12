@@ -1,8 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
 import { THEMES, type Theme, type UiSettings } from '@joseki-dojo/shared'
 import type { AppConfig } from '../config'
-import { renameRetrying } from '../install/download'
+import { updateConfigFile } from './config-writer'
 
 export class UiSettingsError extends Error {
   constructor(message: string) {
@@ -24,12 +22,9 @@ export class UiService {
 
   async setTheme(theme: unknown): Promise<UiSettings> {
     if (!THEMES.includes(theme as Theme)) throw new UiSettingsError('Неизвестная тема оформления')
-    const raw = (existsSync(this.configFile) ? JSON.parse(readFileSync(this.configFile, 'utf8')) : {}) as Record<string, unknown>
-    raw.ui = { ...((raw.ui ?? {}) as Record<string, unknown>), theme }
-    mkdirSync(dirname(this.configFile), { recursive: true })
-    const tmp = `${this.configFile}.tmp`
-    writeFileSync(tmp, `${JSON.stringify(raw, null, 2)}\n`)
-    await renameRetrying(tmp, this.configFile)
+    await updateConfigFile(this.configFile, (raw) => {
+      raw.ui = { ...((raw.ui ?? {}) as Record<string, unknown>), theme }
+    })
     this.config.ui = { ...this.config.ui, theme: theme as Theme }
     return this.view()
   }

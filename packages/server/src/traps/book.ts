@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
-import { otherColor, type Color, type Corner, type Move, type MoveVertex, type TrapVerdict, type Vertex } from '@joseki-dojo/shared'
+import { otherColor, Position, type Color, type Corner, type Move, type MoveVertex, type TrapVerdict, type Vertex } from '@joseki-dojo/shared'
 import type { Rng } from '../bot/rng'
-import { decodeJdb, fromTopRight, mirrorMoves, sameMove, toTopRight, trapId, zoneIndex, type CanonicalMove, type JdbBase } from '../jdb'
+import { decodeJdb, fromTopRight, JdbError, mirrorDiagonal, mirrorMoves, sameMove, toTopRight, trapId, zoneIndex, type CanonicalMove, type JdbBase } from '../jdb'
 
 export interface TrapPlacement {
   corner: Corner
@@ -10,25 +10,51 @@ export interface TrapPlacement {
 }
 export type { TrapVerdict }
 
+/** Spec 3.3: a path without a move off the diagonal reads the same in both orientations. */
+const isSymmetric = (path: readonly CanonicalMove[]): boolean => path.every((m) => m !== 'tenuki' && sameMove(m, mirrorDiagonal(m)))
+
+const sameVertex = (a: MoveVertex, b: MoveVertex): boolean => (a === 'pass' || b === 'pass' ? a === b : a[0] === b[0] && a[1] === b[1])
+
+function isPlayable(base: JdbBase, node: number, path: readonly CanonicalMove[]): boolean {
+  if (path.length < 2 || path.includes('tenuki')) return false
+  try {
+    Position.fromMoves(path.map((m, i): Move => ({ color: i % 2 === 0 ? 'B' : 'W', vertex: m as Vertex })))
+  } catch {
+    return false
+  }
+  const cats = base.children(node).map((c) => base.category(c))
+  return cats.includes('good') && cats.includes('caught')
+}
+
 /** The trap positions of a traps base: picking one, putting it on the board and judging the answer. No session code here. */
 export class TrapBook {
   private constructor(
     private readonly base: JdbBase | null,
     private readonly nodes: ReadonlyMap<string, number>,
+    /** Ids of the traps the book left out because they cannot be played. */
+    readonly skipped: readonly string[] = [],
   ) {}
 
   /** Throws `JdbError` for a bad file or a file system error for an unreadable one. */
   static load(file: string): TrapBook {
     const base = decodeJdb(readFileSync(file))
+    if (base.kind !== 'traps') throw new JdbError(`Это не база ловушек (тип: ${base.kind})`)
     return TrapBook.fromBase(base)
   }
   static empty(): TrapBook {
     return new TrapBook(null, new Map())
   }
+  /** Keeps the traps that can be played: a trick after at least one move, no tenuki on the way, a legal position, a good and a caught answer. */
   static fromBase(base: JdbBase): TrapBook {
     const nodes = new Map<string, number>()
-    for (const i of base.nodesOf('trap')) nodes.set(trapId(base.path(i)), i)
-    return new TrapBook(base, nodes)
+    const skipped: string[] = []
+    for (const i of base.nodesOf('trap')) {
+      const path = base.path(i)
+      const id = trapId(path)
+      if (isPlayable(base, i, path)) nodes.set(id, i)
+      else skipped.push(id)
+    }
+    return new TrapBook(base, nodes, skipped)
   }
 
   get count(): number {
@@ -86,10 +112,17 @@ export class TrapBook {
   answers(id: string, placement: TrapPlacement): { good: MoveVertex[]; caught: MoveVertex[] } {
     const { base, node } = this.nodeOf(id)
     const out: { good: MoveVertex[]; caught: MoveVertex[] } = { good: [], caught: [] }
+    const symmetric = isSymmetric(base.path(node))
+    const add = (list: MoveVertex[], m: CanonicalMove): void => {
+      for (const v of symmetric ? [m, ...mirrorMoves([m])] : [m]) {
+        const board = this.boardMove(v, placement)
+        if (!list.some((x) => sameVertex(x, board))) list.push(board)
+      }
+    }
     for (const c of base.children(node)) {
       const cat = base.category(c)
-      if (cat === 'good') out.good.push(this.boardMove(base.move(c), placement))
-      else if (cat === 'caught') out.caught.push(this.boardMove(base.move(c), placement))
+      if (cat === 'good') add(out.good, base.move(c))
+      else if (cat === 'caught') add(out.caught, base.move(c))
     }
     return out
   }
@@ -101,7 +134,9 @@ export class TrapBook {
       const tr = toTopRight(answer, placement.corner)
       if (zoneIndex(tr) !== null) canonical = placement.mirror ? (mirrorMoves([tr])[0] as Vertex) : tr
     }
-    const child = base.children(node).find((c) => sameMove(base.move(c), canonical))
+    // A symmetric trap accepts the mirror image of an answer too.
+    const wanted = isSymmetric(base.path(node)) ? [canonical, ...mirrorMoves([canonical])] : [canonical]
+    const child = base.children(node).find((c) => wanted.some((w) => sameMove(base.move(c), w)))
     if (child === undefined) return 'other'
     const cat = base.category(child)
     return cat === 'good' ? 'correct' : cat === 'caught' ? 'caught' : 'other'

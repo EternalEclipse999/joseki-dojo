@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { SettingsUpdate } from '@joseki-dojo/shared'
@@ -8,6 +8,7 @@ import type { EngineCommand, KataGoEngine } from '../engine/engine'
 import { HealthMonitor } from '../engine/health'
 import { loadLock } from '../engine/lock'
 import { SettingsService } from './service'
+import { UiService } from './ui'
 
 /** A fake installation: real (empty) files on disk; the main network's name selects the fake engine's behaviour. */
 function install() {
@@ -153,6 +154,21 @@ describe('SettingsService', () => {
     expect((await settings.apply(update(inst.next))).ok).toBe(true)
     expect(existsSync(`${configFile}.tmp`)).toBe(false)
     expect(JSON.parse(readFileSync(configFile, 'utf8')).katago.mainModel).toBe(inst.next)
+  })
+
+  it('serialises writes to the config file: two theme changes and a settings change all end up in it', async () => {
+    const { settings, update, inst, config, configFile } = await setup()
+    writeFileSync(configFile, JSON.stringify({ bot: { defaultRank: '5k' } }))
+    const ui = new UiService(config, configFile)
+    const results = await Promise.all([ui.setTheme('light'), settings.apply(update(inst.next, { reviewVisits: 77 })), ui.setTheme('dark')])
+    expect(results[1]).toMatchObject({ ok: true })
+    const saved = JSON.parse(readFileSync(configFile, 'utf8')) as { bot: unknown; katago: { mainModel: string }; analysis: { reviewVisits: number }; ui: { theme: string } }
+    expect(saved.bot).toEqual({ defaultRank: '5k' })
+    expect(saved.katago.mainModel).toBe(inst.next)
+    expect(saved.analysis.reviewVisits).toBe(77)
+    expect(saved.ui.theme).toBe('dark')
+    expect(config.ui.theme).toBe('dark')
+    expect(readdirSync(inst.dir).filter((f) => f.endsWith('.tmp'))).toEqual([])
   })
 
   it('resolves relative paths against the config file directory, not the working directory', async () => {
