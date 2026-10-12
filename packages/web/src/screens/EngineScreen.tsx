@@ -1,4 +1,5 @@
 import { useState } from 'preact/hooks'
+import { CircleAlert, Gauge, LoaderCircle, RefreshCw, Settings } from 'lucide-preact'
 import type { HealthResponse } from '@joseki-dojo/shared'
 
 export interface EngineScreenProps {
@@ -14,42 +15,56 @@ export function EngineScreen({ health, onRetry, onSettings, onRepick }: EngineSc
   const [checking, setChecking] = useState(false)
   if (health.state === 'starting') {
     return (
-      <main class="engine">
-        <p class="status">{health.reason ?? 'KataGo запускается…'}</p>
+      <main class="loading">
+        <LoaderCircle class="spin" aria-hidden="true" />
+        {health.reason ?? 'KataGo запускается…'}
       </main>
     )
   }
   return (
-    <main class="engine">
-      <h1>KataGo не настроен</h1>
-      <p>{health.reason}</p>
-      {onRepick ? (
-        <p>Файлы KataGo на месте, но она не работает. Попробуйте подобрать движок заново: программа проверит файлы и выберет подходящую сборку.</p>
-      ) : (
-        <>
-          <p>Скачайте проверенные версии командой в папке проекта и перезапустите сервер:</p>
-          <pre>npm run setup</pre>
-          <p>Или укажите пути к уже установленной KataGo и сетям в настройках.</p>
-        </>
-      )}
-      <div class="row">
-        {onRepick && (
-          <button class="primary" onClick={onRepick}>
-            Подобрать движок заново
+    <main>
+      <div class="page engine">
+        <div class="page-head">
+          <h1>KataGo не настроен</h1>
+        </div>
+        <p class="note error">
+          <CircleAlert aria-hidden="true" />
+          <span>{health.reason}</span>
+        </p>
+        <div class="card section">
+          {onRepick ? (
+            <p>Файлы KataGo на месте, но она не работает. Попробуйте подобрать движок заново: программа проверит файлы и выберет подходящую сборку.</p>
+          ) : (
+            <>
+              <p>Скачайте проверенные версии командой в папке проекта и перезапустите сервер:</p>
+              <pre>npm run setup</pre>
+              <p>Или укажите пути к уже установленной KataGo и сетям в настройках.</p>
+            </>
+          )}
+        </div>
+        <div class="actions">
+          {onRepick && (
+            <button class="primary" onClick={onRepick}>
+              <Gauge aria-hidden="true" />
+              Подобрать движок заново
+            </button>
+          )}
+          <button class={onRepick ? undefined : 'primary'} onClick={onSettings}>
+            <Settings aria-hidden="true" />
+            Открыть настройки
           </button>
-        )}
-        <button class={onRepick ? undefined : 'primary'} onClick={onSettings}>
-          Открыть настройки
-        </button>
-        <button
-          disabled={checking}
-          onClick={() => {
-            setChecking(true)
-            void onRetry().finally(() => setChecking(false))
-          }}
-        >
-          {checking ? 'Проверяю…' : 'Проверить снова'}
-        </button>
+          <button
+            class="ghost"
+            disabled={checking}
+            onClick={() => {
+              setChecking(true)
+              void onRetry().finally(() => setChecking(false))
+            }}
+          >
+            <RefreshCw class={checking ? 'spin' : undefined} aria-hidden="true" />
+            {checking ? 'Проверяю…' : 'Проверить снова'}
+          </button>
+        </div>
       </div>
     </main>
   )

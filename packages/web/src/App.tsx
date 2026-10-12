@@ -1,8 +1,11 @@
 import type { JSX } from 'preact'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import type { ClientMessage, HealthResponse, InstallStatus, ReviewData, SessionView } from '@joseki-dojo/shared'
+import { LoaderCircle, RefreshCw } from 'lucide-preact'
 import { DojoSocket, fetchHealth, fetchInstall, fetchReview, fetchSettings, recheckHealth } from './api'
+import { AppHeader } from './components/AppHeader'
 import { AppUpdateBanner } from './components/AppUpdateBanner'
+import { Bar } from './components/Bar'
 import { ErrorBanner } from './components/ErrorBanner'
 import { EngineScreen } from './screens/EngineScreen'
 import { GameScreen } from './screens/GameScreen'
@@ -194,13 +197,26 @@ export function App() {
   }
 
   let screen: JSX.Element
+  let crumb: string | undefined
   // The install screen comes first: a re-pick from Settings returns to Settings when it is done.
-  if (engineUpdate) screen = <InstallScreen update repick={repick} onDone={() => void afterInstall()} onClose={closeUpdate} />
-  else if (showSettings)
+  if (engineUpdate) {
+    crumb = repick ? 'Подбор движка' : 'Обновление KataGo'
+    screen = <InstallScreen update repick={repick} onDone={() => void afterInstall()} onClose={closeUpdate} />
+  } else if (showSettings) {
+    crumb = 'Настройки'
     screen = <SettingsScreen onClose={() => setShowSettings(false)} onSaved={() => setHealthTick((n) => n + 1)} onRepick={startRepick} />
-  else if (!health || (health.state !== 'ready' && !installChecked)) screen = <main><p class="status">Загрузка…</p></main>
-  else if (health.state !== 'ready' && install && !install.installed) screen = <InstallScreen update={false} onDone={() => void afterInstall()} />
-  else if (health.state !== 'ready')
+  } else if (!health || (health.state !== 'ready' && !installChecked)) {
+    screen = (
+      <main class="loading">
+        <LoaderCircle class="spin" aria-hidden="true" />
+        Загрузка…
+      </main>
+    )
+  } else if (health.state !== 'ready' && install && !install.installed) {
+    crumb = 'Установка KataGo'
+    screen = <InstallScreen update={false} onDone={() => void afterInstall()} />
+  } else if (health.state !== 'ready') {
+    crumb = health.state === 'starting' ? 'Запуск KataGo' : 'KataGo не готов'
     screen = (
       <EngineScreen
         health={health}
@@ -209,15 +225,21 @@ export function App() {
         onRepick={install?.installed ? startRepick : undefined}
       />
     )
-  else if (!session) screen = (
+  } else if (!session) {
+    crumb = 'Новая тренировка'
+    screen = (
       <StartScreen
         key={defaultRank}
         defaultRank={defaultRank}
         busy={starting || !connected}
-        onStart={(settings) => sendStarting({ type: 'startSession', settings })} />
+        onStart={(settings) => sendStarting({ type: 'startSession', settings })}
+      />
     )
-  else if (session.status === 'playing') screen = <GameScreen session={session} errorSeq={errorSeq} send={send} />
-  else
+  } else if (session.status === 'playing') {
+    crumb = 'Свободная тренировка'
+    screen = <GameScreen session={session} errorSeq={errorSeq} send={send} />
+  } else {
+    crumb = 'Разбор тренировки'
     screen = (
       <ReviewScreen
         review={review}
@@ -227,6 +249,7 @@ export function App() {
         onNew={resetToStart}
       />
     )
+  }
 
   const inGame = session?.status === 'playing'
   const bannerText = connected ? error : 'Нет связи с сервером, переподключаюсь…'
@@ -241,25 +264,19 @@ export function App() {
   // Not while a review is being prepared: the update stops KataGo, and the review needs it.
   const reviewPending = session?.status === 'finished' && review === null
   const offerEngineUpdate = ready && install?.updateAvailable === true && !engineUpdate && !inGame && !showSettings && !reviewPending
+  const nav = !inGame && !engineUpdate ? { settings: showSettings, onGame: () => setShowSettings(false), onSettings: () => setShowSettings(true) } : undefined
 
   return (
     <>
+      <AppHeader crumb={crumb} nav={nav} />
       <AppUpdateBanner />
       {bannerText && <ErrorBanner message={bannerText} onRetry={retry} />}
-      {!inGame && !showSettings && !engineUpdate && (
-        <header class="topbar">
-          <button onClick={() => setShowSettings(true)}>Настройки</button>
-        </header>
-      )}
       {offerEngineUpdate && (
-        <div class="bar">
-          <span>Доступна новая проверенная версия KataGo</span>
-          <button class="primary" onClick={() => setEngineUpdate(true)}>
-            Обновить движок
-          </button>
-        </div>
+        <Bar icon={RefreshCw} action={{ label: 'Обновить движок', onClick: () => setEngineUpdate(true), primary: true }}>
+          Доступна новая проверенная версия KataGo
+        </Bar>
       )}
-      {versionWarning && !showSettings && <p class="notice">{versionWarning}</p>}
+      {versionWarning && !showSettings && <Bar tone="warning">{versionWarning}</Bar>}
       {screen}
     </>
   )

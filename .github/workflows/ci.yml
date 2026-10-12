@@ -1,15 +1,19 @@
 # Spec 7: every pull request to main runs the unit tests, the type check and the e2e test.
+# Drafts are skipped; marking a draft «Ready for review» starts the run. A job skipped by its
+# condition counts as passed, so a required check does not hang on a draft.
 name: CI
 
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
 
 jobs:
   test:
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

@@ -1,0 +1,42 @@
+/* Spec 9: the board — flat light wood, muted coordinates, the zone as a dashed frame over a light veil. */
+.board { position: relative; justify-self: start; min-width: 0; padding: 10px; border-radius: var(--radius-card); background: var(--surface); }
+.board .shudan-goban {
+  --shudan-board-border-width: 0;
+  --shudan-board-border-color: var(--board);
+  --shudan-board-background-color: var(--board);
+  --shudan-board-foreground-color: var(--board-line);
+  border-radius: 8px;
+}
+/* The zone keeps the wood colour; the rest of the board is lighter (under the grid, stones and marks). */
+.board .shudan-goban,
+.board .shudan-goban-image {
+  background: linear-gradient(var(--board), var(--board)) var(--zx, 0) var(--zy, 0) / var(--zw, 100%) var(--zh, 100%) no-repeat, var(--board-outside);
+}
+.board .shudan-coordx span,
+.board .shudan-coordy span { font-family: var(--font); font-size: 0.5em; opacity: 0.8; }
+
+/* The zone (measured overlay, see zone-overlay.ts). */
+.zone-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.zone-overlay .frame { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 5 4; opacity: 0.8; }
+
+/* Last move: a dot on the stone — the accent in a game, the colour of its category in the review. */
+.board { --last-dot: var(--last-move); }
+.board.last-exact { --last-dot: var(--good); }
+.board.last-inaccuracy { --last-dot: var(--warning); }
+.board.last-mistake { --last-dot: var(--serious); }
+.board.last-blunder { --last-dot: var(--critical); }
+.board .shudan-vertex.shudan-marker_point .shudan-marker,
+.board .shudan-vertex.shudan-marker_point.shudan-sign_1 .shudan-marker { fill: var(--last-dot); stroke: rgba(255, 255, 255, 0.9); }
+.board .shudan-vertex.shudan-marker_point.shudan-sign_-1 .shudan-marker { fill: var(--last-dot); stroke: rgba(23, 24, 28, 0.45); }
+.board .shudan-vertex.shudan-marker_point .shudan-marker circle { r: 0.21px; stroke-width: 0.05px; }
+
+/* Candidate letters (spec 7): the best one in the accent, the others dimmed; numbers of a variation keep the stone colours. */
+.board .shudan-vertex.shudan-marker_label .shudan-marker { font-family: var(--font); }
+.board .shudan-vertex.shudan-marker_label.shudan-sign_0 .shudan-marker {
+  background: transparent;
+  color: var(--board-accent);
+  font-weight: 600;
+  text-shadow: 0 0 2px var(--board-outside), 0 0 3px var(--board-outside), 0 0 4px var(--board-outside);
+}
+.board .shudan-vertex.shudan-marker_label.shudan-sign_0.shudan-dimmed .shudan-marker { color: var(--board-accent-muted); font-weight: 500; }
+.board .shudan-vertex .shudan-selection { border: none; border-radius: 50%; background: color-mix(in srgb, var(--board-accent) 18%, transparent); }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { emptyMap, isVertex, ownershipMap, pvMoves, zoneBorder } from './board-maps'
+import { emptyMap, isVertex, ownershipMap, pvMoves, sameVertex } from './board-maps'
 
 describe('board maps', () => {
   it('creates independent rows', () => {
@@ -18,17 +18,6 @@ describe('board maps', () => {
     expect(ownershipMap(null)).toBeNull()
   })
 
-  it('draws the two inner edges of the zone', () => {
-    expect(zoneBorder('TR')).toEqual([
-      { v1: [8, 0], v2: [8, 10], type: 'line' },
-      { v1: [8, 10], v2: [18, 10], type: 'line' },
-    ])
-    expect(zoneBorder('BL')).toEqual([
-      { v1: [10, 8], v2: [10, 18], type: 'line' },
-      { v1: [0, 8], v2: [10, 8], type: 'line' },
-    ])
-  })
-
   it('alternates variation colors from the first mover', () => {
     expect(pvMoves('W', [[1, 1], [2, 2], 'pass'], 2)).toEqual([
       { color: 'W', vertex: [1, 1] },
@@ -36,5 +25,12 @@ describe('board maps', () => {
     ])
     expect(isVertex('pass')).toBe(false)
     expect(isVertex([0, 0])).toBe(true)
+  })
+
+  it('compares moves by point', () => {
+    expect(sameVertex([3, 15], [3, 15])).toBe(true)
+    expect(sameVertex([3, 15], [15, 3])).toBe(false)
+    expect(sameVertex('pass', 'pass')).toBe(true)
+    expect(sameVertex('pass', [0, 0])).toBe(false)
   })
 })

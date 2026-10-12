@@ -1,10 +1,12 @@
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 import type { Category, Color, MoveReview } from '@joseki-dojo/shared'
 import { ACTOR_LABEL, CATEGORY_LABEL, formatPoints, moveLabel } from '../format'
 
-const SLOT = 14
 const GAP = 2
-const HALF = 48
+const HALF = 43
 const MAX_LOSS = 10
+const MAX_SLOT = 28
+const MIN_SLOT = 6
 const CATEGORIES: Category[] = ['exact', 'inaccuracy', 'mistake', 'blunder']
 const FILL: Record<Category, string> = {
   exact: 'var(--good)',
@@ -13,9 +15,9 @@ const FILL: Record<Category, string> = {
   blunder: 'var(--critical)',
 }
 
-/** Bar with a 4px rounded data end (away from the baseline) and a square base. */
+/** Bar with a rounded data end (away from the baseline) and a square base. */
 function barPath(x: number, y: number, w: number, h: number, up: boolean): string {
-  const r = Math.min(4, w / 2, h)
+  const r = Math.min(3, w / 2, h)
   return up
     ? `M${x},${y + h} V${y + r} Q${x},${y} ${x + r},${y} H${x + w - r} Q${x + w},${y} ${x + w},${y + r} V${y + h} Z`
     : `M${x},${y} V${y + h - r} Q${x},${y + h} ${x + r},${y + h} H${x + w - r} Q${x + w},${y + h} ${x + w},${y + h - r} V${y} Z`
@@ -28,22 +30,44 @@ export interface LossBarProps {
   onSelect: (turn: number) => void
 }
 
+/** Spec 7: the loss of every move, the player's up and the bot's down, across the panel's width. */
 export function LossBar({ moves, userColor, selected, onSelect }: LossBarProps) {
-  const width = Math.max(moves.length, 1) * SLOT
+  const ref = useRef<HTMLElement>(null)
+  const [width, setWidth] = useState(320)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const update = (): void => setWidth(el.clientWidth || 320)
+    update()
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null
+    observer?.observe(el)
+    return () => observer?.disconnect()
+  }, [])
+
+  const slot = Math.max(MIN_SLOT, Math.min(MAX_SLOT, width / Math.max(moves.length, 1)))
+  // A long training overflows the panel: keep the selected move in view (← and → move it).
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const left = selected * slot
+    if (left < el.scrollLeft) el.scrollLeft = left
+    else if (left + slot > el.scrollLeft + el.clientWidth) el.scrollLeft = left + slot - el.clientWidth
+  }, [selected, slot])
+  const svgWidth = Math.max(width, slot * moves.length)
   const height = HALF * 2 + 1
   return (
-    <figure class="lossbar">
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Потери по ходам">
-        <line class="baseline" x1={0} x2={width} y1={HALF + 0.5} y2={HALF + 0.5} />
+    <figure class="lossbar" ref={ref}>
+      <svg width={svgWidth} height={height} viewBox={`0 0 ${svgWidth} ${height}`} role="img" aria-label="Потери по ходам">
+        <line class="baseline" x1={0} x2={svgWidth} y1={HALF + 0.5} y2={HALF + 0.5} />
         {moves.map((m) => {
           const mine = m.color === userColor
-          const h = Math.max(2, (Math.min(m.loss, MAX_LOSS) / MAX_LOSS) * (HALF - 2))
-          const x = m.turn * SLOT + GAP / 2
+          const h = Math.max(2, (Math.min(m.loss, MAX_LOSS) / MAX_LOSS) * (HALF - 3))
+          const x = m.turn * slot + GAP / 2
           const y = mine ? HALF - h : HALF + 1
           return (
             <g key={m.turn} class={m.turn === selected ? 'slot selected' : 'slot'} onClick={() => onSelect(m.turn)}>
-              <rect class="hit" x={m.turn * SLOT} y={0} width={SLOT} height={height} />
-              <path d={barPath(x, y, SLOT - GAP, h, mine)} fill={FILL[m.category]} />
+              <rect class="hit" x={m.turn * slot} y={0} width={slot} height={height} rx={4} />
+              <path d={barPath(x, y, slot - GAP, h, mine)} fill={FILL[m.category]} />
               <title>{`Ход ${m.turn + 1} (${ACTOR_LABEL[m.actor]}): ${moveLabel(m.vertex)} — потеря ${formatPoints(m.loss)}, ${CATEGORY_LABEL[m.category]}`}</title>
             </g>
           )
