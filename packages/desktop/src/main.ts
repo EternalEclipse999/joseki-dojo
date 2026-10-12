@@ -191,6 +191,7 @@ async function boot(): Promise<void> {
     dataDir,
     enginesDir: join(userData, 'engines'),
     lockFile: join(resourcesDir, 'katago.lock.json'),
+    trapsFile: app.isPackaged ? join(resourcesDir, 'bases', 'traps.jdb') : join(resourcesDir, 'packages', 'server', 'bases', 'traps.jdb'),
     webDist,
     port: 0,
     log,

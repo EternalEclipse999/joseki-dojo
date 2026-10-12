@@ -9,6 +9,7 @@ const server = await startServer({
   configFile: process.env.JOSEKI_CONFIG ? resolve(process.env.JOSEKI_CONFIG) : join(repoRoot, 'config.local.json'),
   enginesDir: join(repoRoot, 'engines'),
   lockFile: join(repoRoot, 'katago.lock.json'),
+  trapsFile: process.env.JOSEKI_TRAPS ?? join(repoRoot, 'packages', 'server', 'bases', 'traps.jdb'),
   webDist: join(repoRoot, 'packages', 'web', 'dist'),
 })
 console.log(`Joseki Dojo: ${server.url}`)

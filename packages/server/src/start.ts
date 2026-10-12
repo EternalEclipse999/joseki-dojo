@@ -6,6 +6,7 @@ import { loadConfig, type AppConfig } from './config'
 import { engineCommand } from './engine/command'
 import { KataGoEngine, type EngineCommand } from './engine/engine'
 import { loadLock, type KataGoLock } from './engine/lock'
+import { TrapBook } from './traps/book'
 
 export interface ServerOptions {
   /** Settings file: config.local.json in a checkout, <userData>/config.json in the desktop app. Created on the first save. */
@@ -28,6 +29,8 @@ export interface ServerOptions {
   commandFor?: (config: AppConfig) => EngineCommand
   /** The HTTP client for KataGo downloads: the desktop app passes Electron's `net.fetch` (proxy, antivirus certificates). Default: the global `fetch`. */
   fetch?: typeof fetch
+  /** The traps base (packages/server/bases/traps.jdb); missing, null or unreadable leaves the traps mode empty. */
+  trapsFile?: string | null
 }
 
 export interface RunningServer {
@@ -47,7 +50,8 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
   const lock = options.lock ?? loadLock(options.lockFile)
   const commandFor = options.commandFor ?? engineCommand
   const engine = new KataGoEngine(commandFor(config), (line) => log(`[katago] ${line}`))
-  const services = createServices(config, engine, { configFile: options.configFile, enginesDir: options.enginesDir, lock, commandFor, log, fetch: options.fetch })
+  const traps = loadTraps(options.trapsFile, log)
+  const services = createServices(config, engine, { configFile: options.configFile, enginesDir: options.enginesDir, lock, commandFor, log, fetch: options.fetch, traps })
   let app: FastifyInstance | undefined
   try {
     app = await buildApp(services, options.webDist)
@@ -76,4 +80,14 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
       services.db.close()
     })())
   return { url: `http://127.0.0.1:${port}`, port, services, close }
+}
+
+function loadTraps(file: string | null | undefined, log: (line: string) => void): TrapBook {
+  if (!file) return TrapBook.empty()
+  try {
+    return TrapBook.load(file)
+  } catch (err) {
+    log(`База ловушек недоступна: ${err instanceof Error ? err.message : String(err)}`)
+    return TrapBook.empty()
+  }
 }

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_KATAGO, REPO_LOCK, tempDir } from '../test/helpers'
 import { createInstallFixture, fakeBuildCommand, type InstallFixture } from '../test/install-fixture'
 import { startServer, type RunningServer } from './start'
+import { writeTestTraps } from './traps/fixture'
 
 const servers: RunningServer[] = []
 const fixtures: InstallFixture[] = []
@@ -93,5 +94,46 @@ describe('startServer', () => {
     )
     await health(server, 'ready')
     expect(existsSync(join(root, 'config.json'))).toBe(true)
+  })
+
+  describe('traps base', () => {
+    async function startWith(trapsFile: string): Promise<{ lines: string[]; traps: unknown }> {
+      const root = tempDir()
+      const lines: string[] = []
+      const server = await startServer({
+        configFile: join(root, 'config.json'),
+        dataDir: join(root, 'data'),
+        enginesDir: join(root, 'engines'),
+        lockFile: REPO_LOCK,
+        webDist: null,
+        port: 0,
+        log: (line) => void lines.push(line),
+        trapsFile,
+      })
+      servers.push(server)
+      return { lines, traps: await getJson(`${server.url}/api/traps`) }
+    }
+
+    it('starts with a corrupt base and serves an empty book', async () => {
+      const file = join(tempDir(), 'traps.jdb')
+      writeFileSync(file, Buffer.from([1, 2, 3, 250, 17]))
+      const { lines, traps } = await startWith(file)
+      expect(lines.some((l) => l.includes('База ловушек недоступна'))).toBe(true)
+      expect(traps).toEqual({ count: 0, verified: false })
+    })
+
+    it('starts when the base file does not exist', async () => {
+      const { lines, traps } = await startWith(join(tempDir(), 'missing.jdb'))
+      expect(lines.some((l) => l.includes('База ловушек недоступна'))).toBe(true)
+      expect(traps).toEqual({ count: 0, verified: false })
+    })
+
+    it('serves a valid base', async () => {
+      const file = join(tempDir(), 'traps.jdb')
+      writeTestTraps(file)
+      const { lines, traps } = await startWith(file)
+      expect(lines.some((l) => l.includes('База ловушек недоступна'))).toBe(false)
+      expect(traps).toEqual({ count: 2, verified: true })
+    })
   })
 })

@@ -7,6 +7,9 @@ import type { ClientMessage, ServerMessage } from '@joseki-dojo/shared'
 import { fakeEngine, serviceOptions, testConfig } from '../../test/helpers'
 import { buildApp, createServices, type AppServices } from '../app'
 import { HealthMonitor } from '../engine/health'
+import { TrapBook } from '../traps/book'
+import { testTrapsTree } from '../traps/fixture'
+import { decodeJdb, encodeJdb } from '../jdb'
 
 class Client {
   readonly messages: ServerMessage[] = []
@@ -198,5 +201,25 @@ describe('cross-site requests', () => {
     expect(await post(undefined)).toBe(200)
     expect(await post(`http://${host}`)).toBe(200)
     expect(await post('http://localhost:5173')).toBe(200)
+  })
+})
+
+describe('GET /api/traps', () => {
+  it('reports an empty book without a base', async () => {
+    expect(await (await fetch(`http://${host}/api/traps`)).json()).toEqual({ count: 0, verified: false })
+  })
+
+  it('reports the loaded base', async () => {
+    const config = testConfig()
+    const withTraps = createServices(config, fakeEngine(), serviceOptions(config, { traps: TrapBook.fromBase(decodeJdb(encodeJdb(testTrapsTree()))) }))
+    const other = await buildApp(withTraps)
+    try {
+      const res = await other.inject({ method: 'GET', url: '/api/traps', headers: { host: '127.0.0.1:1' } })
+      expect(res.json()).toEqual({ count: 2, verified: true })
+    } finally {
+      await other.close()
+      await withTraps.engine.stop()
+      withTraps.db.close()
+    }
   })
 })

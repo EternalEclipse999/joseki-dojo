@@ -1,6 +1,6 @@
 import { gtpToVertex, moveToGtp, type Actor, type Color, type Corner, type PlayedMove, type ReviewSummary, type SessionStatus } from '@joseki-dojo/shared'
 import type { Db } from './db'
-import type { AnalysisKind, MissedPunishmentRow, SessionRecord, StoredAnalysis } from './records'
+import type { AnalysisKind, MissedPunishmentRow, SessionRecord, StoredAnalysis, TrapAttemptRow } from './records'
 
 interface SessionRow {
   id: string
@@ -156,5 +156,17 @@ export class SessionRepo {
       bestMove: gtpToVertex(r.best_move),
       bestPv: (JSON.parse(r.best_pv_json) as string[]).map(gtpToVertex),
     }))
+  }
+
+  insertTrapAttempt(row: TrapAttemptRow): void {
+    this.db
+      .prepare('INSERT INTO trap_attempts (session_id, trap_id, result, created_at) VALUES (@sessionId, @trapId, @result, @createdAt)')
+      .run(row)
+  }
+
+  /** How many times each trap has been shown: rows in `trap_attempts` per trap id. */
+  trapShows(): Map<string, number> {
+    const rows = this.db.prepare('SELECT trap_id, COUNT(*) AS n FROM trap_attempts GROUP BY trap_id').all() as { trap_id: string; n: number }[]
+    return new Map(rows.map((r) => [r.trap_id, r.n]))
   }
 }

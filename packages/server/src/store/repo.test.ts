@@ -1,4 +1,5 @@
 import type { Vertex } from '@joseki-dojo/shared'
+import Database from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 import { migrate, openDb } from './db'
 import { MIGRATIONS } from './migrations'
@@ -36,10 +37,10 @@ describe('migrations', () => {
 
   it('applies only the migrations not recorded yet', () => {
     const db = openDb(':memory:')
-    const next = { version: 2, name: '002_extra.sql', sql: 'CREATE TABLE extra (id INTEGER PRIMARY KEY)' }
-    expect(migrate(db, [...MIGRATIONS, next])).toEqual([2])
+    const next = { version: 3, name: '003_extra.sql', sql: 'CREATE TABLE extra (id INTEGER PRIMARY KEY)' }
+    expect(migrate(db, [...MIGRATIONS, next])).toEqual([3])
     expect(migrate(db, [...MIGRATIONS, next])).toEqual([])
-    expect(db.prepare('SELECT name FROM schema_migrations ORDER BY version').all()).toEqual([{ name: '001_init.sql' }, { name: '002_extra.sql' }])
+    expect(db.prepare('SELECT name FROM schema_migrations ORDER BY version').all()).toEqual([{ name: '001_init.sql' }, { name: '002_traps.sql' }, { name: '003_extra.sql' }])
   })
 })
 
@@ -110,5 +111,35 @@ describe('movesBefore', () => {
       { color: 'W', vertex: [16, 5] },
     ])
     expect(movesBefore(r, 0)).toEqual([{ color: 'B', vertex: [15, 3] }])
+  })
+})
+
+describe('migration 2 and trap attempts', () => {
+  it('upgrades an existing v1 database', () => {
+    const db = new Database(':memory:')
+    db.pragma('foreign_keys = ON')
+    migrate(db, [MIGRATIONS[0]])
+    new SessionRepo(db).insertSession(record())
+    expect(migrate(db)).toEqual([2])
+    const cols = db.prepare("SELECT name FROM pragma_table_info('sessions')").all() as { name: string }[]
+    expect(cols.map((c) => c.name)).toContain('trap_json')
+    expect(db.prepare('SELECT id, trap_json FROM sessions').all()).toEqual([{ id: 's1', trap_json: null }])
+    expect(() => db.prepare("INSERT INTO trap_attempts (session_id, trap_id, result, created_at) VALUES ('s1', 'a', 'bad', 'x')").run()).toThrow()
+  })
+
+  it('counts the shows of each trap and drops attempts with their session', () => {
+    const db = openDb(':memory:')
+    const repo = new SessionRepo(db)
+    repo.insertSession(record({ id: 's1' }))
+    repo.insertSession(record({ id: 's2' }))
+    expect(repo.trapShows().size).toBe(0)
+    const at = '2026-10-12T10:00:00.000Z'
+    repo.insertTrapAttempt({ sessionId: 's1', trapId: 'aaaaaaaa', result: 'correct', createdAt: at })
+    repo.insertTrapAttempt({ sessionId: 's2', trapId: 'aaaaaaaa', result: 'caught', createdAt: at })
+    repo.insertTrapAttempt({ sessionId: 's2', trapId: 'bbbbbbbb', result: 'other', createdAt: at })
+    expect(repo.trapShows()).toEqual(new Map([['aaaaaaaa', 2], ['bbbbbbbb', 1]]))
+    expect(() => repo.insertTrapAttempt({ sessionId: 'nope', trapId: 'c', result: 'other', createdAt: at })).toThrow()
+    db.prepare('DELETE FROM sessions WHERE id = ?').run('s2')
+    expect(repo.trapShows()).toEqual(new Map([['aaaaaaaa', 1]]))
   })
 })

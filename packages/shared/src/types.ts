@@ -125,3 +125,9 @@ export const BOT_RANKS: readonly string[] = [
 export const isBotRank = (s: string): boolean => BOT_RANKS.includes(s)
 
 export const DEFAULT_BOT_RANK = '7k'
+
+/** What `GET /api/traps` reports about the loaded traps base. */
+export interface TrapsInfo {
+  count: number
+  verified: boolean
+}
