@@ -37,6 +37,9 @@ export class TrapBook {
   get verified(): boolean {
     return this.base?.verified ?? false
   }
+  has(id: string): boolean {
+    return this.nodes.has(id)
+  }
   ids(): string[] {
     return [...this.nodes.keys()]
   }

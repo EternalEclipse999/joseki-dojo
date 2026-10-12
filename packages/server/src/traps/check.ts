@@ -60,21 +60,23 @@ export async function checkTraps(base: JdbBase, engine: AnalysisEngine, opts: Ch
     const bestLead = view(best.scoreLead, answerer)
 
     const answers: JdbNode[] = []
+    const raws: number[] = []
     for (const answer of trap.children) {
       const after = await engine.analyze({ ...baseQuery([...moves, { color: answerer, vertex: vertexOf(answer.move) }]), maxVisits: opts.visits })
-      const loss = round1(Math.max(0, bestLead - view(after.rootInfo.scoreLead, answerer)))
-      answers.push({ ...answer, loss })
+      const raw = Math.max(0, bestLead - view(after.rootInfo.scoreLead, answerer))
+      raws.push(raw)
+      // The node keeps the rounded loss; the thresholds below compare the unrounded ones.
+      answers.push({ ...answer, loss: round1(raw) })
     }
-    const lossesOf = (cat: JdbNode['category']): number[] => answers.filter((a) => a.category === cat).map((a) => a.loss as number)
+    const lossesOf = (cat: JdbNode['category']): number[] => raws.filter((_, i) => answers[i].category === cat)
     const good = lossesOf('good')
     const caught = lossesOf('caught')
     if (good.length === 0) return 'no good answer'
+    if (caught.length === 0) return 'no caught answer'
     const minGood = Math.min(...good)
-    if (minGood > opts.goodMax) return `best good answer loses ${minGood} > ${opts.goodMax}`
-    if (caught.length > 0) {
-      const gap = Math.min(...caught) - minGood
-      if (gap < opts.caughtGap) return `caught answers are not bad enough: gap ${round1(gap)} < ${opts.caughtGap}`
-    }
+    if (minGood > opts.goodMax) return `best good answer loses ${round1(minGood)} > ${opts.goodMax}`
+    const gap = Math.min(...caught) - minGood
+    if (gap < opts.caughtGap) return `caught answers are not bad enough: gap ${round1(gap)} < ${opts.caughtGap}`
     return { ...trap, children: answers }
   }
 
@@ -82,7 +84,13 @@ export async function checkTraps(base: JdbBase, engine: AnalysisEngine, opts: Ch
     const path = [...parent, node.move]
     if (node.category === 'trap') {
       const id = trapId(path)
-      const verdict = await judge(node, path)
+      // Traps nested under an answer are not checked separately: the base format does not produce them.
+      let verdict: JdbNode | string
+      try {
+        verdict = await judge(node, path)
+      } catch (err) {
+        verdict = `error: ${err instanceof Error ? err.message : String(err)}`
+      }
       done++
       if (typeof verdict === 'string') {
         dropped.push({ id, reason: verdict })

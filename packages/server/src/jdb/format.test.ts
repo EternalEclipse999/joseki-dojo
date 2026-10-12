@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decodeJdb, encodeJdb, JdbError, type JdbNode, type JdbTree } from './index'
+import { crc32, decodeJdb, encodeJdb, JdbError, zoneIndex, type JdbNode, type JdbTree } from './index'
 
 const leaf = (move: JdbNode['move'], category: JdbNode['category'] = 'none', loss: number | null = null): JdbNode => ({ move, category, loss, children: [] })
 
@@ -75,5 +75,77 @@ describe('JdbBase navigation', () => {
   })
   it('lists nodes of a category', () => {
     expect(base.nodesOf('trap')).toHaveLength(1)
+  })
+})
+
+/** A file with the given body, node count and a valid header (traps, verified). */
+function file(body: number[], count: number): Uint8Array {
+  const bytes = new Uint8Array(16 + body.length)
+  bytes.set([0x4a, 0x44, 0x42, 0x31, 1, 1, 1, 0], 0)
+  bytes.set(body, 16)
+  const view = new DataView(bytes.buffer)
+  view.setUint32(8, count, true)
+  view.setUint32(12, crc32(bytes.subarray(16)), true)
+  return bytes
+}
+
+describe('crc32', () => {
+  it('matches the standard check value', () => {
+    expect(crc32(new TextEncoder().encode('123456789'))).toBe(0xcbf43926)
+  })
+})
+
+describe('zoneIndex', () => {
+  it('is x - 8 + 11 * y, not symmetric in x and y', () => {
+    expect(zoneIndex([9, 0])).toBe(1)
+    expect(zoneIndex([8, 1])).toBe(11)
+  })
+})
+
+describe('golden bytes', () => {
+  it('encodes a tiny tree to the exact file', () => {
+    // Board points as [x, y]: x counts from A (A0 .. T18, no I), y from the top edge (row 19 - y).
+    // Q16 = [15, 3]: zone index (15 - 8) + 11 * 3 = 7 + 33 = 40.
+    // O17 = [13, 2]: zone index (13 - 8) + 11 * 2 = 5 + 22 = 27.
+    // P17 = [14, 2]: zone index (14 - 8) + 11 * 2 = 6 + 22 = 28.
+    // Categories: none 0, good 1, caught 2, trap 3; the loss flag is 8; a loss is round(10 * loss) as a little-endian i16 (0.3 -> 3, 0).
+    const tree: JdbTree = {
+      kind: 'traps',
+      verified: true,
+      roots: [
+        {
+          move: [15, 3],
+          category: 'none',
+          loss: null,
+          children: [{ move: [13, 2], category: 'trap', loss: null, children: [leaf([14, 2], 'good', 0.3)] }],
+        },
+      ],
+    }
+    const body = [
+      1, // first-level node count
+      40, 0, 1, // Q16: move, flags none, one child
+      27, 3, 1, // O17: move, flags trap, one child
+      28, 1 | 8, 0, 3, 0, // P17: move, flags good + loss, no children, loss 3 as i16
+    ]
+    const header = [0x4a, 0x44, 0x42, 0x31, 1, 1, 1, 0, 3, 0, 0, 0]
+    const crc = crc32(Uint8Array.from(body))
+    const crcBytes = [crc & 0xff, (crc >>> 8) & 0xff, (crc >>> 16) & 0xff, (crc >>> 24) & 0xff]
+    expect(Array.from(encodeJdb(tree))).toEqual([...header, ...crcBytes, ...body])
+  })
+})
+
+describe('decode limits', () => {
+  it('rejects a node count the file cannot hold, before allocating', () => {
+    const huge = file([0], 0)
+    new DataView(huge.buffer).setUint32(8, 0xffffffff, true)
+    expect(() => decodeJdb(huge)).toThrow(JdbError)
+    // 4 body bytes hold at most one node.
+    expect(() => decodeJdb(file([1, 40, 0, 0], 2))).toThrow(JdbError)
+    expect(decodeJdb(file([1, 40, 0, 0], 1)).size).toBe(1)
+  })
+  it('rejects an escape board index of 361 or more', () => {
+    const escape = (i: number) => file([1, 255, i & 0xff, i >> 8, 0, 0], 1)
+    expect(() => decodeJdb(escape(361))).toThrow(JdbError)
+    expect(decodeJdb(escape(360)).move(0)).toEqual([360 % 19, Math.floor(360 / 19)])
   })
 })

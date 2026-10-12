@@ -110,6 +110,58 @@ describe('checkTraps', () => {
     expect(out.dropped[0].reason).toMatch(/caught/)
   })
 
+  it('keeps a good answer losing exactly goodMax', async () => {
+    // Trap 1: best for White is +3; P17 and P18 end at +2 (loss exactly 1), N18 at -1 (loss 4).
+    const engine = leadEngine({ ...TRAP2, [key('Q16', 'O17', 'O18', 'P17')]: -2, [key('Q16', 'O17', 'O18', 'P18')]: -2, [key('Q16', 'O17', 'O18', 'N18')]: 1 })
+    const out = await checkTraps(base(), engine, OPTS, () => {})
+    expect(out.dropped).toEqual([])
+    expect(out.kept).toBe(2)
+  })
+
+  it('keeps a trap whose caught answer is exactly caughtGap worse than the good one', async () => {
+    // Trap 1: the good answers lose 0, N18 ends at +1 for White (loss exactly 2).
+    const engine = leadEngine({ ...TRAP2, [key('Q16', 'O17', 'O18', 'P17')]: -3, [key('Q16', 'O17', 'O18', 'P18')]: -3, [key('Q16', 'O17', 'O18', 'N18')]: -1 })
+    const out = await checkTraps(base(), engine, OPTS, () => {})
+    expect(out.dropped).toEqual([])
+    expect(out.kept).toBe(2)
+  })
+
+  it('compares the unrounded losses and stores the rounded ones', async () => {
+    // A good loss of 1.04 rounds to 1 but is over goodMax; the trap is dropped.
+    const over = leadEngine({ ...TRAP2, [key('Q16', 'O17', 'O18', 'P17')]: -1.96, [key('Q16', 'O17', 'O18', 'P18')]: -1.96, [key('Q16', 'O17', 'O18', 'N18')]: 5 })
+    const dropped = await checkTraps(base(), over, OPTS, () => {})
+    expect(dropped.dropped.map((d) => d.id)).toEqual([ID1])
+    expect(dropped.dropped[0].reason).toMatch(/good/)
+    // A loss of 0.14 is stored as 0.1.
+    const ok = leadEngine({ ...TRAP1, ...TRAP2, [key('Q16', 'O17', 'O18', 'P17')]: -2.86 })
+    const out = await checkTraps(base(), ok, OPTS, () => {})
+    const b = decodeJdb(encodeJdb(out.tree))
+    expect(b.loss(b.find(['Q16', 'O17', 'O18', 'P17'].map(v))!)).toBe(0.1)
+  })
+
+  it('drops a trap that has no caught answer', async () => {
+    const tree: JdbTree = {
+      kind: 'traps',
+      verified: false,
+      roots: [node('Q16', 'none', [node('O17', 'trap', [node('P17', 'good'), node('P18', 'good')])])],
+    }
+    const out = await checkTraps(base(tree), new StubEngine(), OPTS, () => {})
+    expect(out.kept).toBe(0)
+    expect(out.dropped).toEqual([{ id: trapId(['Q16', 'O17'].map(v)), reason: 'no caught answer' }])
+  })
+
+  it('drops a trap whose query fails and goes on with the others', async () => {
+    const engine = leadEngine(TRAP2)
+    // The first zone query belongs to trap 1.
+    engine.fail = { when: (q) => q.allowMoves !== undefined, error: new Error('boom') }
+    const lines: string[] = []
+    const out = await checkTraps(base(), engine, OPTS, (l) => lines.push(l))
+    expect(out.dropped).toEqual([{ id: ID1, reason: 'error: boom' }])
+    expect(out.kept).toBe(1)
+    expect(out.tree.verified).toBe(true)
+    expect(lines.some((l) => l.includes(ID1) && l.includes('error: boom'))).toBe(true)
+  })
+
   it('prunes branches left without traps', async () => {
     const out = await checkTraps(base(), new StubEngine(), OPTS, () => {}) // all leads 0: nothing is caught
     expect(out.kept).toBe(0)

@@ -42,6 +42,8 @@ export interface SessionServiceDeps {
   publish: (sessionId: string, msg: ServerMessage) => void
   /** Starts the review of a finished session. */
   onFinished: (sessionId: string) => void
+  /** Diagnostics for the operator (the same style as the engine and installer logs); default: silent. */
+  log?: (line: string) => void
   rng?: Rng
   newId?: () => string
   now?: () => string
@@ -65,10 +67,14 @@ export class SessionService {
   private readonly now: () => string
   private readonly strong: StrongChooser
   private readonly traps: TrapBook
+  private readonly log: (line: string) => void
+  /** Sessions whose trap the book no longer knows (logged once each). */
+  private readonly missingTrap = new Set<string>()
 
   constructor(private readonly d: SessionServiceDeps) {
     this.strong = d.strong ?? new StrongBot(d.engine)
     this.traps = d.traps ?? TrapBook.empty()
+    this.log = d.log ?? (() => {})
     this.rng = d.rng ?? Math.random
     this.newId = d.newId ?? randomUUID
     this.now = d.now ?? (() => new Date().toISOString())
@@ -142,8 +148,10 @@ export class SessionService {
     const s = this.load(sessionId)
     if (!s.isPlaying) return
     s.finish(this.now())
-    this.d.repo.setStatus(s.id, 'finished', s.record.finishedAt)
-    this.recordTrapAttempt(s)
+    this.d.repo.transaction(() => {
+      this.d.repo.setStatus(s.id, 'finished', s.record.finishedAt)
+      this.recordTrapAttempt(s)
+    })
     this.publishState(s)
     this.d.onFinished(s.id)
   }
@@ -249,7 +257,13 @@ export class SessionService {
       rank: s.record.settings.botRank,
       temperature: this.d.config.bot.temperature,
     }
-    if (trap) {
+    // A base replaced since the session started may no longer know the trap: the bot plays as usual from then on.
+    if (trap && !this.traps.has(trap.id)) {
+      if (!this.missingTrap.has(s.id)) {
+        this.missingTrap.add(s.id)
+        this.log(`Ловушка ${trap.id} не найдена в базе, бот играет как обычно`)
+      }
+    } else if (trap) {
       const n = req.moves.length
       if (n === trap.index) {
         const { trick } = this.traps.place(trap.id, s.corner, s.userColor, trap.mirror)

@@ -27,7 +27,9 @@ const settings = (over: Partial<SessionSettings> = {}): SessionSettings => ({
 /** `draws` feed `pick` and the mirror coin: 0 picks the first trap (Q16 O17 O18), 0.9 means no mirror. */
 function setup(traps: TrapBook = book(), draws: number[] = [0, 0.9]) {
   const engine = new StubEngine()
-  const repo = new SessionRepo(openDb(':memory:'))
+  const db = openDb(':memory:')
+  const repo = new SessionRepo(db)
+  const logs: string[] = []
   const cfg = testConfig()
   const published: ServerMessage[] = []
   let n = 0
@@ -39,13 +41,14 @@ function setup(traps: TrapBook = book(), draws: number[] = [0, 0.9]) {
     analysis: new AnalysisScheduler(engine, repo, cfg.analysis),
     bot: new HumanBot(engine, mulberry32(1)),
     traps,
+    log: (line) => logs.push(line),
     publish: (_id, msg) => published.push(msg),
     onFinished: () => undefined,
     rng: () => draws[k++ % draws.length],
     newId: () => `s${++n}`,
     now: () => '2026-10-12T10:00:00.000Z',
   })
-  return { service, engine, repo, cfg }
+  return { service, engine, repo, cfg, db, logs }
 }
 
 const freeZonePoint = (v: SessionView): Vertex => {
@@ -79,9 +82,62 @@ describe('traps sessions', () => {
     const after = await waitMoves(service, v.id, 1)
     expect(after.moves[0]).toMatchObject({ color: 'B', vertex: V('O18'), actor: 'bot' })
     expect(after.toMove).toBe('W')
-    // Only the background position analyses touched the engine.
+    // Up to the user's first turn the engine saw only the two background position analyses (with ownership).
+    expect(
+      engine.queries.map((q) => ({
+        moves: q.moves.map(([c, m]) => `${c}${m}`),
+        ownership: q.includeOwnership,
+        allowMoves: q.allowMoves,
+        humanProfile: q.overrideSettings?.humanSLProfile,
+      })),
+    ).toEqual([
+      { moves: ['BQ16', 'WO17'], ownership: true, allowMoves: undefined, humanProfile: undefined },
+      { moves: ['BQ16', 'WO17', 'BO18'], ownership: true, allowMoves: undefined, humanProfile: undefined },
+    ])
     expect(strongQueries(engine)).toEqual([])
     expect(engine.queries.filter(isHumanQuery)).toEqual([])
+  })
+
+  it('falls back to the usual bot when the book no longer knows the trap', async () => {
+    const { service, engine, repo, logs } = setup(TrapBook.empty())
+    repo.insertSession({
+      id: 'old',
+      createdAt: '2026-10-12T10:00:00.000Z',
+      finishedAt: null,
+      settings: { mode: 'traps', environment: 'empty', userColor: 'W', botRank: '7k', corner: 'TR', trap: { id: 'deadbeef', index: 2, mirror: false, swapColors: false } },
+      status: 'playing',
+      parentSessionId: null,
+      initialMoves: [
+        { color: 'B', vertex: V('Q16') },
+        { color: 'W', vertex: V('O17') },
+      ],
+      moves: [],
+      summary: null,
+    })
+    service.resync('old')
+    let v = await waitMoves(service, 'old', 1)
+    expect(v.moves[0]).toMatchObject({ color: 'B', actor: 'bot' })
+    expect(engine.queries.filter(isHumanQuery)).toHaveLength(1)
+    // Later moves, where the strong replies would be, are the usual bot's too.
+    for (let reply = 1; reply <= 3; reply++) {
+      service.playUserMove('old', freeZonePoint(v))
+      v = await waitMoves(service, 'old', 1 + 2 * reply)
+    }
+    expect(strongQueries(engine)).toEqual([])
+    expect(engine.queries.filter(isHumanQuery)).toHaveLength(4)
+    expect(logs).toEqual(['Ловушка deadbeef не найдена в базе, бот играет как обычно'])
+  })
+
+  it('records a finished traps session as one attempt row with the trap id and the verdict', async () => {
+    const { service, db } = setup()
+    const id = service.start(settings()).id
+    await waitMoves(service, id, 1)
+    service.playUserMove(id, V('N18'))
+    await waitMoves(service, id, 3)
+    service.finish(id)
+    const rows = db.prepare('SELECT session_id, trap_id, result FROM trap_attempts').all()
+    expect(rows).toEqual([{ session_id: id, trap_id: service.view(id).settings.trap!.id, result: 'caught' }])
+    expect(db.prepare('SELECT status FROM sessions WHERE id = ?').get(id)).toEqual({ status: 'finished' })
   })
 
   it('plays three strong zone replies, then the human policy', async () => {

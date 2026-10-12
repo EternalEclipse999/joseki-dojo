@@ -78,6 +78,7 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
     bot: new HumanBot(engine),
     strong: new StrongBot(engine),
     traps,
+    log: options.log,
     onFinished: (id) => {
       reviews.prepare(id).catch((err: unknown) => publish(id, toErrorMessage(err)))
     },

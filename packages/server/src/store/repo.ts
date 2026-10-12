@@ -37,6 +37,11 @@ interface MissedRow {
 export class SessionRepo {
   constructor(private readonly db: Db) {}
 
+  /** Runs `fn` in one SQLite transaction: all its writes land together or not at all. */
+  transaction<T>(fn: () => T): T {
+    return this.db.transaction(fn)()
+  }
+
   insertSession(r: SessionRecord): void {
     this.db.transaction(() => {
       this.db

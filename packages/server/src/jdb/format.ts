@@ -71,6 +71,8 @@ export function decodeJdb(bytes: Uint8Array): JdbBase {
   if (!kind) throw new JdbError(`Неизвестный тип базы ходов: ${bytes[5]}`)
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   const count = view.getUint32(8, true)
+  // Every node takes at least 3 bytes (move, flags, child count): a larger count cannot be real, and must not drive an allocation.
+  if (count > (bytes.length - HEADER) / 3) throw new JdbError('Некорректное число узлов в файле базы')
   if (crc32(bytes.subarray(HEADER)) !== view.getUint32(12, true)) throw new JdbError('Файл базы ходов повреждён')
 
   const moves = new Int16Array(count)
@@ -98,7 +100,9 @@ export function decodeJdb(bytes: Uint8Array): JdbBase {
     const code = bytes[pos++]
     if (code === ESCAPE) {
       if (pos + 2 > bytes.length) throw new JdbError('Файл базы обрывается')
-      moves[n] = OUTSIDE + (bytes[pos] | (bytes[pos + 1] << 8))
+      const board = bytes[pos] | (bytes[pos + 1] << 8)
+      if (board >= 361) throw new JdbError(`Недопустимая точка доски в базе: ${board}`)
+      moves[n] = OUTSIDE + board
       pos += 2
     } else if (code <= TENUKI) moves[n] = code
     else throw new JdbError(`Неизвестный код хода в базе: ${code}`)
