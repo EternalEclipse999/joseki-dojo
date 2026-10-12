@@ -10,3 +10,4 @@ test-results/
 playwright-report/
 *.log
 e2e/.repick/
+e2e/*.jdb

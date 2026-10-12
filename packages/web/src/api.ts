@@ -1,13 +1,4 @@
-import type {
-  ClientMessage,
-  HealthResponse,
-  InstallStatus,
-  ReviewData,
-  ServerMessage,
-  SettingsResponse,
-  SettingsUpdate,
-  SettingsView,
-} from '@joseki-dojo/shared'
+import type { ClientMessage, HealthResponse, InstallStatus, ReviewData, ServerMessage, SettingsResponse, SettingsUpdate, SettingsView, TrapsInfo } from '@joseki-dojo/shared'
 
 export async function fetchHealth(): Promise<HealthResponse> {
   const res = await fetch('/api/health')
@@ -66,6 +57,13 @@ export class DojoSocket {
       setTimeout(() => this.connect(), delay)
     }
   }
+}
+
+/** Spec (traps) 5: how many traps the base holds; 0 disables the mode. */
+export async function fetchTraps(): Promise<TrapsInfo> {
+  const res = await fetch('/api/traps')
+  if (!res.ok) throw new Error(`Не удалось узнать базу ловушек: HTTP ${res.status}`)
+  return (await res.json()) as TrapsInfo
 }
 
 export async function fetchSettings(): Promise<SettingsView> {

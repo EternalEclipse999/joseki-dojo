@@ -2,7 +2,8 @@
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 /* Start (spec 5). */
-.modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 720px) { .modes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .mode { position: relative; display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-raised); cursor: pointer; }
 .mode input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
 .mode svg { width: 18px; height: 18px; margin-bottom: 4px; color: var(--text-2); }
@@ -76,6 +77,8 @@
 .candidates .loss { margin-left: auto; color: var(--text-2); }
 .candidates .best { margin-left: auto; color: var(--good-text); }
 .punishment { font-size: 13px; color: var(--text-2); }
+.trap-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.trap-line > svg { width: 16px; height: 16px; color: var(--text-2); }
 .branch { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .branch .where { font-size: 13px; padding: 0 4px; font-variant-numeric: tabular-nums; }
 

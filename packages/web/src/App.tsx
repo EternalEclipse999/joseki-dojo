@@ -1,8 +1,8 @@
 import type { JSX } from 'preact'
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import type { ClientMessage, HealthResponse, InstallStatus, ReviewData, SessionView } from '@joseki-dojo/shared'
+import type { ClientMessage, HealthResponse, InstallStatus, ReviewData, SessionView, TrapsInfo } from '@joseki-dojo/shared'
 import { LoaderCircle, RefreshCw } from 'lucide-preact'
-import { DojoSocket, fetchHealth, fetchInstall, fetchReview, fetchSettings, recheckHealth } from './api'
+import { DojoSocket, fetchHealth, fetchInstall, fetchReview, fetchSettings, fetchTraps, recheckHealth } from './api'
 import { AppHeader } from './components/AppHeader'
 import { AppUpdateBanner } from './components/AppUpdateBanner'
 import { Bar } from './components/Bar'
@@ -38,6 +38,7 @@ export function App() {
   // An engine update (from the banner) or a re-pick (Settings, engine screen) is on screen.
   const [engineUpdate, setEngineUpdate] = useState(false)
   const [repick, setRepick] = useState(false)
+  const [traps, setTraps] = useState<TrapsInfo | null>(null)
 
   const socket = useMemo(
     () =>
@@ -124,6 +125,14 @@ export function App() {
         setDefaultRank(s.defaultBotRank)
       })
       .catch(() => undefined)
+  }, [ready, healthTick])
+
+  // Traps spec 5: the «Ловушки» card is available only when the base holds traps.
+  useEffect(() => {
+    if (!ready) return
+    fetchTraps()
+      .then(setTraps)
+      .catch(() => setTraps({ count: 0, verified: false }))
   }, [ready, healthTick])
 
   // While a finished session has no review yet, poll for it: reviewReady may have been missed
@@ -231,12 +240,13 @@ export function App() {
       <StartScreen
         key={defaultRank}
         defaultRank={defaultRank}
+        trapsCount={traps?.count ?? 0}
         busy={starting || !connected}
         onStart={(settings) => sendStarting({ type: 'startSession', settings })}
       />
     )
   } else if (session.status === 'playing') {
-    crumb = 'Свободная тренировка'
+    crumb = session.settings.mode === 'traps' ? 'Ловушка' : 'Свободная тренировка'
     screen = <GameScreen session={session} errorSeq={errorSeq} send={send} />
   } else {
     crumb = 'Разбор тренировки'

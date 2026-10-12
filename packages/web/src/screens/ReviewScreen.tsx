@@ -1,7 +1,8 @@
+import type { JSX } from 'preact'
 import type { Marker } from '@sabaki/shudan'
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import { ChevronLeft, ChevronRight, GitBranch, LoaderCircle, Map as MapIcon, Plus, RotateCcw } from 'lucide-preact'
-import { Position, type ReviewData, type Vertex } from '@joseki-dojo/shared'
+import { ChevronLeft, ChevronRight, GitBranch, LoaderCircle, Map as MapIcon, Plus, RotateCcw, Swords } from 'lucide-preact'
+import { Position, type ReviewData, type TrapVerdict, type Vertex } from '@joseki-dojo/shared'
 import { emptyMap, isVertex, ownershipMap, pvMoves, sameVertex } from '../board-maps'
 import { Board } from '../components/Board'
 import { LossBar } from '../components/LossBar'
@@ -66,6 +67,36 @@ export function ReviewScreen({ review, progress, onReplay, onNew, busy }: Review
 }
 
 const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
+
+const VERDICT: Record<TrapVerdict, { text: string; cls: string }> = {
+  correct: { text: 'верный ответ', cls: 'cat exact' },
+  caught: { text: 'попались в ловушку', cls: 'cat blunder' },
+  other: { text: 'ход не из базы', cls: 'badge' },
+}
+
+/** Traps spec 7: the trick is marked; the answer to it gets the base's verdict and its correct answers. */
+function trapNote(review: ReviewData, turn: number): JSX.Element | null {
+  const trap = review.trap
+  if (!trap) return null
+  if (trap.trickTurn === turn) {
+    return (
+      <p class="trap-line">
+        <Swords aria-hidden="true" />
+        <span class="badge">ловушка</span>
+        <span class="muted">известная ловушка из базы</span>
+      </p>
+    )
+  }
+  if (trap.answerTurn !== turn || trap.verdict === null) return null
+  const v = VERDICT[trap.verdict]
+  return (
+    <p class="trap-line">
+      <Swords aria-hidden="true" />
+      <span class={v.cls}>{v.text}</span>
+      {trap.good.length > 0 && <span class="muted">Верно: {trap.good.map((g) => (g === 'pass' ? 'тэнуки' : moveLabel(g))).join(', ')}</span>}
+    </p>
+  )
+}
 
 /** ← and → step through the moves unless the focus is in a text field. */
 function useArrowKeys(onStep: (delta: number) => void): void {
@@ -186,6 +217,7 @@ function ReviewLoaded({ review, onReplay, onNew, busy }: { review: ReviewData; o
             {move.loss > 0.05 && ` −${formatPoints(move.loss)}`}
           </span>
         </div>
+        {trapNote(review, turn)}
         {punishment && (
           <p class="punishment">
             {punishment.turn === turn ? 'Ошибка бота' : 'Ваш ответ на ошибку бота'}: бот потерял {formatPoints(punishment.botLoss)}, ваш ответ —{' '}
