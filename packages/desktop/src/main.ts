@@ -144,7 +144,8 @@ const updates = new UpdateController(
 const fromWindow = (event: IpcMainInvokeEvent): boolean =>
   event.sender === mainWindow?.webContents && localOrigin !== null && sameOrigin(event.senderFrame?.url ?? '', localOrigin)
 
-function setUpUpdates(): void {  ipcMain.handle(CHANNELS.get, (event) => (fromWindow(event) ? updates.current : { status: 'idle' }))
+function setUpUpdates(): void {
+  ipcMain.handle(CHANNELS.get, (event) => (fromWindow(event) ? updates.current : { status: 'idle' }))
   ipcMain.handle(CHANNELS.download, async (event) => {
     if (fromWindow(event)) await updates.download()
   })
