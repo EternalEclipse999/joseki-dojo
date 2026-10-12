@@ -1,5 +1,4 @@
-import { BOARD_SIZE, otherColor, zoneRanges, type Category, type Color, type Corner, type Move, type MoveVertex, type Vertex } from '@joseki-dojo/shared'
-import type { LineMarker } from '@sabaki/shudan'
+import { BOARD_SIZE, otherColor, type Category, type Color, type Move, type MoveVertex, type Vertex } from '@joseki-dojo/shared'
 
 export function emptyMap<T>(fill: T): T[][] {
   return Array.from({ length: BOARD_SIZE }, () => Array.from({ length: BOARD_SIZE }, () => fill))
@@ -9,17 +8,6 @@ export function emptyMap<T>(fill: T): T[][] {
 export function ownershipMap(ownership: readonly number[] | null): number[][] | null {
   if (!ownership) return null
   return Array.from({ length: BOARD_SIZE }, (_, y) => ownership.slice(y * BOARD_SIZE, (y + 1) * BOARD_SIZE))
-}
-
-/** The zone's two inner edges; its other two sides are the board edges. */
-export function zoneBorder(corner: Corner): LineMarker[] {
-  const { x, y } = zoneRanges(corner)
-  const innerX = corner === 'TL' || corner === 'BL' ? x[1] : x[0]
-  const innerY = corner === 'TL' || corner === 'TR' ? y[1] : y[0]
-  return [
-    { v1: [innerX, y[0]], v2: [innerX, y[1]], type: 'line' },
-    { v1: [x[0], innerY], v2: [x[1], innerY], type: 'line' },
-  ]
 }
 
 export const GHOST_TYPE: Record<Category, 'good' | 'interesting' | 'doubtful' | 'bad'> = {

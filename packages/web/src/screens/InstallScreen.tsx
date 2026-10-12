@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks'
+import { Check, CircleAlert, Download, LoaderCircle, RotateCcw } from 'lucide-preact'
 import type { InstallStatus } from '@joseki-dojo/shared'
 import { fetchInstall, startInstall } from '../api'
 import { canStartInstall, downloadSizeText, fileProgressText, INSTALL_STEP_TEXT, installFinishedAtOnce, isInstalling } from '../install-format'
@@ -67,50 +68,70 @@ export function InstallScreen({ update, repick = false, onDone, onClose }: Insta
   const failed = step === 'failed' || requestError !== null
   const canStart = canStartInstall({ update, running, failed, installed: status?.installed })
 
+  const title = repick ? 'Подбор движка KataGo' : update ? 'Обновление KataGo' : 'Нужно скачать движок KataGo'
+  const showCard = running || step === 'done' || step === 'failed' || (status !== null && status.files.length > 0)
+
   return (
-    <main class="install">
-      <h1>{repick ? 'Подбор движка KataGo' : update ? 'Обновление KataGo' : 'Нужно скачать движок KataGo'}</h1>
-      {!update && !running && (
-        <p>
-          Joseki Dojo играет и считает с помощью KataGo — сильной программы для игры в го. Её нужно один раз скачать (
-          {downloadSizeText(/linux/i.test(navigator.userAgent))}) — это займёт несколько минут. Дальше всё произойдёт само: программа
-          проверит файлы и выберет, что на этом компьютере работает быстрее — процессор или видеокарта.
-        </p>
-      )}
-      {(running || step === 'done') && <p class="status">{INSTALL_STEP_TEXT[step]}</p>}
-      {status && status.files.length > 0 && (
-        <ul class="files">
-          {status.files.map((f) => (
-            <li key={f.name}>
-              <div class="row">
-                <span>{f.label}</span>
-                <span class="meta">{fileProgressText(f)}</span>
-              </div>
-              <progress max={f.total || 1} value={f.done ? f.total || 1 : f.received} />
-            </li>
-          ))}
-        </ul>
-      )}
-      {step === 'done' && status?.note && <p class="hint">{status.note}</p>}
-      {step === 'failed' && (
-        <>
-          <p class="status error">{INSTALL_STEP_TEXT.failed}</p>
-          <p class="hint error">{status?.error}</p>
-        </>
-      )}
-      {requestError && <p class="hint error">{requestError}</p>}
-      <div class="row">
-        {canStart && (
-          <button class="primary" onClick={() => void start()}>
-            {failed ? 'Попробовать снова' : 'Установить'}
-          </button>
+    <main>
+      <div class="page install">
+        <div class="page-head">
+          <h1>{title}</h1>
+          {!update && !running && (
+            <p>
+              Joseki Dojo играет и считает с помощью KataGo — сильной программы для игры в го. Её нужно один раз скачать (
+              {downloadSizeText(/linux/i.test(navigator.userAgent))}) — это займёт несколько минут. Дальше всё произойдёт само: программа
+              проверит файлы и выберет, что на этом компьютере работает быстрее — процессор или видеокарта.
+            </p>
+          )}
+        </div>
+        {showCard && (
+          <div class="card section">
+            {(running || step === 'done') && (
+              <p class="status-line">
+                {running ? <LoaderCircle class="spin" aria-hidden="true" /> : <Check aria-hidden="true" />}
+                {INSTALL_STEP_TEXT[step]}
+              </p>
+            )}
+            {status && status.files.length > 0 && (
+              <ul class="files">
+                {status.files.map((f) => (
+                  <li key={f.name}>
+                    <div class="row">
+                      <span>{f.label}</span>
+                      <span class="meta">{fileProgressText(f)}</span>
+                    </div>
+                    <progress max={f.total || 1} value={f.done ? f.total || 1 : f.received} />
+                  </li>
+                ))}
+              </ul>
+            )}
+            {step === 'done' && status?.note && <p class="hint">{status.note}</p>}
+            {step === 'failed' && (
+              <>
+                <p class="status-line error">
+                  <CircleAlert aria-hidden="true" />
+                  {INSTALL_STEP_TEXT.failed}
+                </p>
+                <p class="hint error">{status?.error}</p>
+              </>
+            )}
+          </div>
         )}
-        {step === 'done' && status?.note && (
-          <button class="primary" onClick={onDone}>
-            Продолжить
-          </button>
-        )}
-        {update && failed && onClose && <button onClick={onClose}>Назад</button>}
+        {requestError && <p class="hint error">{requestError}</p>}
+        <div class="actions">
+          {canStart && (
+            <button class="primary lg" onClick={() => void start()}>
+              {failed ? <RotateCcw aria-hidden="true" /> : <Download aria-hidden="true" />}
+              {failed ? 'Попробовать снова' : 'Установить'}
+            </button>
+          )}
+          {step === 'done' && status?.note && (
+            <button class="primary lg" onClick={onDone}>
+              Продолжить
+            </button>
+          )}
+          {update && failed && onClose && <button class="ghost" onClick={onClose}>Назад</button>}
+        </div>
       </div>
     </main>
   )

@@ -5,7 +5,8 @@ async function startAsBlackTopRight(page: Page): Promise<void> {
   await page.getByLabel('Чёрные').check()
   await page.getByLabel('Правый верхний').check()
   await page.getByRole('button', { name: 'Начать' }).click()
-  await expect(page.getByText('Ваш ход (чёрные)')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Ваш ход' })).toBeVisible()
+  await expect(page.getByText(/^Чёрные против бота/)).toBeVisible()
 }
 
 const vertex = (page: Page, x: number, y: number) => page.locator(`.shudan-vertex[data-x="${x}"][data-y="${y}"]`)
@@ -13,7 +14,7 @@ const vertex = (page: Page, x: number, y: number) => page.locator(`.shudan-verte
 test('the bot leaves the corner, the end is proposed and the review replays from a move', async ({ page }) => {
   await startAsBlackTopRight(page)
   await vertex(page, 15, 3).click()
-  await expect(page.getByText('ходов: 2')).toBeVisible()
+  await expect(page.getByTestId('moves-count')).toHaveText('2')
   // Out of the bot's local area (more than 4 lines from Q16). With the joseki started, the fake engine's uniform
   // policy puts two thirds of the mass outside the zone: the corner counts as settled and the bot leaves it.
   await vertex(page, 8, 10).click()
@@ -26,13 +27,13 @@ test('the bot leaves the corner, the end is proposed and the review replays from
   await expect(page.getByText(/Ветка: 1 из/)).toBeVisible()
 
   await page.getByRole('button', { name: 'Переиграть с этого хода' }).click()
-  await expect(page.getByText('Ваш ход (чёрные)')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Ваш ход' })).toBeVisible()
 })
 
 test('«Закончить» opens the review at once', async ({ page }) => {
   await startAsBlackTopRight(page)
   await vertex(page, 15, 3).click()
-  await expect(page.getByText('ходов: 2')).toBeVisible()
+  await expect(page.getByTestId('moves-count')).toHaveText('2')
   await page.getByRole('button', { name: 'Закончить' }).click()
   await expect(page.getByText(/Вы потеряли/)).toBeVisible()
   await expect(page.locator('.lossbar g.slot')).toHaveCount(2)
@@ -42,7 +43,7 @@ test('a click outside the zone shows a hint and plays nothing', async ({ page })
   await startAsBlackTopRight(page)
   await vertex(page, 3, 15).click()
   await expect(page.getByText('Ходить можно только внутри выделенной зоны угла')).toBeVisible()
-  await expect(page.getByText('ходов: 0')).toBeVisible()
+  await expect(page.getByTestId('moves-count')).toHaveText('0')
 })
 
 test('settings show the pinned version and refuse a missing network', async ({ page }) => {

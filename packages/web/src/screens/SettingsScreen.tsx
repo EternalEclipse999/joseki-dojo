@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks'
+import { Check, Gauge, LoaderCircle, TriangleAlert } from 'lucide-preact'
 import type { SettingsUpdate, SettingsView } from '@joseki-dojo/shared'
 import { fetchSettings, saveSettings } from '../api'
 
@@ -34,10 +35,21 @@ export function SettingsScreen({ onClose, onSaved, onRepick }: { onClose: () => 
 
   if (!view || !form) {
     return (
-      <main class="settings">
-        <p class={status.kind === 'error' ? 'hint error' : 'status'}>{status.kind === 'error' ? status.text : 'Загрузка настроек…'}</p>
-        <div class="row">
-          <button onClick={onClose}>Назад</button>
+      <main>
+        <div class="page wide">
+          {status.kind === 'error' ? (
+            <p class="hint error">{status.text}</p>
+          ) : (
+            <p class="status-line">
+              <LoaderCircle class="spin" aria-hidden="true" />
+              Загрузка настроек…
+            </p>
+          )}
+          <div class="actions">
+            <button class="ghost" onClick={onClose}>
+              Назад
+            </button>
+          </div>
         </div>
       </main>
     )
@@ -63,63 +75,93 @@ export function SettingsScreen({ onClose, onSaved, onRepick }: { onClose: () => 
   }
 
   return (
-    <main class="settings">
-      <h1>Настройки</h1>
-      <p class="meta">
-        Проверенная версия KataGo: {view.lockedVersion}. Запущена: {view.runningVersion ?? 'нет'}.
-      </p>
-      {view.versionWarning && <p class="notice">{view.versionWarning}</p>}
-      <fieldset>
-        <legend>Движок</legend>
-        {PATH_FIELDS.map((f) => (
-          <label class="field" key={f.key}>
-            {f.label}
-            <input
-              type="text"
-              spellcheck={false}
-              value={form.katago[f.key]}
-              list={f.models ? 'models' : undefined}
-              onInput={(e) => setPath(f.key, e.currentTarget.value)}
-            />
-          </label>
-        ))}
-        <datalist id="models">
-          {view.models.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
-        <p class="hint">
-          Сети из папки engines/models можно выбрать из списка. Браузер не сообщает полный путь к файлу из окна выбора, поэтому путь вводится текстом.
-        </p>
-      </fieldset>
-      <fieldset>
-        <legend>Подбор движка</legend>
-        <p class="hint">
-          Программа ещё раз проверит скорость на процессоре и на видеокарте и выберет быстрее. Файлы заново не скачиваются. Это занимает
-          пару минут, а на видеокарте при первом запуске — дольше.
-        </p>
-        <div class="row">
-          <button onClick={onRepick}>Подобрать движок заново</button>
+    <main>
+      <div class="page wide settings">
+        <div class="page-head">
+          <h1>Настройки</h1>
+          <p>
+            Проверенная версия KataGo: {view.lockedVersion}. Запущена: {view.runningVersion ?? 'нет'}.
+          </p>
         </div>
-      </fieldset>
-      <fieldset>
-        <legend>Анализ</legend>
-        {VISIT_FIELDS.map((f) => (
-          <label class="field" key={f.key}>
-            {f.label}
-            <input type="number" min={1} value={form.analysis[f.key]} onInput={(e) => setVisits(f.key, e.currentTarget.value)} />
-          </label>
-        ))}
-      </fieldset>
-      <div class="row">
-        <button class="primary" disabled={status.kind === 'saving'} onClick={() => void save()}>
-          Сохранить и проверить
-        </button>
-        <button onClick={onClose}>Назад</button>
+        {view.versionWarning && (
+          <p class="note warning">
+            <TriangleAlert aria-hidden="true" />
+            <span>{view.versionWarning}</span>
+          </p>
+        )}
+
+        <section class="card section">
+          <div class="section-head">
+            <h2>Движок</h2>
+            <p>Сети из папки engines/models можно выбрать из списка. Браузер не сообщает полный путь к файлу из окна выбора, поэтому путь вводится текстом.</p>
+          </div>
+          {PATH_FIELDS.map((f) => (
+            <label class="field" key={f.key}>
+              {f.label}
+              <input
+                type="text"
+                spellcheck={false}
+                value={form.katago[f.key]}
+                list={f.models ? 'models' : undefined}
+                onInput={(e) => setPath(f.key, e.currentTarget.value)}
+              />
+            </label>
+          ))}
+          <datalist id="models">
+            {view.models.map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+        </section>
+
+        <section class="card section">
+          <div class="section-head">
+            <h2>Подбор движка</h2>
+            <p>
+              Программа ещё раз проверит скорость на процессоре и на видеокарте и выберет быстрее. Файлы заново не скачиваются. Это занимает
+              пару минут, а на видеокарте при первом запуске — дольше.
+            </p>
+          </div>
+          <div class="actions">
+            <button onClick={onRepick}>
+              <Gauge aria-hidden="true" />
+              Подобрать движок заново
+            </button>
+          </div>
+        </section>
+
+        <section class="card section">
+          <div class="section-head">
+            <h2>Анализ</h2>
+          </div>
+          <div class="visits">
+            {VISIT_FIELDS.map((f) => (
+              <label class="field" key={f.key}>
+                {f.label}
+                <input type="number" min={1} value={form.analysis[f.key]} onInput={(e) => setVisits(f.key, e.currentTarget.value)} />
+              </label>
+            ))}
+          </div>
+        </section>
+
+        <div class="actions">
+          <button class="primary" disabled={status.kind === 'saving'} onClick={() => void save()}>
+            {status.kind === 'saving' ? <LoaderCircle class="spin" aria-hidden="true" /> : <Check aria-hidden="true" />}
+            Сохранить и проверить
+          </button>
+          <button class="ghost" onClick={onClose}>
+            Назад
+          </button>
+        </div>
+        {status.kind === 'saving' && <p class="hint">Запускаю KataGo с новыми настройками…</p>}
+        {status.kind === 'saved' && (
+          <p class="status-line">
+            <Check aria-hidden="true" />
+            Сохранено, KataGo работает.
+          </p>
+        )}
+        {status.kind === 'error' && <p class="hint error">{status.text}</p>}
       </div>
-      {status.kind === 'saving' && <p class="status">Запускаю KataGo с новыми настройками…</p>}
-      {status.kind === 'saved' && <p class="status">Сохранено, KataGo работает.</p>}
-      {status.kind === 'error' && <p class="hint error">{status.text}</p>}
     </main>
   )
 }

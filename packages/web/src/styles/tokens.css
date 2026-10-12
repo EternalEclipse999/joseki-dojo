@@ -1,0 +1,78 @@
+/* Spec 3.1 (Studio): one accent, two themes chosen by the system setting. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #f6f6f8;
+  --surface-raised: #ffffff;
+  --border: #e4e4e8;
+  --border-strong: #d4d4da;
+  --text: #111318;
+  --text-2: #6b7280;
+  --text-3: #9ca0a8;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-bg: #eef0ff;
+  --accent-text: #3730a3;
+  --on-accent: #ffffff;
+  --danger-bg: #fdecec;
+  --danger-text: #8f1d1d;
+  --warning-bg: #fdf3dc;
+  --warning-text: #7a4b07;
+
+  /* Loss categories: exact / inaccuracy / mistake / blunder. */
+  --good: #2e9e5b;
+  --warning: #e8b53a;
+  --serious: #e07a3a;
+  --critical: #d24545;
+  --good-text: #1f6b3e;
+  --warning-text-cat: #7a5a0c;
+  --serious-text: #8a4512;
+  --critical-text: #8f2424;
+
+  /* The board stays wooden in both themes. */
+  --board: #ebd4a2;
+  --board-line: #8a7552;
+  --board-accent: #3730a3;
+  --board-accent-muted: #7276ad;
+  --board-veil: rgba(255, 255, 255, 0.5);
+  --board-outside: color-mix(in srgb, var(--board) 45%, #ffffff);
+  --last-move: #5b52f0;
+  --stone-ring: rgba(255, 255, 255, 0.12);
+
+  --font: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --radius: 8px;
+  --radius-card: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0f1013;
+    --surface: #17181c;
+    --surface-raised: #1f2026;
+    --border: #2a2b31;
+    --border-strong: #3a3b42;
+    --text: #ececef;
+    --text-2: #9a9ca5;
+    --text-3: #6e7079;
+    --accent: #818cf8;
+    --accent-hover: #a5b4fc;
+    --accent-bg: #23244a;
+    --accent-text: #c7cbff;
+    --on-accent: #0f1013;
+    --danger-bg: #3a1618;
+    --danger-text: #f5b5b5;
+    --warning-bg: #352a10;
+    --warning-text: #f2d48a;
+    --good-text: #7fd6a2;
+    --warning-text-cat: #f2cf73;
+    --serious-text: #f0a674;
+    --critical-text: #f08a8a;
+    --board: #d9bd84;
+    --board-line: #6f5a37;
+    --board-veil: rgba(15, 16, 19, 0.32);
+    --board-outside: color-mix(in srgb, var(--board) 82%, #0f1013);
+    --stone-ring: rgba(255, 255, 255, 0.5);
+  }
+}

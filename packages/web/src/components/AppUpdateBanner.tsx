@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'preact/hooks'
 import type { AppUpdateState } from '@joseki-dojo/shared'
+import { Download } from 'lucide-preact'
 import { updateBannerView } from '../update-banner'
+import { Bar } from './Bar'
 
 /** Spec 6: the desktop app's update bar. A browser has no `window.dojoDesktop`, so nothing is shown there. */
 export function AppUpdateBanner() {
@@ -33,13 +35,12 @@ export function AppUpdateBanner() {
     void (view.button?.action === 'retry' ? desktop.retryUpdate() : desktop.downloadUpdate())
   }
   return (
-    <div class={view.error ? 'bar error' : 'bar'} role="status">
-      <span>{view.text}</span>
-      {view.button && (
-        <button class="primary" onClick={act}>
-          {view.button.label}
-        </button>
-      )}
-    </div>
+    <Bar
+      tone={view.error ? 'error' : 'info'}
+      icon={view.error ? undefined : Download}
+      action={view.button ? { label: view.button.label, onClick: act, primary: true } : undefined}
+    >
+      {view.text}
+    </Bar>
   )
 }
