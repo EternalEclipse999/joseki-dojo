@@ -119,7 +119,10 @@ describe('migration 2 and trap attempts', () => {
     const db = new Database(':memory:')
     db.pragma('foreign_keys = ON')
     migrate(db, [MIGRATIONS[0]])
-    new SessionRepo(db).insertSession(record())
+    db.prepare(
+      `INSERT INTO sessions (id, created_at, mode, environment, user_color, bot_rank, corner, status, initial_moves_json)
+       VALUES ('s1', '2026-10-06T10:00:00.000Z', 'free', 'empty', 'B', '7k', 'TR', 'playing', '[]')`,
+    ).run()
     expect(migrate(db)).toEqual([2])
     const cols = db.prepare("SELECT name FROM pragma_table_info('sessions')").all() as { name: string }[]
     expect(cols.map((c) => c.name)).toContain('trap_json')

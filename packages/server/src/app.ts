@@ -12,6 +12,7 @@ import { registerSettingsRoutes } from './api/settings-routes'
 import { registerTrapsRoutes } from './api/traps-routes'
 import { handleSocket } from './api/ws'
 import { HumanBot } from './bot/bot'
+import { StrongBot } from './bot/strong'
 import type { AppConfig } from './config'
 import type { EngineCommand, KataGoEngine } from './engine/engine'
 import { HealthMonitor } from './engine/health'
@@ -66,7 +67,8 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
   const hub = new Hub()
   const publish = (sessionId: string, msg: ServerMessage): void => hub.publish(sessionId, msg)
   const analysis = new AnalysisScheduler(engine, repo, config.analysis)
-  const reviews = new ReviewService({ repo, analysis, config, publish })
+  const traps = options.traps ?? TrapBook.empty()
+  const reviews = new ReviewService({ repo, analysis, config, publish, traps })
   const sessions = new SessionService({
     repo,
     analysis,
@@ -74,6 +76,8 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
     config,
     publish,
     bot: new HumanBot(engine),
+    strong: new StrongBot(engine),
+    traps,
     onFinished: (id) => {
       reviews.prepare(id).catch((err: unknown) => publish(id, toErrorMessage(err)))
     },
@@ -82,7 +86,7 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
   const { configFile, enginesDir, lock, commandFor, log, fetch } = options
   const settings = new SettingsService({ config, engine, health, lock, configFile, modelsDir: join(enginesDir, 'models'), commandFor })
   const installer = new InstallerService({ config, lock, enginesDir, settings, commandFor, log, engine, health, fetch })
-  return { config, db, engine, health, sessions, reviews, settings, installer, hub, traps: options.traps ?? TrapBook.empty() }
+  return { config, db, engine, health, sessions, reviews, settings, installer, hub, traps }
 }
 
 export async function buildApp(services: AppServices, webDist: string | null = null): Promise<FastifyInstance> {

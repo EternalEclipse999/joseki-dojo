@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { otherColor, type Color, type Corner, type Move, type MoveVertex, type Vertex } from '@joseki-dojo/shared'
+import { otherColor, type Color, type Corner, type Move, type MoveVertex, type TrapVerdict, type Vertex } from '@joseki-dojo/shared'
 import type { Rng } from '../bot/rng'
 import { decodeJdb, fromTopRight, mirrorMoves, sameMove, toTopRight, trapId, zoneIndex, type CanonicalMove, type JdbBase } from '../jdb'
 
@@ -8,7 +8,7 @@ export interface TrapPlacement {
   mirror: boolean
   swapColors: boolean
 }
-export type TrapVerdict = 'correct' | 'caught' | 'other'
+export type { TrapVerdict }
 
 /** The trap positions of a traps base: picking one, putting it on the board and judging the answer. No session code here. */
 export class TrapBook {

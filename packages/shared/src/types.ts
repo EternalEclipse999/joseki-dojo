@@ -17,7 +17,7 @@ export interface PlayedMove extends Move {
   inZone: boolean
 }
 
-export type Mode = 'free'
+export type Mode = 'free' | 'traps'
 export type Environment = 'empty'
 
 export interface SessionSettings {
@@ -28,12 +28,23 @@ export interface SessionSettings {
   corner: Corner | 'random'
 }
 
+/** The trap of a traps-mode session and how its canonical form was put on the board. */
+export interface TrapRef {
+  id: string
+  /** Position of the trick in the full move list (`initialMoves` + `moves`). */
+  index: number
+  mirror: boolean
+  swapColors: boolean
+}
+
 export interface ResolvedSettings {
   mode: Mode
   environment: Environment
   userColor: Color
   botRank: string
   corner: Corner
+  /** Only in traps mode. */
+  trap?: TrapRef
 }
 
 export type SessionStatus = 'playing' | 'finished' | 'abandoned'
@@ -96,6 +107,16 @@ export interface ReviewSummary {
   keptPoints: number
 }
 
+export type TrapVerdict = 'correct' | 'caught' | 'other'
+
+/** Turns are relative to the session's `moves`; null when the move is in `initialMoves` or was not played. */
+export interface ReviewTrap {
+  trickTurn: number | null
+  answerTurn: number | null
+  verdict: TrapVerdict | null
+  good: MoveVertex[]
+}
+
 export interface ReviewData {
   sessionId: string
   settings: ResolvedSettings
@@ -106,6 +127,8 @@ export interface ReviewData {
   moveReviews: MoveReview[]
   punishments: PunishmentEvent[]
   summary: ReviewSummary
+  /** Only in traps mode. */
+  trap?: ReviewTrap
 }
 
 export type HealthState = 'starting' | 'ready' | 'failed'
