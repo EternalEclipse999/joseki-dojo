@@ -81,6 +81,25 @@ npm run desktop      # the desktop app from sources; it uses the same data folde
 npm run dist         # the installer for this OS in packages/desktop/release/
 ```
 
+### Trap base
+
+The traps mode reads `packages/server/bases/traps.jdb`, a compact binary move base (`JDB1`: a header with the kind, a verified flag, the node count and a CRC32, then the move tree in depth-first order). Every path is stored in canonical form: top-right corner, Black first. A trap is a node of category `trap`; its children are the answers, marked `good` or `caught`, with the point loss measured by KataGo when it is known. The trap id (shown by the dump) is the first 8 hex characters of the SHA-1 of the canonical path. If the file is missing or unreadable, only the traps mode is unavailable.
+
+Look at a base as text, or export it as SGF (19×19, one game tree; trap and caught answers get `BM[1]`, good answers `TE[1]`, a stored loss goes to the comment):
+
+```bash
+npm run jdb:dump -- packages/server/bases/traps.jdb
+npm run jdb:dump -- packages/server/bases/traps.jdb --sgf traps.sgf
+```
+
+Verify the base with KataGo on a machine with a strong GPU (it needs `config.local.json`; the check is slow, because every trap takes several searches):
+
+```bash
+npm run traps:check -- --visits 1600 --good-max 1 --caught-gap 2
+```
+
+For each trap the tool searches the position before the answer (answers restricted to the corner zone) and after each stored answer. It writes the losses into the answer nodes and keeps a trap when its best good answer loses at most `--good-max` points and its best caught answer loses at least `--caught-gap` points more than that. Failing traps are dropped, branches left without traps are pruned, and the file is rewritten with the verified flag set. The check is meant to run once on the owner's machine: the base that ships in the repository is not verified yet.
+
 ### Project layout
 
 - `packages/shared`: types, coordinates, the corner zone, Go rules
