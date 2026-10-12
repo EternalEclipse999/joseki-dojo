@@ -439,4 +439,4 @@ Rules:
 
 ### Task 6 (controller): the trap base
 
-Not a subagent task. When the local crawl (outside the repository) finishes: convert its cache with a local script that imports the Task 1 library — select traps per spec 4.1, canonicalize, merge duplicates, write `packages/server/bases/traps.jdb` with `verified: false`; run `jdb:dump` for a sanity check; commit `feat(traps): the trap base (not verified by KataGo yet)`; put the summary (found, dropped with reasons, written) into the PR description; delete the local crawl script and its cache.
+Not a subagent task. When the local crawl (outside the repository) finishes: convert its cache with a local script that imports the Task 1 library — select traps per spec 4.1, canonicalize, merge duplicates, write `packages/server/bases/traps.jdb` with `verified: false`; run `jdb:dump` for a sanity check; commit `feat(traps): the trap base (not verified by KataGo yet)`; put the summary (found, dropped with reasons, written) into the PR description; archive the local crawl cache as a backup next to the crawler (outside the repository) and keep both.
