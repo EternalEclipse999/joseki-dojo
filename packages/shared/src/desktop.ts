@@ -15,4 +15,6 @@ export interface DojoDesktopApi {
   downloadUpdate(): Promise<void>
   /** «Повторить» after an error: downloads again when a version is known, otherwise checks again. */
   retryUpdate(): Promise<void>
+  /** Themes the window (title bar included) to match the page. */
+  setTheme(theme: import('./types').Theme): Promise<void>
 }

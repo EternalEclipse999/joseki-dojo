@@ -149,6 +149,15 @@ export const isBotRank = (s: string): boolean => BOT_RANKS.includes(s)
 
 export const DEFAULT_BOT_RANK = '7k'
 
+/** The colour theme: «Как в системе», «Светлая», «Тёмная». */
+export type Theme = 'system' | 'light' | 'dark'
+export const THEMES: readonly Theme[] = ['system', 'light', 'dark']
+
+/** `GET/PUT /api/ui`: interface preferences saved in the config file. */
+export interface UiSettings {
+  theme: Theme
+}
+
 /** What `GET /api/traps` reports about the loaded traps base. */
 export interface TrapsInfo {
   count: number

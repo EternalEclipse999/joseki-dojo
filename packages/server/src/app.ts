@@ -10,6 +10,7 @@ import { Hub } from './api/hub'
 import { registerInstallRoutes } from './api/install-routes'
 import { registerSettingsRoutes } from './api/settings-routes'
 import { registerTrapsRoutes } from './api/traps-routes'
+import { registerUiRoutes } from './api/ui-routes'
 import { handleSocket } from './api/ws'
 import { HumanBot } from './bot/bot'
 import { StrongBot } from './bot/strong'
@@ -24,6 +25,7 @@ import { SessionService } from './session/service'
 import { SettingsService } from './settings/service'
 import { openDb, type Db } from './store/db'
 import { SessionRepo } from './store/repo'
+import { UiService } from './settings/ui'
 import { TrapBook } from './traps/book'
 
 export interface AppServices {
@@ -37,6 +39,7 @@ export interface AppServices {
   installer: InstallerService
   /** The loaded traps base; empty when there is none. */
   traps: TrapBook
+  ui: UiService
   hub: Hub
 }
 
@@ -87,7 +90,8 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
   const { configFile, enginesDir, lock, commandFor, log, fetch } = options
   const settings = new SettingsService({ config, engine, health, lock, configFile, modelsDir: join(enginesDir, 'models'), commandFor })
   const installer = new InstallerService({ config, lock, enginesDir, settings, commandFor, log, engine, health, fetch })
-  return { config, db, engine, health, sessions, reviews, settings, installer, hub, traps }
+  const ui = new UiService(config, configFile)
+  return { config, db, engine, health, sessions, reviews, settings, installer, hub, traps, ui }
 }
 
 export async function buildApp(services: AppServices, webDist: string | null = null): Promise<FastifyInstance> {
@@ -109,6 +113,7 @@ export async function buildApp(services: AppServices, webDist: string | null = n
   registerSettingsRoutes(app, services.settings)
   registerInstallRoutes(app, services.installer)
   registerTrapsRoutes(app, services.traps)
+  registerUiRoutes(app, services.ui)
   if (webDist && existsSync(webDist)) await app.register(fastifyStatic, { root: webDist })
   return app
 }

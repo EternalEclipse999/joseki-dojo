@@ -2,7 +2,7 @@ import type { JSX } from 'preact'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import type { ClientMessage, HealthResponse, InstallStatus, ReviewData, SessionView, TrapsInfo } from '@joseki-dojo/shared'
 import { LoaderCircle, RefreshCw } from 'lucide-preact'
-import { DojoSocket, fetchHealth, fetchInstall, fetchReview, fetchSettings, fetchTraps, recheckHealth } from './api'
+import { DojoSocket, fetchHealth, fetchInstall, fetchReview, fetchSettings, fetchTraps, fetchUi, recheckHealth } from './api'
 import { AppHeader } from './components/AppHeader'
 import { AppUpdateBanner } from './components/AppUpdateBanner'
 import { Bar } from './components/Bar'
@@ -13,6 +13,7 @@ import { InstallScreen } from './screens/InstallScreen'
 import { ReviewScreen } from './screens/ReviewScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { StartScreen } from './screens/StartScreen'
+import { applyTheme } from './theme'
 
 interface Progress {
   done: number
@@ -80,6 +81,13 @@ export function App() {
   useEffect(() => {
     socket.sessionId = session?.id ?? null
   }, [socket, session?.id])
+
+  // The saved colour theme; without the server the page keeps the system colours set by index.html.
+  useEffect(() => {
+    fetchUi()
+      .then((u) => applyTheme(u.theme))
+      .catch(() => undefined)
+  }, [])
 
   useEffect(() => {
     let cancelled = false

@@ -1,4 +1,4 @@
-import type { ClientMessage, HealthResponse, InstallStatus, ReviewData, ServerMessage, SettingsResponse, SettingsUpdate, SettingsView, TrapsInfo } from '@joseki-dojo/shared'
+import type { ClientMessage, HealthResponse, InstallStatus, ReviewData, ServerMessage, SettingsResponse, SettingsUpdate, SettingsView, Theme, TrapsInfo, UiSettings } from '@joseki-dojo/shared'
 
 export async function fetchHealth(): Promise<HealthResponse> {
   const res = await fetch('/api/health')
@@ -57,6 +57,19 @@ export class DojoSocket {
       setTimeout(() => this.connect(), delay)
     }
   }
+}
+
+/** Interface preferences (the colour theme). */
+export async function fetchUi(): Promise<UiSettings> {
+  const res = await fetch('/api/ui')
+  if (!res.ok) throw new Error(`Не удалось загрузить оформление: HTTP ${res.status}`)
+  return (await res.json()) as UiSettings
+}
+
+export async function saveTheme(theme: Theme): Promise<UiSettings> {
+  const res = await fetch('/api/ui', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ theme }) })
+  if (!res.ok) throw new Error(`Не удалось сохранить оформление: HTTP ${res.status}`)
+  return (await res.json()) as UiSettings
 }
 
 /** Spec (traps) 5: how many traps the base holds; 0 disables the mode. */

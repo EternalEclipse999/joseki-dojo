@@ -4,8 +4,8 @@
 import { closeSync, existsSync, mkdirSync, openSync, renameSync, writeFileSync, writeSync } from 'node:fs'
 import { join } from 'node:path'
 import { startServer, type RunningServer } from '@joseki-dojo/server'
-import type { AppUpdateState } from '@joseki-dojo/shared'
-import { app, BrowserWindow, dialog, ipcMain, Menu, net, session, shell, type IpcMainInvokeEvent } from 'electron'
+import { THEMES, type AppUpdateState, type Theme } from '@joseki-dojo/shared'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, session, shell, type IpcMainInvokeEvent } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { CHANNELS } from './channels'
 import { runInstall, sameOrigin, withTimeout } from './lifecycle'
@@ -140,11 +140,11 @@ const updates = new UpdateController(
   },
 )
 
-function setUpUpdates(): void {
-  // Only the window's own page (the local server) may talk to the updater.
-  const fromWindow = (event: IpcMainInvokeEvent): boolean =>
-    event.sender === mainWindow?.webContents && localOrigin !== null && sameOrigin(event.senderFrame?.url ?? '', localOrigin)
-  ipcMain.handle(CHANNELS.get, (event) => (fromWindow(event) ? updates.current : { status: 'idle' }))
+/** Only the window's own page (the local server) may talk to the main process. */
+const fromWindow = (event: IpcMainInvokeEvent): boolean =>
+  event.sender === mainWindow?.webContents && localOrigin !== null && sameOrigin(event.senderFrame?.url ?? '', localOrigin)
+
+function setUpUpdates(): void {  ipcMain.handle(CHANNELS.get, (event) => (fromWindow(event) ? updates.current : { status: 'idle' }))
   ipcMain.handle(CHANNELS.download, async (event) => {
     if (fromWindow(event)) await updates.download()
   })
@@ -201,6 +201,11 @@ async function boot(): Promise<void> {
   })
   server = await starting
   if (closing) return // a quit arrived while the server was starting: closeAll stops it
+  // The saved theme is applied before the window shows, so it does not flash in the system colours.
+  nativeTheme.themeSource = server.services.config.ui.theme
+  ipcMain.handle(CHANNELS.theme, (event, theme: unknown) => {
+    if (fromWindow(event) && THEMES.includes(theme as Theme)) nativeTheme.themeSource = theme as Theme
+  })
   const origin = server.url
   localOrigin = origin
   log(`Server: ${origin}`)
