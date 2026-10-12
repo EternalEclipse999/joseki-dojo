@@ -1,11 +1,18 @@
 {
   "name": "joseki-dojo",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "license": "MIT",
-  "workspaces": ["packages/shared", "packages/server", "packages/web", "packages/desktop"],
-  "engines": { "node": ">=22.12" },
+  "workspaces": [
+    "packages/shared",
+    "packages/server",
+    "packages/web",
+    "packages/desktop"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "setup": "tsx scripts/setup/setup.ts",
     "dev": "concurrently -k -n server,web -c blue,green \"npm run dev -w @joseki-dojo/server\" \"npm run dev -w @joseki-dojo/web\"",
