@@ -6,7 +6,7 @@ import { engineCommand } from '../../packages/server/src/engine/command'
 import { KataGoEngine } from '../../packages/server/src/engine/engine'
 import { renameRetrying } from '../../packages/server/src/install/download'
 import { decodeJdb, encodeJdb } from '../../packages/server/src/jdb'
-import { checkTraps } from '../../packages/server/src/traps/check'
+import { checkTraps, weakAnswersText } from '../../packages/server/src/traps/check'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const DEFAULTS = { visits: 1600, 'good-max': 1, 'caught-gap': 2 }
@@ -50,6 +50,7 @@ async function main(): Promise<void> {
     await renameRetrying(tmp, file)
     log(`\nKept ${result.kept}, dropped ${result.dropped.length}, left unchecked ${result.failed.length}. Written to ${file}`)
     for (const d of result.dropped) log(`  dropped ${d.id}: ${d.reason}`)
+    for (const w of result.weakAnswers) log(`  good answer dropped ${w.id}: ${weakAnswersText([w])}`)
     for (const f of result.failed) log(`  unchecked ${f.id}: ${f.reason}`)
     log(result.tree.verified ? 'The base is marked as verified.' : 'The base is NOT marked as verified: fix the unchecked traps and run again.')
   } finally {

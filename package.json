@@ -17,6 +17,7 @@
     "setup": "tsx scripts/setup/setup.ts",
     "jdb:dump": "tsx scripts/jdb/dump.ts",
     "traps:check": "tsx scripts/traps/check.ts",
+    "traps:gpu": "tsx scripts/traps/gpu.ts",
     "dev": "concurrently -k -n server,web -c blue,green \"npm run dev -w @joseki-dojo/server\" \"npm run dev -w @joseki-dojo/web\"",
     "build": "npm run build -w @joseki-dojo/web",
     "start": "npm run build && npm run start -w @joseki-dojo/server",

@@ -124,6 +124,20 @@ describe('checkTraps', () => {
     const out = await checkTraps(base(), engine, OPTS, () => {})
     expect(out.dropped).toEqual([])
     expect(out.kept).toBe(2)
+    expect(out.weakAnswers).toEqual([])
+  })
+
+  it('removes a good answer that loses more than goodMax from a kept trap and reports it', async () => {
+    // Trap 1: P17 loses 0, P18 ends at +1.5 for White (loss 1.5), N18 loses 4.
+    const engine = leadEngine({ ...TRAP2, [key('Q16', 'O17', 'O18', 'P17')]: -3, [key('Q16', 'O17', 'O18', 'P18')]: -1.5, [key('Q16', 'O17', 'O18', 'N18')]: 1 })
+    const lines: string[] = []
+    const out = await checkTraps(base(), engine, OPTS, (l) => lines.push(l))
+    expect(out.kept).toBe(2)
+    expect(out.weakAnswers).toEqual([{ id: ID1, move: v('P18'), loss: 1.5 }])
+    expect(lines).toContain(`[1/2] ${ID1}: kept, good answers dropped: P18 1.5`)
+    const b = decodeJdb(encodeJdb(out.tree))
+    const trap = b.find(['Q16', 'O17', 'O18'].map(v))!
+    expect(b.children(trap).map((c) => [vertexToGtp(b.move(c) as Vertex), b.category(c), b.loss(c)])).toEqual([['P17', 'good', 0], ['N18', 'caught', 4]])
   })
 
   it('keeps a trap whose caught answer is exactly caughtGap worse than the good one', async () => {
@@ -305,6 +319,20 @@ describe('checkTraps', () => {
       expect(b.nodesOf('trap')).toHaveLength(2)
       expect(b.loss(b.find([...['Q16', 'O17', 'O18', 'P17', 'Q14'].map(v), v('N18')])!)).toBe(4)
       expect(lines.some((l) => l.startsWith('[2/2]') && l.includes(INNER))).toBe(true)
+    })
+
+    it('keeps the way to a nested trap below a good answer it removes', async () => {
+      // P17 ends at -1 for Black, +1 for White: it loses 2 against the zone best of +3.
+      const engine = engineFor(1)
+      const lead = engine.lead
+      engine.lead = (q) => (!q.allowMoves && q.moves.length === 4 && q.moves[3][1] === 'P17' ? -1 : lead(q))
+      const out = await checkTraps(base(nested()), engine, OPTS, () => {})
+      expect(out.kept).toBe(2)
+      expect(out.weakAnswers).toEqual([{ id: OUTER, move: v('P17'), loss: 2 }])
+      const b = decodeJdb(encodeJdb(out.tree))
+      const p17 = b.find(['Q16', 'O17', 'O18', 'P17'].map(v))!
+      expect([b.category(p17), b.loss(p17)]).toEqual(['none', null])
+      expect(b.category(b.find(['Q16', 'O17', 'O18', 'P17', 'Q14'].map(v))!)).toBe('trap')
     })
 
     it('keeps a nested trap when the outer one is dropped, as a plain node', async () => {

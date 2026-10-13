@@ -1,117 +1,68 @@
-import { colorSign, inZone, Position, vertexToGtp, zoneVertices, type Color, type Move, type MoveVertex, type Vertex } from '@joseki-dojo/shared'
-import { EngineError, type AnalysisEngine } from '../engine/engine'
-import { baseQuery } from '../engine/query'
-import { trapId, type CanonicalMove, type JdbBase, type JdbNode, type JdbTree } from '../jdb'
+import { vertexToGtp } from '@joseki-dojo/shared'
+import type { AnalysisEngine } from '../engine/engine'
+import { moveText, trapId, type CanonicalMove, type JdbBase, type JdbNode, type JdbTree } from '../jdb'
+import { answerSpot, DataError, leadAfter, makeAsk, round1, zoneBest } from './measure'
 
 export interface CheckOptions {
   /** Visits per query. */
   visits: number
-  /** A trap is kept when its best good answer loses at most this many points. */
+  /** A good answer loses at most this many points; a trap is kept when at least one of its good answers does. */
   goodMax: number
   /** ... and its best caught answer loses at least this many points more than its best good answer. */
   caughtGap: number
+}
+
+/** A good answer that KataGo does not confirm (it loses more than goodMax), with the trap it belonged to. */
+export interface WeakAnswer {
+  id: string
+  move: CanonicalMove
+  /** Rounded to 0.1. */
+  loss: number
 }
 
 export interface CheckResult {
   tree: JdbTree
   kept: number
   dropped: { id: string; reason: string }[]
+  /** Good answers removed from the kept traps. */
+  weakAnswers: WeakAnswer[]
   /** Traps that could not be checked because KataGo rejected a query; they stay as they were. */
   failed: { id: string; reason: string }[]
 }
 
-const vertexOf = (m: CanonicalMove): MoveVertex => (m === 'tenuki' ? 'pass' : m)
-const round1 = (x: number): number => Math.round(x * 10) / 10
+type Verdict = { kind: 'kept'; losses: Map<JdbNode, number>; weak: Set<JdbNode> } | { kind: 'dropped'; reason: string }
 
-/** Moves of a canonical path, Black first; a tenuki is a real pass. */
-function movesOf(path: readonly CanonicalMove[]): Move[] {
-  return path.map((m, i) => ({ color: (i % 2 === 0 ? 'B' : 'W') as Color, vertex: vertexOf(m) }))
-}
-
-/** A trap that cannot be judged because KataGo rejected a query (as opposed to an engine that is gone). */
-class DataError extends Error {}
-
-type Verdict = { kind: 'kept'; losses: Map<JdbNode, number> } | { kind: 'dropped'; reason: string }
+export const weakAnswersText = (weak: readonly WeakAnswer[]): string => weak.map((w) => `${moveText(w.move)} ${w.loss}`).join(', ')
 
 /**
  * Spec 4.2: verifies every trap of a traps base with the engine, writes the answer losses, drops the traps
  * that fail the thresholds (and the branches left without traps) and marks the base as verified.
+ * A kept trap loses the good answers that lose more than goodMax; the way to a trap nested below one stays.
  * Illegal data (a path or an answer that is not a legal move) is a permanent fact: the trap, or the answer, is dropped.
  * A query KataGo rejects leaves the trap unchanged and the base not marked as verified.
  * An engine failure that survives one retry rejects the whole run.
  */
 export async function checkTraps(base: JdbBase, engine: AnalysisEngine, opts: CheckOptions, log: (line: string) => void): Promise<CheckResult> {
   const dropped: { id: string; reason: string }[] = []
+  const weakAnswers: WeakAnswer[] = []
   const failed: { id: string; reason: string }[] = []
   let kept = 0
   const total = base.nodesOf('trap').length
   let done = 0
-
-  /** Black-view lead -> the view of `color`. */
-  const view = (lead: number, color: Color): number => colorSign(color) * lead
-
-  /** Runs a query; a query KataGo rejects leaves the trap unchecked, a failed engine is retried once, then the run aborts. */
-  async function ask(query: Parameters<AnalysisEngine['analyze']>[0]): ReturnType<AnalysisEngine['analyze']> {
-    for (let attempt = 0; ; attempt++) {
-      try {
-        return await engine.analyze(query)
-      } catch (err) {
-        if (!(err instanceof EngineError)) throw err
-        if (err.code === 'query_error') throw new DataError(`error: ${err.message}`)
-        // A hung query is rejected and the engine restarts: transient, so one more try.
-        if (err.code !== 'engine_failed' || attempt >= 1) throw err
-      }
-    }
-  }
+  const ask = makeAsk(engine)
 
   async function judge(trap: JdbNode, path: CanonicalMove[]): Promise<Verdict> {
-    const moves = movesOf(path)
-    const answerer: Color = path.length % 2 === 0 ? 'B' : 'W'
-    let position: Position
-    let legal: Vertex[]
-    try {
-      position = Position.fromMoves(moves)
-      legal = zoneVertices('TR').filter((v) => position.isLegal(answerer, v))
-    } catch {
-      return { kind: 'dropped', reason: 'illegal position' }
-    }
+    const spot = answerSpot(path)
+    if (!spot) return { kind: 'dropped', reason: 'illegal position' }
     for (const a of trap.children) {
-      if (a.move !== 'tenuki' && !position.isLegal(answerer, a.move)) return { kind: 'dropped', reason: `illegal answer ${vertexToGtp(a.move)}` }
+      if (a.move !== 'tenuki' && !spot.position.isLegal(spot.answerer, a.move)) return { kind: 'dropped', reason: `illegal answer ${vertexToGtp(a.move)}` }
     }
-    if (legal.length === 0) return { kind: 'dropped', reason: 'no legal zone move for the answer' }
-    const before = await ask({
-      ...baseQuery(moves),
-      maxVisits: opts.visits,
-      allowMoves: [{ player: answerer, moves: legal.map(vertexToGtp), untilDepth: 1 }],
-    })
-    const best = [...before.moveInfos].sort((a, b) => a.order - b.order)[0]
+    if (spot.zone.length === 0) return { kind: 'dropped', reason: 'no legal zone move for the answer' }
+    const best = await zoneBest(ask, spot, opts.visits)
     if (!best) return { kind: 'dropped', reason: 'the engine returned no zone move' }
-    const bestLead = view(best.scoreLead, answerer)
-
-    /** The lead (answerer view) after the answer; a tenuki is the best move outside the zone, not a pass. */
-    async function leadAfter(answer: JdbNode): Promise<number> {
-      if (answer.move !== 'tenuki') {
-        const after = await ask({ ...baseQuery([...moves, { color: answerer, vertex: answer.move }]), maxVisits: opts.visits })
-        return view(after.rootInfo.scoreLead, answerer)
-      }
-      const outside = position.emptyVertices().filter((v) => !inZone('TR', v) && position.isLegal(answerer, v))
-      if (outside.length === 0) {
-        const after = await ask({ ...baseQuery([...moves, { color: answerer, vertex: 'pass' }]), maxVisits: opts.visits })
-        return view(after.rootInfo.scoreLead, answerer)
-      }
-      const r = await ask({
-        ...baseQuery(moves),
-        maxVisits: opts.visits,
-        allowMoves: [{ player: answerer, moves: outside.map(vertexToGtp), untilDepth: 1 }],
-      })
-      const top = [...r.moveInfos].sort((a, b) => a.order - b.order)[0]
-      if (!top) throw new DataError('error: the engine returned no move outside the zone')
-      return view(top.scoreLead, answerer)
-    }
-
-    const leads = await Promise.all(trap.children.map(leadAfter))
+    const leads = await Promise.all(trap.children.map((a) => leadAfter(ask, spot, a.move, opts.visits)))
     const losses = new Map<JdbNode, number>()
-    trap.children.forEach((answer, i) => losses.set(answer, Math.max(0, bestLead - leads[i])))
+    trap.children.forEach((answer, i) => losses.set(answer, Math.max(0, best.lead - leads[i])))
     const lossesOf = (cat: JdbNode['category']): number[] => trap.children.filter((a) => a.category === cat).map((a) => losses.get(a)!)
     const good = lossesOf('good')
     const caught = lossesOf('caught')
@@ -122,7 +73,8 @@ export async function checkTraps(base: JdbBase, engine: AnalysisEngine, opts: Ch
     if (minGood > opts.goodMax) return { kind: 'dropped', reason: `best good answer loses ${round1(minGood)} > ${opts.goodMax}` }
     const gap = Math.min(...caught) - minGood
     if (gap < opts.caughtGap) return { kind: 'dropped', reason: `caught answers are not bad enough: gap ${round1(gap)} < ${opts.caughtGap}` }
-    return { kind: 'kept', losses }
+    const weak = new Set(trap.children.filter((a) => a.category === 'good' && losses.get(a)! > opts.goodMax))
+    return { kind: 'kept', losses, weak }
   }
 
   /** The nodes that still lead to a trap, each checked in turn. */
@@ -170,9 +122,12 @@ export async function checkTraps(base: JdbBase, engine: AnalysisEngine, opts: Ch
     done++
     if (verdict?.kind === 'kept') {
       kept++
-      log(`[${done}/${total}] ${id}: kept`)
-      const losses = verdict.losses
-      return { ...node, children: await walkAnswers(node, path, (a) => ({ ...a, loss: round1(losses.get(a)!) })) }
+      const { losses, weak } = verdict
+      const removed = [...weak].map((a): WeakAnswer => ({ id, move: a.move, loss: round1(losses.get(a)!) }))
+      weakAnswers.push(...removed)
+      log(`[${done}/${total}] ${id}: kept${removed.length > 0 ? `, good answers dropped: ${weakAnswersText(removed)}` : ''}`)
+      const answers = await walkAnswers(node, path, (a) => (weak.has(a) ? { ...a, category: 'none', loss: null } : { ...a, loss: round1(losses.get(a)!) }))
+      return { ...node, children: answers.filter((a) => a.category !== 'none' || a.children.length > 0) }
     }
     if (verdict?.kind === 'dropped') {
       dropped.push({ id, reason: verdict.reason })
@@ -188,5 +143,5 @@ export async function checkTraps(base: JdbBase, engine: AnalysisEngine, opts: Ch
 
   const source = base.toTree()
   const roots = await walkAll(source.roots, [])
-  return { tree: { kind: source.kind, verified: failed.length === 0, roots }, kept, dropped, failed }
+  return { tree: { kind: source.kind, verified: failed.length === 0, roots }, kept, dropped, weakAnswers, failed }
 }

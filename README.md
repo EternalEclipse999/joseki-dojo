@@ -98,7 +98,24 @@ Verify the base with KataGo on a machine with a strong GPU (it needs `config.loc
 npm run traps:check -- --visits 1600 --good-max 1 --caught-gap 2
 ```
 
-For each trap the tool searches the position before the answer (answers restricted to the corner zone) and after each stored answer. It writes the losses into the answer nodes and keeps a trap when its best good answer loses at most `--good-max` points and its best caught answer loses at least `--caught-gap` points more than that. A tenuki answer is measured as the best move outside the zone. Traps nested below an answer, including a trap that is itself an answer of another trap, are checked too, each with its own path. Failing traps are dropped, branches left without traps are pruned, and the file is rewritten with the verified flag set. Illegal data (a path or an answer that is not a legal move) is dropped, too. A query that KataGo rejects leaves its trap unchecked and the verified flag off. A query that fails because the engine hung is retried once; if the retry fails as well, the run stops and nothing is written. The check is meant to run once on the owner's machine: the base that ships in the repository is not verified yet.
+For each trap the tool searches the position before the answer (answers restricted to the corner zone) and after each stored answer. It writes the losses into the answer nodes and keeps a trap when its best good answer loses at most `--good-max` points and its best caught answer loses at least `--caught-gap` points more than that. A kept trap loses its good answers that lose more than `--good-max` (the way to a trap nested below one stays); the report lists them. A tenuki answer is measured as the best move outside the zone. Traps nested below an answer, including a trap that is itself an answer of another trap, are checked too, each with its own path. Failing traps are dropped, branches left without traps are pruned, and the file is rewritten with the verified flag set. Illegal data (a path or an answer that is not a legal move) is dropped, too. A query that KataGo rejects leaves its trap unchecked and the verified flag off. A query that fails because the engine hung is retried once; if the retry fails as well, the run stops and nothing is written. The check is meant to run once on the owner's machine: the base that ships in the repository is not verified yet.
+
+The trap candidates (`scripts/traps/candidates.jdb`) are tricks whose answers are incomplete. One command on a machine with a strong GPU checks the base, completes the candidates and commits both files:
+
+```
+npm run traps:gpu -- --visits 8000
+```
+
+It refuses to start on `main`, on a detached HEAD or with uncommitted changes in the two base files, and checks that KataGo answers with the human net before any work. A candidate's good answers must lose at most `--good-max`: weaker ones from the file are dropped and reported, and a candidate without good answers tries KataGo's three best zone moves. The human net then names the natural moves at each rank of `--ranks` (default `20k,15k,10k,5k,3k,1k`; a move is natural from `--natural 0.1` of the policy, a tenuki sums everything outside the zone), and a natural move that loses at least `--caught-gap` more than the best good answer becomes a caught answer. Accepted candidates move into `traps.jdb`; the rest stay in the candidates file. The commit holds only the two files, is authored as the last commit of the branch, and carries the report; push it afterwards.
+
+The one-time run on the GPU machine:
+
+1. Clone the repository (or pull).
+2. `git switch feat/traps-gpu` (the pull request branch; if it was already merged, create a branch for the result instead, e.g. `git switch -c traps-gpu-run`).
+3. `npm ci`
+4. `npm run setup` and pick a GPU build of KataGo (the CPU build is far too slow for 8000 visits).
+5. `npm run traps:gpu` (roughly 20-90 minutes depending on the GPU; keep the machine awake).
+6. `git push` (`git push -u origin HEAD` for a new branch).
 
 ### Project layout
 
