@@ -4,7 +4,7 @@ import { basename, dirname, join, relative, resolve } from 'node:path'
 import { Readable, Transform, Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web'
-import extractZip from 'extract-zip'
+import { unzip } from './unzip'
 
 /** Windows: antivirus or a just-closed process may hold a file for a moment, so removal and rename are retried. */
 const RETRY = { maxRetries: 5, retryDelay: 200 } as const
@@ -186,7 +186,7 @@ export async function extractBuild(zipFile: string, dir: string): Promise<string
   const partial = `${dir}.part`
   rmSync(partial, { recursive: true, force: true, ...RETRY })
   try {
-    await extractZip(zipFile, { dir: resolve(partial) })
+    await unzip(zipFile, partial)
     const found = findKatagoBinary(partial)
     if (!found) throw new Error(`В архиве нет исполняемого файла KataGo: ${basename(zipFile)}`)
     rmSync(dir, { recursive: true, force: true, ...RETRY })
