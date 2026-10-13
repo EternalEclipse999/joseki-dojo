@@ -1,36 +1,50 @@
 import { vertexToGtp } from '@joseki-dojo/shared'
 import type { AnalysisEngine } from '../engine/engine'
-import { trapId, type CanonicalMove, type JdbBase, type JdbNode, type JdbTree } from '../jdb'
+import { moveText, trapId, type CanonicalMove, type JdbBase, type JdbNode, type JdbTree } from '../jdb'
 import { answerSpot, DataError, leadAfter, makeAsk, round1, zoneBest } from './measure'
 
 export interface CheckOptions {
   /** Visits per query. */
   visits: number
-  /** A trap is kept when its best good answer loses at most this many points. */
+  /** A good answer loses at most this many points; a trap is kept when at least one of its good answers does. */
   goodMax: number
   /** ... and its best caught answer loses at least this many points more than its best good answer. */
   caughtGap: number
+}
+
+/** A good answer that KataGo does not confirm (it loses more than goodMax), with the trap it belonged to. */
+export interface WeakAnswer {
+  id: string
+  move: CanonicalMove
+  /** Rounded to 0.1. */
+  loss: number
 }
 
 export interface CheckResult {
   tree: JdbTree
   kept: number
   dropped: { id: string; reason: string }[]
+  /** Good answers removed from the kept traps. */
+  weakAnswers: WeakAnswer[]
   /** Traps that could not be checked because KataGo rejected a query; they stay as they were. */
   failed: { id: string; reason: string }[]
 }
 
-type Verdict = { kind: 'kept'; losses: Map<JdbNode, number> } | { kind: 'dropped'; reason: string }
+type Verdict = { kind: 'kept'; losses: Map<JdbNode, number>; weak: Set<JdbNode> } | { kind: 'dropped'; reason: string }
+
+export const weakAnswersText = (weak: readonly WeakAnswer[]): string => weak.map((w) => `${moveText(w.move)} ${w.loss}`).join(', ')
 
 /**
  * Spec 4.2: verifies every trap of a traps base with the engine, writes the answer losses, drops the traps
  * that fail the thresholds (and the branches left without traps) and marks the base as verified.
+ * A kept trap loses the good answers that lose more than goodMax; the way to a trap nested below one stays.
  * Illegal data (a path or an answer that is not a legal move) is a permanent fact: the trap, or the answer, is dropped.
  * A query KataGo rejects leaves the trap unchanged and the base not marked as verified.
  * An engine failure that survives one retry rejects the whole run.
  */
 export async function checkTraps(base: JdbBase, engine: AnalysisEngine, opts: CheckOptions, log: (line: string) => void): Promise<CheckResult> {
   const dropped: { id: string; reason: string }[] = []
+  const weakAnswers: WeakAnswer[] = []
   const failed: { id: string; reason: string }[] = []
   let kept = 0
   const total = base.nodesOf('trap').length
@@ -59,7 +73,8 @@ export async function checkTraps(base: JdbBase, engine: AnalysisEngine, opts: Ch
     if (minGood > opts.goodMax) return { kind: 'dropped', reason: `best good answer loses ${round1(minGood)} > ${opts.goodMax}` }
     const gap = Math.min(...caught) - minGood
     if (gap < opts.caughtGap) return { kind: 'dropped', reason: `caught answers are not bad enough: gap ${round1(gap)} < ${opts.caughtGap}` }
-    return { kind: 'kept', losses }
+    const weak = new Set(trap.children.filter((a) => a.category === 'good' && losses.get(a)! > opts.goodMax))
+    return { kind: 'kept', losses, weak }
   }
 
   /** The nodes that still lead to a trap, each checked in turn. */
@@ -107,9 +122,12 @@ export async function checkTraps(base: JdbBase, engine: AnalysisEngine, opts: Ch
     done++
     if (verdict?.kind === 'kept') {
       kept++
-      log(`[${done}/${total}] ${id}: kept`)
-      const losses = verdict.losses
-      return { ...node, children: await walkAnswers(node, path, (a) => ({ ...a, loss: round1(losses.get(a)!) })) }
+      const { losses, weak } = verdict
+      const removed = [...weak].map((a): WeakAnswer => ({ id, move: a.move, loss: round1(losses.get(a)!) }))
+      weakAnswers.push(...removed)
+      log(`[${done}/${total}] ${id}: kept${removed.length > 0 ? `, good answers dropped: ${weakAnswersText(removed)}` : ''}`)
+      const answers = await walkAnswers(node, path, (a) => (weak.has(a) ? { ...a, category: 'none', loss: null } : { ...a, loss: round1(losses.get(a)!) }))
+      return { ...node, children: answers.filter((a) => a.category !== 'none' || a.children.length > 0) }
     }
     if (verdict?.kind === 'dropped') {
       dropped.push({ id, reason: verdict.reason })
@@ -125,5 +143,5 @@ export async function checkTraps(base: JdbBase, engine: AnalysisEngine, opts: Ch
 
   const source = base.toTree()
   const roots = await walkAll(source.roots, [])
-  return { tree: { kind: source.kind, verified: failed.length === 0, roots }, kept, dropped, failed }
+  return { tree: { kind: source.kind, verified: failed.length === 0, roots }, kept, dropped, weakAnswers, failed }
 }

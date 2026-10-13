@@ -2,7 +2,7 @@ import { indexToVertex, inZone, PASS_INDEX, vertexToGtp, vertexToIndex } from '@
 import type { AnalysisEngine } from '../engine/engine'
 import { baseQuery } from '../engine/query'
 import { sameMove, trapId, zoneIndex, type CanonicalMove, type JdbBase } from '../jdb'
-import type { CheckOptions } from './check'
+import { weakAnswersText, type CheckOptions, type WeakAnswer } from './check'
 import { answerSpot, DataError, leadAfter, makeAsk, round1, zoneBest, type Ask, type AnswerSpot } from './measure'
 
 export interface CompleteOptions extends CheckOptions {
@@ -30,6 +30,8 @@ export interface CompletedTrap {
 export interface CompleteResult {
   accepted: CompletedTrap[]
   rejected: { id: string; path: CanonicalMove[]; reason: string }[]
+  /** Good answers from the file that the accepted candidates lost: KataGo does not confirm them. */
+  weakAnswers: WeakAnswer[]
 }
 
 /** Up to this many of KataGo's best zone moves are tried as good answers for a candidate that has none. */
@@ -64,13 +66,14 @@ async function naturalMoves(ask: Ask, spot: AnswerSpot, opts: CompleteOptions): 
 /**
  * Spec 4: completes the candidates of a candidates base. KataGo supplies good answers to a candidate that has none,
  * the human net at each rank supplies natural moves, and a natural move that loses enough is a caught answer.
- * A candidate is accepted when it has a good answer within goodMax and a caught answer. A query KataGo rejects
+ * A good answer, from the file or from KataGo, loses at most goodMax; the file's weaker ones are dropped and reported.
+ * A candidate is accepted when it has a good answer and a caught answer. A query KataGo rejects
  * leaves the candidate as it was; an engine failure that survives one retry rejects the whole run.
  */
 export async function completeCandidates(base: JdbBase, engine: AnalysisEngine, opts: CompleteOptions, log: (line: string) => void): Promise<CompleteResult> {
   const ask = makeAsk(engine)
 
-  async function complete(node: number, path: CanonicalMove[]): Promise<CompletedTrap | string> {
+  async function complete(node: number, path: CanonicalMove[]): Promise<{ trap: CompletedTrap; weak: WeakAnswer[] } | string> {
     if (path.some((m) => m === 'tenuki' || zoneIndex(m) === null)) return 'not a corner sequence'
     const spot = answerSpot(path)
     if (!spot) return 'illegal position'
@@ -86,14 +89,17 @@ export async function completeCandidates(base: JdbBase, engine: AnalysisEngine, 
     const fromFile = fileAnswers.filter((a) => a.category === 'good').map((a) => a.move)
     const tried = fromFile.length > 0 ? fromFile : best.moves.slice(0, GOOD_TRIES)
     const triedLosses = await Promise.all(tried.map(lossOf))
-    let good = tried.map((move, i) => ({ move, loss: triedLosses[i] }))
-    // KataGo's own moves are good answers only within the threshold; the file's answers all stay, as in traps:check.
-    if (fromFile.length === 0) good = good.filter((g) => g.loss <= opts.goodMax)
-    if (good.length === 0) return `no good answer within ${opts.goodMax}`
+    const measured = tried.map((move, i) => ({ move, loss: triedLosses[i] }))
     // The thresholds compare the unrounded losses; the answers keep the rounded ones.
+    const good = measured.filter((g) => g.loss <= opts.goodMax)
+    if (good.length === 0) {
+      return fromFile.length > 0 ? `best good answer loses ${round1(Math.min(...triedLosses))} > ${opts.goodMax}` : `no good answer within ${opts.goodMax}`
+    }
+    const id = trapId(path)
+    const weak = fromFile.length > 0 ? measured.filter((g) => g.loss > opts.goodMax).map((g): WeakAnswer => ({ id, move: g.move, loss: round1(g.loss) })) : []
     const minGood = Math.min(...good.map((g) => g.loss))
-    if (minGood > opts.goodMax) return `best good answer loses ${round1(minGood)} > ${opts.goodMax}`
 
+    // A dropped good answer is tried again as a natural move: people who play it are caught.
     const tries = (await naturalMoves(ask, spot, opts)).filter((n) => !good.some((g) => sameMove(g.move, n.move)))
     for (const a of fileAnswers) {
       if (a.category === 'caught' && !tries.some((t) => sameMove(t.move, a.move)) && !good.some((g) => sameMove(g.move, a.move))) tries.push({ move: a.move, ranks: [] })
@@ -101,23 +107,21 @@ export async function completeCandidates(base: JdbBase, engine: AnalysisEngine, 
     const caughtLosses = await Promise.all(tries.map((t) => lossOf(t.move)))
     const caught = tries.map((t, i) => ({ ...t, loss: caughtLosses[i] })).filter((c) => c.loss - minGood >= opts.caughtGap)
     if (caught.length === 0) return 'no natural losing move'
-    return {
-      id: trapId(path),
-      path,
-      answers: [
-        ...good.map((g): CompletedAnswer => ({ move: g.move, category: 'good', loss: round1(g.loss), ranks: [] })),
-        ...caught.map((c): CompletedAnswer => ({ move: c.move, category: 'caught', loss: round1(c.loss), ranks: c.ranks })),
-      ],
-    }
+    const answers = [
+      ...good.map((g): CompletedAnswer => ({ move: g.move, category: 'good', loss: round1(g.loss), ranks: [] })),
+      ...caught.map((c): CompletedAnswer => ({ move: c.move, category: 'caught', loss: round1(c.loss), ranks: c.ranks })),
+    ]
+    return { trap: { id, path, answers }, weak }
   }
 
   const accepted: CompletedTrap[] = []
   const rejected: CompleteResult['rejected'] = []
+  const weakAnswers: WeakAnswer[] = []
   const nodes = base.nodesOf('trap')
   for (const [k, node] of nodes.entries()) {
     const path = base.path(node)
     const id = trapId(path)
-    let outcome: CompletedTrap | string
+    let outcome: { trap: CompletedTrap; weak: WeakAnswer[] } | string
     try {
       outcome = await complete(node, path)
     } catch (err) {
@@ -128,9 +132,10 @@ export async function completeCandidates(base: JdbBase, engine: AnalysisEngine, 
       rejected.push({ id, path, reason: outcome })
       log(`[${k + 1}/${nodes.length}] ${id}: not accepted, ${outcome}`)
     } else {
-      accepted.push(outcome)
-      log(`[${k + 1}/${nodes.length}] ${id}: accepted`)
+      accepted.push(outcome.trap)
+      weakAnswers.push(...outcome.weak)
+      log(`[${k + 1}/${nodes.length}] ${id}: accepted${outcome.weak.length > 0 ? `, good answers dropped: ${weakAnswersText(outcome.weak)}` : ''}`)
     }
   }
-  return { accepted, rejected }
+  return { accepted, rejected, weakAnswers }
 }

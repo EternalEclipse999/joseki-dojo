@@ -134,11 +134,35 @@ describe('completeCandidates', () => {
     expect(engine.queries.some((q) => !q.allowMoves && q.moves.at(-1)?.[1] === 'Q12')).toBe(false)
   })
 
-  it('keeps every good answer from the file but needs the best within goodMax', async () => {
-    const ok = await run(one(answer('Q13', 'good'), answer('Q12', 'good')), { after: { Q13: 5, Q12: 3, S13: 0 }, human: { '10k': { S13: 0.5 } } })
-    expect(ok.accepted[0]?.answers.filter((a) => a.category === 'good').map((a) => a.loss)).toEqual([0, 2])
-    const bad = await run(one(answer('Q13', 'good')), { after: { Q13: 3 }, human: { '10k': { S13: 0.5 } } })
+  it('drops a good answer from the file that loses more than goodMax and reports it', async () => {
+    const lines: string[] = []
+    const out = await completeCandidates(
+      one(answer('Q13', 'good'), answer('Q12', 'good')),
+      fakeEngine({ after: { Q13: 5, Q12: 3, S13: 0 }, human: { '10k': { S13: 0.5 } } }),
+      OPTS,
+      (l) => lines.push(l),
+    )
+    expect(out.accepted[0]?.answers).toEqual([
+      { move: v('Q13'), category: 'good', loss: 0, ranks: [] },
+      { move: v('S13'), category: 'caught', loss: 5, ranks: ['10k'] },
+    ])
+    expect(out.weakAnswers).toEqual([{ id: ID, move: v('Q12'), loss: 2 }])
+    expect(lines).toEqual([`[1/1] ${ID}: accepted, good answers dropped: Q12 2`])
+  })
+
+  it('takes a dropped good answer as caught when it is natural and loses enough', async () => {
+    const out = await run(one(answer('Q13', 'good'), answer('Q12', 'good')), { after: { Q13: 5, Q12: 2 }, human: { '10k': { Q12: 0.5 } } })
+    expect(out.accepted[0]?.answers).toEqual([
+      { move: v('Q13'), category: 'good', loss: 0, ranks: [] },
+      { move: v('Q12'), category: 'caught', loss: 3, ranks: ['10k'] },
+    ])
+    expect(out.weakAnswers).toEqual([{ id: ID, move: v('Q12'), loss: 3 }])
+  })
+
+  it('rejects a candidate whose good answers from the file all lose more than goodMax', async () => {
+    const bad = await run(one(answer('Q13', 'good'), answer('Q12', 'good')), { after: { Q13: 3, Q12: 2.5 }, human: { '10k': { S13: 0.5 } } })
     expect(bad.rejected[0]?.reason).toBe('best good answer loses 2 > 1')
+    expect(bad.weakAnswers).toEqual([])
   })
 
   it('rejects a candidate without answers when no KataGo move is within goodMax', async () => {

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import type { AnalysisEngine } from '../../packages/server/src/engine/engine'
 import { renameRetrying } from '../../packages/server/src/install/download'
 import { decodeJdb, encodeJdb, moveText } from '../../packages/server/src/jdb'
-import { checkTraps, type CheckResult } from '../../packages/server/src/traps/check'
+import { checkTraps, weakAnswersText, type CheckResult, type WeakAnswer } from '../../packages/server/src/traps/check'
 import { completeCandidates, type CompletedTrap, type CompleteOptions, type CompleteResult } from '../../packages/server/src/traps/complete'
 import { addTraps, removeTraps } from '../../packages/server/src/traps/tree'
 
@@ -107,12 +107,16 @@ function summaryLines(checked: CheckResult, completed: CompleteResult): string[]
   return [
     `Base: kept ${checked.kept}, dropped ${checked.dropped.length}, left unchecked ${checked.failed.length}; verified: ${checked.tree.verified ? 'yes' : 'no'}`,
     ...checked.dropped.map((d) => `  dropped ${d.id}: ${d.reason}`),
+    ...weakLines(checked.weakAnswers),
     ...checked.failed.map((f) => `  unchecked ${f.id}: ${f.reason}`),
     `Candidates: accepted ${completed.accepted.length}, not accepted ${completed.rejected.length}`,
     ...completed.accepted.map((t) => `  accepted ${t.id} ${t.path.map(moveText).join(' ')} | good: ${answersOf(t, 'good')} | caught: ${answersOf(t, 'caught')}`),
+    ...weakLines(completed.weakAnswers),
     ...completed.rejected.map((r) => `  not accepted ${r.id}: ${r.reason}`),
   ]
 }
+
+const weakLines = (weak: readonly WeakAnswer[]): string[] => weak.map((w) => `  good answer dropped ${w.id}: ${weakAnswersText([w])}`)
 
 export interface GpuRun {
   root: string

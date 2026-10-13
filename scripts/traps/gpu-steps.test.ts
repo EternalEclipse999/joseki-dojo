@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 import { gtpToVertex, vertexToIndex, type Vertex } from '@joseki-dojo/shared'
 import { describe, expect, it } from 'vitest'
 import { EngineError } from '../../packages/server/src/engine/engine'
-import { decodeJdb, encodeJdb, type CanonicalMove, type JdbNode, type JdbTree } from '../../packages/server/src/jdb'
+import { decodeJdb, encodeJdb, trapId, type CanonicalMove, type JdbNode, type JdbTree } from '../../packages/server/src/jdb'
 import { testTrapsTree } from '../../packages/server/src/traps/fixture'
 import { StubEngine } from '../../packages/server/test/helpers'
 import { CANDIDATES_FILE, commitBases, gitProblem, parseGpuOptions, runGpu, TRAPS_FILE } from './gpu-steps'
@@ -28,7 +28,7 @@ const CANDIDATES: JdbTree = {
 }
 
 /** A repository on branch feat/x with both base files and other.txt committed by AUTHOR. */
-function repo(): string {
+function repo(candidates: JdbTree = CANDIDATES): string {
   const root = mkdtempSync(join(tmpdir(), 'joseki-gpu-'))
   git(root, 'init', '-q')
   git(root, 'checkout', '-q', '-b', 'feat/x')
@@ -37,7 +37,7 @@ function repo(): string {
     writeFileSync(join(root, file), encodeJdb(tree))
   }
   write(TRAPS_FILE, { ...testTrapsTree(), verified: false })
-  write(CANDIDATES_FILE, CANDIDATES)
+  write(CANDIDATES_FILE, candidates)
   writeFileSync(join(root, 'other.txt'), 'x')
   git(root, 'add', '-A')
   git(root, '-c', `user.name=${AUTHOR.name}`, '-c', `user.email=${AUTHOR.email}`, 'commit', '-q', '-m', 'init')
@@ -142,6 +142,18 @@ describe('runGpu', () => {
     expect(message).toContain(ENGINE_INFO)
     expect(message).toContain('Options: visits 10, good-max 1, caught-gap 2, ranks 20k,15k,10k,5k,3k,1k, natural 0.1')
     expect(lines.at(-1)).toBe('Committed. Next: git push (git push -u origin HEAD for a new branch)')
+  })
+
+  it('reports the good answers it drops', async () => {
+    const path = ['Q16', 'O17', 'R14', 'R13']
+    const root = repo({ ...CANDIDATES, roots: [n('Q16', 'none', [n('O17', 'none', [n('R14', 'none', [n('R13', 'trap', [n('Q13', 'good'), n('Q12', 'good')])])])])] })
+    const engine = new StubEngine()
+    const s13 = vertexToIndex(mv('S13') as Vertex)
+    engine.human = () => Array.from({ length: 362 }, (_, i) => (i === s13 ? 0.5 : 0))
+    const after: Record<string, number> = { Q13: 5, Q12: 3, S13: 2 }
+    engine.lead = (q) => (q.allowMoves ? 5 : (after[q.moves.at(-1)?.[1] ?? ''] ?? 0))
+    await runGpu({ root, engine, opts, engineInfo: ENGINE_INFO, log: () => {} })
+    expect(git(root, 'log', '-1', '--format=%B')).toContain(`  good answer dropped ${trapId(path.map(mv))}: Q12 2`)
   })
 
   it('says what to do with the written files when the commit fails', async () => {
