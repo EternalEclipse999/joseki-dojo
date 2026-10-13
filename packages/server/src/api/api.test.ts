@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs'
 import { request } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WebSocket from 'ws'
@@ -7,6 +9,9 @@ import type { ClientMessage, ServerMessage } from '@joseki-dojo/shared'
 import { fakeEngine, serviceOptions, testConfig } from '../../test/helpers'
 import { buildApp, createServices, type AppServices } from '../app'
 import { HealthMonitor } from '../engine/health'
+import { TrapBook } from '../traps/book'
+import { testTrapsTree } from '../traps/fixture'
+import { decodeJdb, encodeJdb } from '../jdb'
 
 class Client {
   readonly messages: ServerMessage[] = []
@@ -198,5 +203,47 @@ describe('cross-site requests', () => {
     expect(await post(undefined)).toBe(200)
     expect(await post(`http://${host}`)).toBe(200)
     expect(await post('http://localhost:5173')).toBe(200)
+  })
+})
+
+describe('/api/ui', () => {
+  const put = (body: unknown): Promise<Response> =>
+    fetch(`http://${host}/api/ui`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+
+  it('saves a valid theme and serves it back', async () => {
+    expect(await (await fetch(`http://${host}/api/ui`)).json()).toEqual({ theme: 'system' })
+    const res = await put({ theme: 'dark' })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ theme: 'dark' })
+    expect(await (await fetch(`http://${host}/api/ui`)).json()).toEqual({ theme: 'dark' })
+    expect(JSON.parse(readFileSync(join(services.config.dataDir, 'config.local.json'), 'utf8')).ui).toEqual({ theme: 'dark' })
+  })
+
+  it('refuses an unknown theme with 400 and keeps the saved one', async () => {
+    await put({ theme: 'light' })
+    const res = await put({ theme: 'neon' })
+    expect(res.status).toBe(400)
+    expect(typeof (await res.json()).error).toBe('string')
+    expect(await (await fetch(`http://${host}/api/ui`)).json()).toEqual({ theme: 'light' })
+  })
+})
+
+describe('GET /api/traps', () => {
+  it('reports an empty book without a base', async () => {
+    expect(await (await fetch(`http://${host}/api/traps`)).json()).toEqual({ count: 0, verified: false })
+  })
+
+  it('reports the loaded base', async () => {
+    const config = testConfig()
+    const withTraps = createServices(config, fakeEngine(), serviceOptions(config, { traps: TrapBook.fromBase(decodeJdb(encodeJdb(testTrapsTree()))) }))
+    const other = await buildApp(withTraps)
+    try {
+      const res = await other.inject({ method: 'GET', url: '/api/traps', headers: { host: '127.0.0.1:1' } })
+      expect(res.json()).toEqual({ count: 2, verified: true })
+    } finally {
+      await other.close()
+      await withTraps.engine.stop()
+      withTraps.db.close()
+    }
   })
 })

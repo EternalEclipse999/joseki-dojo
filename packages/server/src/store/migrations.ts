@@ -63,4 +63,21 @@ CREATE TABLE missed_punishments (
 CREATE INDEX missed_punishments_session ON missed_punishments (session_id);
 `,
   },
+  {
+    version: 2,
+    name: '002_traps.sql',
+    sql: `
+ALTER TABLE sessions ADD COLUMN trap_json TEXT;
+
+CREATE TABLE trap_attempts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions (id) ON DELETE CASCADE,
+  trap_id TEXT NOT NULL,
+  result TEXT NOT NULL CHECK (result IN ('correct', 'caught', 'other')),
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX trap_attempts_trap ON trap_attempts (trap_id);
+`,
+  },
 ]

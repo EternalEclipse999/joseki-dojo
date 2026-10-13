@@ -1,10 +1,12 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { HealthResponse, InstallStatus } from '@joseki-dojo/shared'
+import { gtpToVertex, type HealthResponse, type InstallStatus, type Vertex } from '@joseki-dojo/shared'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_KATAGO, REPO_LOCK, tempDir } from '../test/helpers'
 import { createInstallFixture, fakeBuildCommand, type InstallFixture } from '../test/install-fixture'
+import { encodeJdb, type JdbNode, type JdbTree } from './jdb'
 import { startServer, type RunningServer } from './start'
+import { writeTestTraps } from './traps/fixture'
 
 const servers: RunningServer[] = []
 const fixtures: InstallFixture[] = []
@@ -93,5 +95,58 @@ describe('startServer', () => {
     )
     await health(server, 'ready')
     expect(existsSync(join(root, 'config.json'))).toBe(true)
+  })
+
+  describe('traps base', () => {
+    async function startWith(trapsFile: string): Promise<{ lines: string[]; traps: unknown }> {
+      const root = tempDir()
+      const lines: string[] = []
+      const server = await startServer({
+        configFile: join(root, 'config.json'),
+        dataDir: join(root, 'data'),
+        enginesDir: join(root, 'engines'),
+        lockFile: REPO_LOCK,
+        webDist: null,
+        port: 0,
+        log: (line) => void lines.push(line),
+        trapsFile,
+      })
+      servers.push(server)
+      return { lines, traps: await getJson(`${server.url}/api/traps`) }
+    }
+
+    it('starts with a corrupt base and serves an empty book', async () => {
+      const file = join(tempDir(), 'traps.jdb')
+      writeFileSync(file, Buffer.from([1, 2, 3, 250, 17]))
+      const { lines, traps } = await startWith(file)
+      expect(lines.some((l) => l.includes('База ловушек недоступна'))).toBe(true)
+      expect(traps).toEqual({ count: 0, verified: false })
+    })
+
+    it('starts when the base file does not exist', async () => {
+      const { lines, traps } = await startWith(join(tempDir(), 'missing.jdb'))
+      expect(lines.some((l) => l.includes('База ловушек недоступна'))).toBe(true)
+      expect(traps).toEqual({ count: 0, verified: false })
+    })
+
+    it('logs how many traps were skipped as unplayable', async () => {
+      const file = join(tempDir(), 'traps.jdb')
+      const node = (gtp: string, category: JdbNode['category'], children: JdbNode[] = []): JdbNode => ({ move: gtpToVertex(gtp) as Vertex, category, loss: null, children })
+      const answers = (): JdbNode[] => [node('P17', 'good'), node('N18', 'caught')]
+      // The first trap lands on a taken point: it cannot be played.
+      const tree: JdbTree = { kind: 'traps', verified: true, roots: [node('Q16', 'none', [node('Q16', 'trap', answers()), node('R17', 'trap', answers())])] }
+      writeFileSync(file, encodeJdb(tree))
+      const { lines, traps } = await startWith(file)
+      expect(lines).toContain('Пропущено ловушек: 1 (недопустимые позиции)')
+      expect(traps).toEqual({ count: 1, verified: true })
+    })
+
+    it('serves a valid base', async () => {
+      const file = join(tempDir(), 'traps.jdb')
+      writeTestTraps(file)
+      const { lines, traps } = await startWith(file)
+      expect(lines.some((l) => l.includes('База ловушек недоступна'))).toBe(false)
+      expect(traps).toEqual({ count: 2, verified: true })
+    })
   })
 })

@@ -46,3 +46,12 @@ export interface MissedPunishmentRow {
 export function movesBefore(rec: Pick<SessionRecord, 'initialMoves' | 'moves'>, t: number): Move[] {
   return [...rec.initialMoves, ...rec.moves.slice(0, t).map(({ color, vertex }) => ({ color, vertex }))]
 }
+
+export type TrapResult = 'correct' | 'caught' | 'other'
+
+export interface TrapAttemptRow {
+  sessionId: string
+  trapId: string
+  result: TrapResult
+  createdAt: string
+}

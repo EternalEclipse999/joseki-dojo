@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'preact/hooks'
 import { Check, Gauge, LoaderCircle, TriangleAlert } from 'lucide-preact'
-import type { SettingsUpdate, SettingsView } from '@joseki-dojo/shared'
-import { fetchSettings, saveSettings } from '../api'
+import type { SettingsUpdate, SettingsView, Theme } from '@joseki-dojo/shared'
+import { fetchSettings, fetchUi, saveSettings, saveTheme } from '../api'
+import { applyTheme } from '../theme'
 
 type Status = { kind: 'idle' } | { kind: 'saving' } | { kind: 'saved' } | { kind: 'error'; text: string }
 type PathKey = keyof SettingsUpdate['katago']
@@ -13,6 +14,46 @@ const PATH_FIELDS: { key: PathKey; label: string; models: boolean }[] = [
   { key: 'mainModel', label: 'Основная сеть', models: true },
   { key: 'humanModel', label: 'Human-сеть', models: true },
 ]
+
+const THEME_OPTIONS: { value: Theme; label: string }[] = [
+  { value: 'system', label: 'Как в системе' },
+  { value: 'light', label: 'Светлая' },
+  { value: 'dark', label: 'Тёмная' },
+]
+
+/** The colour theme: applied at once and saved without «Сохранить и проверить». */
+function ThemeSection() {
+  const [theme, setTheme] = useState<Theme | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    fetchUi()
+      .then((u) => setTheme(u.theme))
+      .catch(() => setTheme('system'))
+  }, [])
+  const choose = (t: Theme): void => {
+    setTheme(t)
+    setError(null)
+    applyTheme(t)
+    saveTheme(t).catch((e: Error) => setError(e.message))
+  }
+  return (
+    <section class="card section">
+      <div class="section-head">
+        <h2>Оформление</h2>
+        <p>Тема применяется сразу.</p>
+      </div>
+      <div class="segmented" role="radiogroup" aria-label="Тема">
+        {THEME_OPTIONS.map((o) => (
+          <label key={o.value}>
+            <input type="radio" name="theme" checked={theme === o.value} onChange={() => choose(o.value)} />
+            {o.label}
+          </label>
+        ))}
+      </div>
+      {error && <p class="hint error">{error}</p>}
+    </section>
+  )
+}
 
 const VISIT_FIELDS: { key: VisitsKey; label: string }[] = [
   { key: 'reviewVisits', label: 'Визиты на позицию в разборе' },
@@ -89,6 +130,8 @@ export function SettingsScreen({ onClose, onSaved, onRepick }: { onClose: () => 
             <span>{view.versionWarning}</span>
           </p>
         )}
+
+        <ThemeSection />
 
         <section class="card section">
           <div class="section-head">

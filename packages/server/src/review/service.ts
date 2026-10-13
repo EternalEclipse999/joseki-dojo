@@ -1,10 +1,12 @@
 import type { ReviewData, ServerMessage } from '@joseki-dojo/shared'
 import type { AnalysisScheduler } from '../analysis/scheduler'
 import type { AppConfig } from '../config'
+import { TrapBook } from '../traps/book'
 import { SessionError } from '../session/session'
 import type { SessionRecord, StoredAnalysis } from '../store/records'
 import type { SessionRepo } from '../store/repo'
 import { buildReview, missedPunishmentRows } from './compute'
+import { trapReview } from './trap'
 
 export type ReviewResult = { status: 'ok'; review: ReviewData } | { status: 'not_found' } | { status: 'not_ready' }
 
@@ -13,6 +15,8 @@ export interface ReviewServiceDeps {
   analysis: AnalysisScheduler
   config: AppConfig
   publish: (sessionId: string, msg: ServerMessage) => void
+  /** The traps base for the trap block; default: an empty book. */
+  traps?: TrapBook
   now?: () => string
 }
 
@@ -76,6 +80,7 @@ export class ReviewService {
       moves: rec.moves,
       analyses,
       thresholds: this.d.config.thresholds,
+      trap: trapReview(rec.settings, rec.initialMoves.length, rec.moves, this.d.traps ?? TrapBook.empty()),
     })
   }
 }

@@ -14,6 +14,7 @@ const api: DojoDesktopApi = {
   },
   downloadUpdate: () => ipcRenderer.invoke(CHANNELS.download) as Promise<void>,
   retryUpdate: () => ipcRenderer.invoke(CHANNELS.retry) as Promise<void>,
+  setTheme: (theme) => ipcRenderer.invoke(CHANNELS.theme, theme) as Promise<void>,
 }
 
 contextBridge.exposeInMainWorld('dojoDesktop', api)

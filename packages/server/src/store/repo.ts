@@ -1,11 +1,12 @@
-import { gtpToVertex, moveToGtp, type Actor, type Color, type Corner, type PlayedMove, type ReviewSummary, type SessionStatus } from '@joseki-dojo/shared'
+import { gtpToVertex, moveToGtp, type Actor, type Color, type Corner, type Mode, type PlayedMove, type ReviewSummary, type SessionStatus, type TrapRef } from '@joseki-dojo/shared'
 import type { Db } from './db'
-import type { AnalysisKind, MissedPunishmentRow, SessionRecord, StoredAnalysis } from './records'
+import type { AnalysisKind, MissedPunishmentRow, SessionRecord, StoredAnalysis, TrapAttemptRow } from './records'
 
 interface SessionRow {
   id: string
   created_at: string
   finished_at: string | null
+  mode: string
   user_color: string
   bot_rank: string
   corner: string
@@ -13,6 +14,7 @@ interface SessionRow {
   parent_session_id: string | null
   initial_moves_json: string
   summary_json: string | null
+  trap_json: string | null
 }
 
 interface MoveRow {
@@ -35,12 +37,17 @@ interface MissedRow {
 export class SessionRepo {
   constructor(private readonly db: Db) {}
 
+  /** Runs `fn` in one SQLite transaction: all its writes land together or not at all. */
+  transaction<T>(fn: () => T): T {
+    return this.db.transaction(fn)()
+  }
+
   insertSession(r: SessionRecord): void {
     this.db.transaction(() => {
       this.db
         .prepare(
-          `INSERT INTO sessions (id, created_at, finished_at, mode, environment, user_color, bot_rank, corner, status, parent_session_id, initial_moves_json, summary_json)
-           VALUES (@id, @createdAt, @finishedAt, @mode, @environment, @userColor, @botRank, @corner, @status, @parentSessionId, @initialMoves, @summary)`,
+          `INSERT INTO sessions (id, created_at, finished_at, mode, environment, user_color, bot_rank, corner, status, parent_session_id, initial_moves_json, summary_json, trap_json)
+           VALUES (@id, @createdAt, @finishedAt, @mode, @environment, @userColor, @botRank, @corner, @status, @parentSessionId, @initialMoves, @summary, @trap)`,
         )
         .run({
           id: r.id,
@@ -55,6 +62,7 @@ export class SessionRepo {
           parentSessionId: r.parentSessionId,
           initialMoves: JSON.stringify(r.initialMoves),
           summary: r.summary ? JSON.stringify(r.summary) : null,
+          trap: r.settings.trap ? JSON.stringify(r.settings.trap) : null,
         })
       r.moves.forEach((m, turn) => this.insertMove(r.id, turn, m))
     })()
@@ -85,11 +93,12 @@ export class SessionRepo {
       createdAt: row.created_at,
       finishedAt: row.finished_at,
       settings: {
-        mode: 'free',
+        mode: row.mode as Mode,
         environment: 'empty',
         userColor: row.user_color as Color,
         botRank: row.bot_rank,
         corner: row.corner as Corner,
+        ...(row.trap_json ? { trap: JSON.parse(row.trap_json) as TrapRef } : {}),
       },
       status: row.status as SessionStatus,
       parentSessionId: row.parent_session_id,
@@ -156,5 +165,17 @@ export class SessionRepo {
       bestMove: gtpToVertex(r.best_move),
       bestPv: (JSON.parse(r.best_pv_json) as string[]).map(gtpToVertex),
     }))
+  }
+
+  insertTrapAttempt(row: TrapAttemptRow): void {
+    this.db
+      .prepare('INSERT INTO trap_attempts (session_id, trap_id, result, created_at) VALUES (@sessionId, @trapId, @result, @createdAt)')
+      .run(row)
+  }
+
+  /** How many times each trap has been shown: rows in `trap_attempts` per trap id. */
+  trapShows(): Map<string, number> {
+    const rows = this.db.prepare('SELECT trap_id, COUNT(*) AS n FROM trap_attempts GROUP BY trap_id').all() as { trap_id: string; n: number }[]
+    return new Map(rows.map((r) => [r.trap_id, r.n]))
   }
 }

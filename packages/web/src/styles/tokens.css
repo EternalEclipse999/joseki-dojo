@@ -1,4 +1,5 @@
-/* Spec 3.1 (Studio): one accent, two themes chosen by the system setting. */
+/* Spec 3.1 (Studio): one accent, two themes. theme.ts sets data-theme on <html> from the choice in Settings
+   («Как в системе» follows prefers-color-scheme); index.html sets it from the system before the first paint. */
 :root {
   color-scheme: light;
   --bg: #ffffff;
@@ -45,34 +46,32 @@
   --radius-card: 12px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --bg: #0f1013;
-    --surface: #17181c;
-    --surface-raised: #1f2026;
-    --border: #2a2b31;
-    --border-strong: #3a3b42;
-    --text: #ececef;
-    --text-2: #9a9ca5;
-    --text-3: #6e7079;
-    --accent: #818cf8;
-    --accent-hover: #a5b4fc;
-    --accent-bg: #23244a;
-    --accent-text: #c7cbff;
-    --on-accent: #0f1013;
-    --danger-bg: #3a1618;
-    --danger-text: #f5b5b5;
-    --warning-bg: #352a10;
-    --warning-text: #f2d48a;
-    --good-text: #7fd6a2;
-    --warning-text-cat: #f2cf73;
-    --serious-text: #f0a674;
-    --critical-text: #f08a8a;
-    --board: #d9bd84;
-    --board-line: #6f5a37;
-    --board-veil: rgba(15, 16, 19, 0.32);
-    --board-outside: color-mix(in srgb, var(--board) 82%, #0f1013);
-    --stone-ring: rgba(255, 255, 255, 0.5);
-  }
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0f1013;
+  --surface: #17181c;
+  --surface-raised: #1f2026;
+  --border: #2a2b31;
+  --border-strong: #3a3b42;
+  --text: #ececef;
+  --text-2: #9a9ca5;
+  --text-3: #6e7079;
+  --accent: #818cf8;
+  --accent-hover: #a5b4fc;
+  --accent-bg: #23244a;
+  --accent-text: #c7cbff;
+  --on-accent: #0f1013;
+  --danger-bg: #3a1618;
+  --danger-text: #f5b5b5;
+  --warning-bg: #352a10;
+  --warning-text: #f2d48a;
+  --good-text: #7fd6a2;
+  --warning-text-cat: #f2cf73;
+  --serious-text: #f0a674;
+  --critical-text: #f08a8a;
+  --board: #d9bd84;
+  --board-line: #6f5a37;
+  --board-veil: rgba(15, 16, 19, 0.32);
+  --board-outside: color-mix(in srgb, var(--board) 82%, #0f1013);
+  --stone-ring: rgba(255, 255, 255, 0.5);
 }

@@ -1,9 +1,10 @@
 import { useState } from 'preact/hooks'
-import { ArrowRight, Dice3, ListChecks, Play, Shuffle } from 'lucide-preact'
+import { ArrowRight, Dice3, ListChecks, Play, Shuffle, Swords } from 'lucide-preact'
 import { BOT_RANKS, DEFAULT_BOT_RANK, isBotRank, type SessionSettings } from '@joseki-dojo/shared'
 import { rankLabel } from '../format'
 import { RANK_MARKS, rankAt, rankIndex } from '../rank-scale'
 
+type ModeChoice = SessionSettings['mode']
 type ColorChoice = SessionSettings['userColor']
 type CornerChoice = SessionSettings['corner']
 
@@ -25,10 +26,13 @@ export interface StartScreenProps {
   busy?: boolean
   /** Rank preselected on the strength slider (`bot.defaultRank` from the config). */
   defaultRank?: string
+  /** Traps in the base; 0 disables the «Ловушки» mode. */
+  trapsCount?: number
 }
 
 /** Spec 5: a new training — mode, corner, colour, bot strength and environment. */
-export function StartScreen({ onStart, busy, defaultRank }: StartScreenProps) {
+export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0 }: StartScreenProps) {
+  const [mode, setMode] = useState<ModeChoice>('free')
   const [userColor, setUserColor] = useState<ColorChoice>('B')
   const [botRank, setBotRank] = useState(defaultRank && isBotRank(defaultRank) ? defaultRank : DEFAULT_BOT_RANK)
   const [corner, setCorner] = useState<CornerChoice>('random')
@@ -45,10 +49,16 @@ export function StartScreen({ onStart, busy, defaultRank }: StartScreenProps) {
           <div class="label">Режим</div>
           <div class="modes">
             <label class="mode">
-              <input type="radio" name="mode" checked />
+              <input type="radio" name="mode" checked={mode === 'free'} onChange={() => setMode('free')} />
               <Play aria-hidden="true" />
               <b>Свободно</b>
               <span class="d">любое дзёсеки</span>
+            </label>
+            <label class="mode">
+              <input type="radio" name="mode" checked={mode === 'traps'} disabled={trapsCount === 0} onChange={() => setMode('traps')} />
+              <Swords aria-hidden="true" />
+              <b>Ловушки</b>
+              <span class="d">{trapsCount > 0 ? 'бот разыграет известную ловушку' : 'нет базы ловушек'}</span>
             </label>
             <label class="mode">
               <input type="radio" name="mode" disabled />
@@ -148,7 +158,7 @@ export function StartScreen({ onStart, busy, defaultRank }: StartScreenProps) {
         </div>
 
         <div class="start-actions">
-          <button class="primary lg" disabled={busy} onClick={() => onStart({ mode: 'free', environment: 'empty', userColor, botRank, corner })}>
+          <button class="primary lg" disabled={busy} onClick={() => onStart({ mode, environment: 'empty', userColor, botRank, corner })}>
             Начать тренировку
             <ArrowRight aria-hidden="true" />
           </button>

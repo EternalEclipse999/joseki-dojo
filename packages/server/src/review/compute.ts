@@ -12,6 +12,7 @@ import {
   type ResolvedSettings,
   type ReviewData,
   type ReviewSummary,
+  type ReviewTrap,
 } from '@joseki-dojo/shared'
 import type { Thresholds } from '../config'
 import type { MissedPunishmentRow, StoredAnalysis } from '../store/records'
@@ -83,6 +84,7 @@ export interface ReviewInput {
   /** Position analyses 0..moves.length. */
   analyses: StoredAnalysis[]
   thresholds: Thresholds
+  trap?: ReviewTrap | null
 }
 
 export function buildReview(input: ReviewInput): ReviewData {
@@ -115,6 +117,7 @@ export function buildReview(input: ReviewInput): ReviewData {
     moveReviews,
     punishments,
     summary: summarize(moves, losses, punishments, input.settings.userColor),
+    ...(input.trap ? { trap: input.trap } : {}),
   }
 }
 

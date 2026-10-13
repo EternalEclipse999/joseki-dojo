@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, resolve } from 'node:path'
-import { isBotRank } from '@joseki-dojo/shared'
+import { isBotRank, THEMES, type UiSettings } from '@joseki-dojo/shared'
 
 export interface KataGoSettings {
   path: string
@@ -34,6 +34,7 @@ export interface AppConfig {
   bot: { defaultRank: string; temperature: number }
   maxSessionMoves: number
   setup?: SetupInfo
+  ui: UiSettings
 }
 
 export const MAIN_MODEL_FILE = 'kata1-b18c384nbt-s9996604416-d4316597426.bin.gz'
@@ -52,6 +53,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   thresholds: { inaccuracy: 0.5, mistake: 2, blunder: 5, punished: 1 },
   bot: { defaultRank: '7k', temperature: 1 },
   maxSessionMoves: 60,
+  ui: { theme: 'system' },
 }
 
 export class ConfigError extends Error {
@@ -72,6 +74,7 @@ export function loadConfig(file: string): AppConfig {
     analysis: { ...DEFAULT_CONFIG.analysis, ...raw.analysis },
     thresholds: { ...DEFAULT_CONFIG.thresholds, ...raw.thresholds },
     bot: { ...DEFAULT_CONFIG.bot, ...raw.bot },
+    ui: { ...DEFAULT_CONFIG.ui, ...raw.ui },
   }
   validate(merged)
   const abs = (p: string): string => (isAbsolute(p) ? p : resolve(baseDir, p))
@@ -117,4 +120,5 @@ function validate(c: AppConfig): void {
     throw new ConfigError('thresholds must satisfy inaccuracy < mistake < blunder')
   }
   if (!isBotRank(c.bot.defaultRank)) throw new ConfigError(`bot.defaultRank is not a valid rank: ${c.bot.defaultRank}`)
+  if (!THEMES.includes(c.ui.theme)) throw new ConfigError(`ui.theme is not a valid theme: ${String(c.ui.theme)}`)
 }

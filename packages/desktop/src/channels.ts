@@ -8,4 +8,6 @@ export const CHANNELS = {
   download: 'dojo:update-download',
   /** window → main: «Повторить». */
   retry: 'dojo:update-retry',
+  /** window → main: the colour theme chosen in Settings. */
+  theme: 'dojo:theme-set',
 } as const

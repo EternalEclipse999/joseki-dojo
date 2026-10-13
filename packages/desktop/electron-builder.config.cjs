@@ -14,6 +14,7 @@ module.exports = {
   extraResources: [
     { from: '../../katago.lock.json', to: 'katago.lock.json' },
     { from: '../web/dist', to: 'web' },
+    { from: '../server/bases', to: 'bases' },
   ],
   // better-sqlite3 13 ships N-API prebuilds that Electron loads as they are: nothing to rebuild.
   npmRebuild: false,
