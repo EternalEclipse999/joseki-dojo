@@ -57,39 +57,46 @@ test('a board click plays the next move: KataGo replies, a step back and another
   await expect(stones(page)).toHaveCount(1)
 })
 
-test('«Сыграть» on move N replaces it; «Вернуться к партии» and ← on its first move show move N again', async ({ page }) => {
+test('a candidate row on move N replaces it; «Вернуться к партии» and ← on its first move show move N again', async ({ page }) => {
   await reviewAfterOneMove(page)
   await page.keyboard.press('ArrowRight')
   await expect(page.getByText('Ход 2 из 2')).toBeVisible()
   const line = page.getByTestId('variation-line')
-  await page.getByRole('button', { name: /^Сыграть / }).first().click()
+  await page.getByRole('option').first().click()
   await expect(line).toHaveText(/^Вариант от хода 2: /)
   await page.getByLabel('Отвечает KataGo').uncheck()
   await page.getByRole('button', { name: 'Вернуться к партии' }).click()
   await expect(line).toBeHidden()
   await expect(page.getByText('Ход 2 из 2')).toBeVisible()
 
-  await page.getByRole('button', { name: /^Сыграть / }).first().click()
+  await page.getByRole('option').first().click()
   await expect(line).toHaveText(/^Вариант от хода 2: /)
   await page.getByRole('button', { name: 'Назад по варианту' }).click()
   await expect(line).toBeHidden()
   await expect(page.getByText('Ход 2 из 2')).toBeVisible()
 })
 
-test('«Глубже» deepens a game position; «Сыграть» plays a candidate, for both sides when KataGo does not reply', async ({ page }) => {
+test('«Глубже» deepens a game position; a candidate row plays a candidate, for both sides when KataGo does not reply', async ({ page }) => {
   await reviewAfterOneMove(page)
   await page.getByRole('button', { name: 'Глубже' }).click()
   await expect(page.getByText('визитов: 100')).toBeVisible({ timeout: 10_000 })
 
   const line = page.getByTestId('variation-line')
-  await page.getByRole('button', { name: 'Сыграть D4' }).click()
+  await page.getByRole('option', { name: /D4/ }).click()
   await expect(line).toHaveText('Вариант от хода 1: D4')
   await page.getByLabel('Отвечает KataGo').uncheck()
   await expect(page.getByText(/KataGo думает/)).toBeHidden()
   // The search still runs to its limit, and nothing is played for the other side.
   await expect(page.getByText('визитов: 100')).toBeVisible({ timeout: 10_000 })
   await expect(line).toHaveText('Вариант от хода 1: D4')
-  await page.getByRole('button', { name: 'Сыграть Q4' }).click()
+  await page.getByRole('option', { name: /Q4/ }).click()
   await expect(line).toHaveText('Вариант от хода 1: D4 · Q4')
   await expect(stones(page)).toHaveCount(2)
+})
+
+test('«Ветка» on a row shows its line without starting a variation', async ({ page }) => {
+  await reviewAfterOneMove(page)
+  await page.getByRole('button', { name: /^Ветка / }).first().click()
+  await expect(page.getByText(/Ветка: 1 из/)).toBeVisible()
+  await expect(page.getByTestId('variation-line')).toBeHidden()
 })

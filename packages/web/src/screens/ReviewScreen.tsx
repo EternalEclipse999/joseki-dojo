@@ -448,7 +448,10 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, busy, variations }: Rev
           selected={selIndex}
           hot={hot < 0 ? null : hot}
           onHot={(i) => setHotVertex(i === null ? null : (candidates[i]?.vertex ?? null))}
-          onSelect={(i) => setSelectedVertex(candidates[i]?.vertex ?? null)}
+          onBranch={(i) => {
+            setSelectedVertex(candidates[i]?.vertex ?? null)
+            setPvStep(1)
+          }}
           onPlay={awaiting === null ? (v) => play([v]) : null}
           gameMove={variation ? null : move.vertex}
           pending={variation !== null && !result && connected}

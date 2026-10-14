@@ -1,4 +1,4 @@
-import { LoaderCircle } from 'lucide-preact'
+import { GitBranch, LoaderCircle } from 'lucide-preact'
 import type { Candidate, MoveVertex, Vertex } from '@joseki-dojo/shared'
 import { isVertex, sameVertex } from '../board-maps'
 import { formatPoints, moveLabel } from '../format'
@@ -12,8 +12,9 @@ export interface CandidateListProps {
   /** The candidate under the pointer, highlighted on the board too. */
   hot: number | null
   onHot: (i: number | null) => void
-  onSelect: (i: number) => void
-  /** Plays a candidate («Сыграть»); null while KataGo is thinking. */
+  /** «Ветка» on a row: selects the candidate and opens its line. */
+  onBranch: (i: number) => void
+  /** Plays a candidate (a click on its row); null while KataGo is thinking. */
   onPlay: ((v: Vertex) => void) | null
   /** The game move the candidates are alternatives to, marked «ваш ход»; null in a variation. */
   gameMove: MoveVertex | null
@@ -21,8 +22,8 @@ export interface CandidateListProps {
   pending: boolean
 }
 
-/** Spec 7 and variations spec 3: the best moves, the selected one's line, and «Сыграть» for each. */
-export function CandidateList({ candidates, selected, hot, onHot, onSelect, onPlay, gameMove, pending }: CandidateListProps) {
+/** Spec 7 and variations spec 3: the best moves, the selected one's line, a row click plays it, «Ветка» shows its line. */
+export function CandidateList({ candidates, selected, hot, onHot, onBranch, onPlay, gameMove, pending }: CandidateListProps) {
   if (pending) {
     return (
       <p class="pending-line" aria-live="polite">
@@ -44,11 +45,11 @@ export function CandidateList({ candidates, selected, hot, onHot, onSelect, onPl
             role="option"
             tabIndex={0}
             aria-selected={i === selected}
-            onClick={() => onSelect(i)}
+            onClick={() => isVertex(v) && onPlay?.(v)}
             onKeyDown={(e) => {
               if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return
               e.preventDefault()
-              onSelect(i)
+              if (isVertex(v)) onPlay?.(v)
             }}
             onMouseEnter={() => onHot(i)}
             onMouseLeave={() => onHot(null)}
@@ -62,14 +63,14 @@ export function CandidateList({ candidates, selected, hot, onHot, onSelect, onPl
             {isVertex(v) && (
               <button
                 class="play"
-                disabled={!onPlay}
-                aria-label={`Сыграть ${moveLabel(v)}`}
+                aria-label={`Ветка ${moveLabel(v)}`}
                 onClick={(e) => {
                   e.stopPropagation()
-                  onPlay?.(v)
+                  onBranch(i)
                 }}
               >
-                Сыграть
+                <GitBranch aria-hidden="true" />
+                Ветка
               </button>
             )}
           </li>
