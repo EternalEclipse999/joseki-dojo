@@ -4,7 +4,11 @@ export default defineConfig({
   testDir: 'e2e',
   timeout: 30_000,
   use: { baseURL: 'http://127.0.0.1:5180' },
-  projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
+  projects: [
+    { name: 'chromium', use: { browserName: 'chromium' }, testIgnore: 'languages.spec.ts' },
+    // It switches the language the 5180 server saves, so it waits until the other specs, which read Russian, are done.
+    { name: 'languages', use: { browserName: 'chromium' }, testMatch: 'languages.spec.ts', dependencies: ['chromium'] },
+  ],
   // Playwright starts these one after another: the first builds the web UI that the second serves too.
   webServer: [
     {

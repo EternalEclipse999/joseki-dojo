@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'preact/hooks'
 import { Check, CircleAlert, Download, LoaderCircle, RotateCcw } from 'lucide-preact'
-import { localize, type InstallStatus } from '@joseki-dojo/shared'
-import { fetchInstall, startInstall } from '../api'
+import { localize, type InstallStatus, type LocalizedText } from '@joseki-dojo/shared'
+import { failureText, fetchInstall, startInstall } from '../api'
+import { errorText } from '../error-text'
 import { useI18n } from '../i18n'
 import { canStartInstall, downloadSizeText, fileProgressText, INSTALL_STEP_TEXT, installFinishedAtOnce, isInstalling } from '../install-format'
 
@@ -18,9 +19,9 @@ export interface InstallScreenProps {
 
 /** Spec 5: downloads and sets up KataGo with one button, polling the server once a second. */
 export function InstallScreen({ update, repick = false, onDone, onClose }: InstallScreenProps) {
-  const { language } = useI18n()
+  const { language, t } = useI18n()
   const [status, setStatus] = useState<InstallStatus | null>(null)
-  const [requestError, setRequestError] = useState<string | null>(null)
+  const [requestError, setRequestError] = useState<LocalizedText | null>(null)
   // A first install watches from the start (an installation may already run). An update watches only after its
   // own start request, so a 'done' left over from an earlier installation is not taken for this one.
   const [watching, setWatching] = useState(!update)
@@ -31,7 +32,7 @@ export function InstallScreen({ update, repick = false, onDone, onClose }: Insta
       setStatus(await startInstall())
       setWatching(true)
     } catch (e) {
-      setRequestError((e as Error).message)
+      setRequestError(failureText(e))
     }
   }
 
@@ -52,7 +53,7 @@ export function InstallScreen({ update, repick = false, onDone, onClose }: Insta
           onDone()
           return
         }
-        if (s.step === 'done') return // a note to read: the «Продолжить» button leaves
+        if (s.step === 'done') return // a note to read: the Continue button (install.continue) leaves
       } catch {
         // transient failure: try again on the next tick
       }
@@ -70,7 +71,8 @@ export function InstallScreen({ update, repick = false, onDone, onClose }: Insta
   const failed = step === 'failed' || requestError !== null
   const canStart = canStartInstall({ update, running, failed, installed: status?.installed })
 
-  const title = repick ? 'Подбор движка KataGo' : update ? 'Обновление KataGo' : 'Нужно скачать движок KataGo'
+  const title = t(repick ? 'install.title.repick' : update ? 'install.title.update' : 'install.title.first')
+  const stepText = INSTALL_STEP_TEXT[step]
   const showCard = running || step === 'done' || step === 'failed' || (status !== null && status.files.length > 0)
 
   return (
@@ -78,20 +80,14 @@ export function InstallScreen({ update, repick = false, onDone, onClose }: Insta
       <div class="page install">
         <div class="page-head">
           <h1>{title}</h1>
-          {!update && !running && (
-            <p>
-              Joseki Dojo играет и считает с помощью KataGo — сильной программы для игры в го. Её нужно один раз скачать (
-              {downloadSizeText(/linux/i.test(navigator.userAgent))}) — это займёт несколько минут. Дальше всё произойдёт само: программа
-              проверит файлы и выберет, что на этом компьютере работает быстрее — процессор или видеокарта.
-            </p>
-          )}
+          {!update && !running && <p>{t('install.intro', { size: downloadSizeText(/linux/i.test(navigator.userAgent), t) })}</p>}
         </div>
         {showCard && (
           <div class="card section">
             {(running || step === 'done') && (
               <p class="status-line">
                 {running ? <LoaderCircle class="spin" aria-hidden="true" /> : <Check aria-hidden="true" />}
-                {INSTALL_STEP_TEXT[step]}
+                {stepText && t(stepText)}
               </p>
             )}
             {status && status.files.length > 0 && (
@@ -100,7 +96,7 @@ export function InstallScreen({ update, repick = false, onDone, onClose }: Insta
                   <li key={f.name}>
                     <div class="row">
                       <span>{localize(language, f.label)}</span>
-                      <span class="meta">{fileProgressText(f)}</span>
+                      <span class="meta">{fileProgressText(f, t, language)}</span>
                     </div>
                     <progress max={f.total || 1} value={f.done ? f.total || 1 : f.received} />
                   </li>
@@ -112,27 +108,31 @@ export function InstallScreen({ update, repick = false, onDone, onClose }: Insta
               <>
                 <p class="status-line error">
                   <CircleAlert aria-hidden="true" />
-                  {INSTALL_STEP_TEXT.failed}
+                  {t('install.step.failed')}
                 </p>
-                <p class="hint error">{status?.error && localize(language, status.error)}</p>
+                <p class="hint error">{status?.error && errorText(status.error, language)}</p>
               </>
             )}
           </div>
         )}
-        {requestError && <p class="hint error">{requestError}</p>}
+        {requestError && <p class="hint error">{errorText(requestError, language)}</p>}
         <div class="actions">
           {canStart && (
             <button class="primary lg" onClick={() => void start()}>
               {failed ? <RotateCcw aria-hidden="true" /> : <Download aria-hidden="true" />}
-              {failed ? 'Попробовать снова' : 'Установить'}
+              {t(failed ? 'install.tryAgain' : 'install.start')}
             </button>
           )}
           {step === 'done' && status?.note && (
             <button class="primary lg" onClick={onDone}>
-              Продолжить
+              {t('install.continue')}
             </button>
           )}
-          {update && failed && onClose && <button class="ghost" onClick={onClose}>Назад</button>}
+          {update && failed && onClose && (
+            <button class="ghost" onClick={onClose}>
+              {t('common.back')}
+            </button>
+          )}
         </div>
       </div>
     </main>

@@ -1,4 +1,6 @@
 import { useRef, useState } from 'preact/hooks'
+import type { Translate } from '@joseki-dojo/shared'
+import { useT } from '../i18n'
 import type { StartTreeNode } from '../start-tree'
 import { CornerBoard } from './CornerBoard'
 
@@ -14,14 +16,17 @@ const chain = (n: StartTreeNode): StartTreeNode[] => {
 }
 
 /** The line under the name: the moves on the board (a start begins with them) and the positions inside. */
-const details = (n: StartTreeNode): string => {
-  const parts = [...(n.moves.length > 0 ? [`ходов на доске: ${n.moves.length}`] : []), ...(n.count > 0 ? [`позиций внутри: ${n.count}`] : [])].join(' · ')
+const details = (n: StartTreeNode, t: Translate): string => {
+  const parts = [
+    ...(n.moves.length > 0 ? [t('tree.movesOnBoard', { count: n.moves.length })] : []),
+    ...(n.count > 0 ? [t('tree.positionsInside', { count: n.count })] : []),
+  ].join(' · ')
   return parts.charAt(0).toUpperCase() + parts.slice(1)
 }
 
 /** A card's accessible name: «A: Хане, позиций: 1», «B: Шапка, редко». */
-const cardLabel = (n: StartTreeNode, letter: string | null): string =>
-  [`${letter ? `${letter}: ` : ''}${n.short}`, ...(n.rare ? ['редко'] : []), ...(n.count > 0 ? [`позиций: ${n.count}`] : [])].join(', ')
+const cardLabel = (n: StartTreeNode, letter: string | null, t: Translate): string =>
+  [`${letter ? `${letter}: ` : ''}${n.short}`, ...(n.rare ? [t('tree.rare')] : []), ...(n.count > 0 ? [t('tree.cardPositions', { count: n.count })] : [])].join(', ')
 
 export interface StartTreeProps {
   root: StartTreeNode
@@ -33,6 +38,7 @@ export interface StartTreeProps {
 
 /** Spec (starts) 5.1: «Из списка» — the outline, the corner board with lettered continuations, the cards. */
 export function StartTree({ root, current, onCurrent, onStart }: StartTreeProps) {
+  const t = useT()
   const [hover, setHover] = useState<number | null>(null)
   const box = useRef<HTMLDivElement>(null)
   const path = chain(current)
@@ -72,9 +78,9 @@ export function StartTree({ root, current, onCurrent, onStart }: StartTreeProps)
       tabIndex={0}
       role="group"
       onKeyDown={onKey}
-      aria-label="Дерево стартовых позиций: буква — продолжение, ← — назад, Enter — начать"
+      aria-label={t('tree.label')}
     >
-      <nav class="start-outline" aria-label="Оглавление">
+      <nav class="start-outline" aria-label={t('tree.outline')}>
         <OutlineRow node={root} depth={0} path={path} current={current} onPick={go} />
       </nav>
       <div class="start-explorer">
@@ -111,8 +117,8 @@ export function StartTree({ root, current, onCurrent, onStart }: StartTreeProps)
           />
           <div class="start-info">
             <div class="start-info-name">{shown.name}</div>
-            <div class="start-info-sub">{details(shown)}</div>
-            {shown.rare && <div class="start-rare">редко играют</div>}
+            <div class="start-info-sub">{details(shown, t)}</div>
+            {shown.rare && <div class="start-rare">{t('tree.rarelyPlayed')}</div>}
           </div>
         </div>
         {kids.length > 0 && (
@@ -124,7 +130,7 @@ export function StartTree({ root, current, onCurrent, onStart }: StartTreeProps)
                   type="button"
                   key={c.key}
                   class={`start-card${c.rare ? ' rare' : ''}${i === hover ? ' hover' : ''}`}
-                  aria-label={cardLabel(c, letter)}
+                  aria-label={cardLabel(c, letter, t)}
                   onMouseEnter={() => setHover(i)}
                   onFocus={() => setHover(i)}
                   onBlur={() => setHover(null)}
@@ -133,7 +139,7 @@ export function StartTree({ root, current, onCurrent, onStart }: StartTreeProps)
                   <b>{letter}</b>
                   <CornerBoard moves={c.moves} />
                   <span class="start-card-name">{c.short}</span>
-                  {c.rare && <span class="start-rare">редко</span>}
+                  {c.rare && <span class="start-rare">{t('tree.rare')}</span>}
                   {c.count > 0 && <span class="start-count">{c.count}</span>}
                 </button>
               )
@@ -155,6 +161,7 @@ interface OutlineRowProps {
 
 /** One row of the outline; the rows on the path to the current node are open. */
 function OutlineRow({ node, depth, path, current, onPick }: OutlineRowProps) {
+  const t = useT()
   const onPath = path.includes(node)
   const open = onPath && node.children.length > 0
   const cls = `start-outline-row${node === current ? ' current' : onPath ? ' on-path' : ''}${node.rare ? ' rare' : ''}`
@@ -172,7 +179,7 @@ function OutlineRow({ node, depth, path, current, onPick }: OutlineRowProps) {
           {node.children.length === 0 ? '' : open ? '▾' : '▸'}
         </span>
         <span class="start-outline-name">{node.short}</span>
-        {node.rare && <span class="start-rare">редко</span>}
+        {node.rare && <span class="start-rare">{t('tree.rare')}</span>}
         {node.count > 0 && <span class="start-count">{node.count}</span>}
       </button>
       {open && node.children.map((c) => <OutlineRow key={c.key} node={c} depth={depth + 1} path={path} current={current} onPick={onPick} />)}

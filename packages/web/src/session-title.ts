@@ -1,4 +1,4 @@
-import type { Mode, ResolvedSettings, StartRef } from '@joseki-dojo/shared'
+import type { Mode, ResolvedSettings, StartRef, Translate } from '@joseki-dojo/shared'
 
 /** The captions of the review's actions: a new game with the same settings and the way back to the start screen. */
 export interface ReviewLabels {
@@ -7,25 +7,31 @@ export interface ReviewLabels {
 }
 
 /** Starts spec 5.4: «Из списка» plays the same node again and goes back to the tree; the other modes go on to a new game. */
-export function reviewLabels(mode: Mode): ReviewLabels {
-  return mode === 'list' ? { next: 'Играть позицию заново', back: 'К выбору позиции' } : { next: 'Следующая позиция', back: 'К выбору тренировки' }
+export function reviewLabels(mode: Mode, t: Translate): ReviewLabels {
+  return mode === 'list' ? { next: t('review.replayPosition'), back: t('review.toPositions') } : { next: t('review.next'), back: t('review.toTrainings') }
 }
 
-/** Starts spec 5.4: a listed start goes with its group, since the same name can stand in two groups; null when unnamed. */
-function startName(start: StartRef): string | null {
-  if (start.name === null) return null
-  return start.group ? `${start.group} · ${start.name}` : start.name
+/**
+ * Starts spec 5.4: a listed start goes with its group, since the same name can stand in two groups; null when unnamed.
+ * `name`, when given, is the position's name in the current language and stands in for the saved one.
+ */
+function startName(start: StartRef, name: string | null | undefined): string | null {
+  const shown = name ?? start.name
+  if (shown === null) return null
+  return start.group ? `${start.group} · ${shown}` : shown
 }
 
 /** The crumb of a game: a start session is named after its position; the other modes keep their names. */
-export function sessionTitle(settings: ResolvedSettings): string {
-  if (settings.start) return startName(settings.start) ?? 'Случайная позиция'
-  return settings.mode === 'traps' ? 'Ловушка' : 'Свободная тренировка'
+export function sessionTitle(settings: ResolvedSettings, t: Translate, name?: string | null): string {
+  if (settings.start) return startName(settings.start, name) ?? t('game.crumb.random')
+  return t(settings.mode === 'traps' ? 'game.crumb.traps' : 'game.crumb.free')
 }
 
 /** The crumb of a review; only here a dubious start says so. */
-export function reviewTitle(settings: ResolvedSettings): string {
+export function reviewTitle(settings: ResolvedSettings, t: Translate, name?: string | null): string {
   const start = settings.start
-  if (!start) return 'Разбор тренировки'
-  return `Разбор: ${startName(start) ?? (start.dubious ? 'случайная позиция (ход соперника похуже)' : 'случайная позиция')}`
+  if (!start) return t('review.crumb.training')
+  const named = startName(start, name)
+  if (named !== null) return t('review.crumb.named', { name: named })
+  return t(start.dubious ? 'review.crumb.randomDubious' : 'review.crumb.random')
 }

@@ -2,14 +2,28 @@ import type { JSX } from 'preact'
 import type { Marker } from '@sabaki/shudan'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { ChevronLeft, ChevronRight, FolderOpen, GitBranch, LoaderCircle, Map as MapIcon, Play, RotateCcw, Swords, Telescope } from 'lucide-preact'
-import { nextColor, Position, type AnalysisSettings, type Move, type MoveVertex, type ReviewData, type TrapVerdict, type Vertex } from '@joseki-dojo/shared'
+import {
+  nextColor,
+  Position,
+  type Actor,
+  type AnalysisSettings,
+  type MessageKey,
+  type Move,
+  type MoveVertex,
+  type ReviewData,
+  type Translate,
+  type TrapVerdict,
+  type Vertex,
+} from '@joseki-dojo/shared'
 import { emptyMap, isVertex, ownershipMap, pvMoves, sameVertex } from '../board-maps'
 import { Board } from '../components/Board'
 import { CandidateList, LABELS } from '../components/CandidateList'
 import { LossBar } from '../components/LossBar'
 import { VariationBar } from '../components/VariationBar'
-import { ACTOR_LABEL, CATEGORY_LABEL, formatCount, formatPoints, moveLabel } from '../format'
+import { CATEGORY_LABEL, formatCount, formatPoints, moveLabel } from '../format'
+import { useI18n, useT } from '../i18n'
 import { summaryTiles } from '../review-summary'
+import { richText } from '../rich-text'
 import type { ReviewLabels } from '../session-title'
 import {
   bestIsPass,
@@ -62,6 +76,7 @@ export interface ReviewScreenProps {
 }
 
 export function ReviewScreen({ review, progress, onReplay, onNew, onNext, labels, busy, variations }: ReviewScreenProps) {
+  const t = useT()
   if (!review) {
     return (
       <main>
@@ -69,14 +84,12 @@ export function ReviewScreen({ review, progress, onReplay, onNew, onNext, labels
           <div class="card section">
             <p class="status-line">
               <LoaderCircle class="spin" aria-hidden="true" />
-              Анализирую позиции…
+              {t('review.analysingPositions')}
             </p>
             {progress && (
               <>
                 <progress max={progress.total} value={progress.done} />
-                <p class="small muted">
-                  {progress.done} из {progress.total}
-                </p>
+                <p class="small muted">{t('review.progress', { done: progress.done, total: progress.total })}</p>
               </>
             )}
             <div class="actions">
@@ -101,7 +114,7 @@ export function ReviewScreen({ review, progress, onReplay, onNew, onNext, labels
       <main>
         <div class="page">
           <div class="card section">
-            <p>В этой тренировке не было ходов.</p>
+            <p>{t('review.noMoves')}</p>
             <div class="actions">
               {onNext && (
                 <button class="primary" disabled={busy} onClick={onNext}>
@@ -122,34 +135,37 @@ export function ReviewScreen({ review, progress, onReplay, onNew, onNext, labels
   return <ReviewLoaded key={review.sessionId} review={review} onReplay={onReplay} onNew={onNew} onNext={onNext} labels={labels} busy={busy} variations={variations} />
 }
 
-const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
+/** The move line of a game move: who played it, then the move («Вы: Q16»). */
+const MOVE_BY: Record<Actor, MessageKey> = { user: 'review.moveBy.user', bot: 'review.moveBy.bot', 'auto-tenuki': 'review.moveBy.autoTenuki' }
 
-const VERDICT: Record<TrapVerdict, { text: string; cls: string }> = {
-  correct: { text: 'верный ответ', cls: 'cat exact' },
-  caught: { text: 'попались в ловушку', cls: 'cat blunder' },
-  other: { text: 'ход не из базы', cls: 'badge' },
+const VERDICT: Record<TrapVerdict, { text: MessageKey; cls: string }> = {
+  correct: { text: 'review.trap.correct', cls: 'cat exact' },
+  caught: { text: 'review.trap.caught', cls: 'cat blunder' },
+  other: { text: 'review.trap.other', cls: 'badge' },
 }
 
 /** Traps spec 7: the trick is marked; the answer to it gets the base's verdict and its correct answers. */
-function trapNote(review: ReviewData, turn: number): JSX.Element | null {
+function trapNote(review: ReviewData, turn: number, t: Translate): JSX.Element | null {
   const trap = review.trap
   if (!trap) return null
   if (trap.trickTurn === turn) {
     return (
       <p class="trap-line">
         <Swords aria-hidden="true" />
-        <span class="badge">ловушка</span>
-        <span class="muted">известная ловушка из базы</span>
+        <span class="badge">{t('review.trap.badge')}</span>
+        <span class="muted">{t('review.trap.known')}</span>
       </p>
     )
   }
   if (trap.answerTurn !== turn || trap.verdict === null) return null
   const v = VERDICT[trap.verdict]
+  // A pass among the base's answers is a tenuki.
+  const good = trap.good.map((g) => (g === 'pass' ? t('common.tenuki') : moveLabel(g, t))).join(t('common.listSeparator'))
   return (
     <p class="trap-line">
       <Swords aria-hidden="true" />
-      <span class={v.cls}>{v.text}</span>
-      {trap.good.length > 0 && <span class="muted">Верно: {trap.good.map((g) => (g === 'pass' ? 'тэнуки' : moveLabel(g))).join(', ')}</span>}
+      <span class={v.cls}>{t(v.text)}</span>
+      {trap.good.length > 0 && <span class="muted">{t('review.trap.good', { moves: good })}</span>}
     </p>
   )
 }
@@ -186,6 +202,7 @@ interface ReviewLoadedProps {
  * Variations spec 3–5: a variation instead of a game move, its deepening analysis and KataGo's replies.
  */
 function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variations }: ReviewLoadedProps) {
+  const { t, language } = useI18n()
   const [turn, setTurn] = useState(0)
   const [pvStep, setPvStep] = useState<number | null>(null)
   const [showOwnership, setShowOwnership] = useState(false)
@@ -243,7 +260,7 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variation
           setVariation(null)
         } else setVariation(stepVariation(variation, delta))
         setAwaiting(null)
-      } else setTurn((t) => Math.min(lastTurn, Math.max(0, t + delta)))
+      } else setTurn((shown) => Math.min(lastTurn, Math.max(0, shown + delta)))
     },
     [variation, lastTurn],
   )
@@ -319,10 +336,10 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variation
     setVariation(null)
     setAwaiting(null)
   }
-  const selectTurn = (t: number): void => {
+  const selectTurn = (n: number): void => {
     setVariation(null)
     setAwaiting(null)
-    setTurn(t)
+    setTurn(n)
   }
   const switchAutoReply = (on: boolean): void => {
     setAutoReply(on)
@@ -377,11 +394,11 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variation
       />
       <aside class="panel">
         <div class="metrics">
-          {summaryTiles(review.summary).map((t) => (
-            <div class="metric" key={t.k}>
-              <span class="k">{t.k}</span>
-              <span class="v">{t.v}</span>
-              <span class="s">{t.s}</span>
+          {summaryTiles(review.summary, t, language).map((tile) => (
+            <div class="metric" key={tile.k}>
+              <span class="k">{tile.k}</span>
+              <span class="v">{tile.v}</span>
+              <span class="s">{tile.s}</span>
             </div>
           ))}
         </div>
@@ -404,17 +421,15 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variation
             />
             <div class="move-line">
               <span class={last.color === 'B' ? 'stone black' : 'stone white'} />
-              <span>
-                Ход {fromTurn + variation.step}: <b>{moveLabel(last.vertex)}</b>
-              </span>
-              {lastLoss !== null && <span class="loss">{lastLoss > 0.05 ? `−${formatPoints(lastLoss)}` : formatPoints(0)}</span>}
+              <span>{richText(t('review.variationMove', { n: fromTurn + variation.step }), { move: <b>{moveLabel(last.vertex, t)}</b> })}</span>
+              {lastLoss !== null && <span class="loss">{lastLoss > 0.05 ? `−${formatPoints(lastLoss, language)}` : formatPoints(0, language)}</span>}
             </div>
           </>
         ) : (
           <>
             <div class="navigator">
               <span class="where">
-                Ход {turn + 1} из {review.moves.length}
+                {t('review.moveOf', { n: turn + 1, total: review.moves.length })}
                 <kbd aria-hidden="true">← →</kbd>
               </span>
               <input
@@ -422,26 +437,30 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variation
                 min={1}
                 max={review.moves.length}
                 value={turn + 1}
-                aria-label="Ход партии"
+                aria-label={t('review.gameMove')}
                 onInput={(e) => selectTurn(Number(e.currentTarget.value) - 1)}
               />
             </div>
 
             <div class="move-line">
               <span class={move.color === 'B' ? 'stone black' : 'stone white'} />
-              <span>
-                {capitalize(ACTOR_LABEL[move.actor])}: <b>{moveLabel(move.vertex)}</b>
-              </span>
+              <span>{richText(t(MOVE_BY[move.actor]), { move: <b>{moveLabel(move.vertex, t)}</b> })}</span>
               <span class={`cat ${move.category}`}>
-                {CATEGORY_LABEL[move.category]}
-                {move.loss > 0.05 && ` −${formatPoints(move.loss)}`}
+                {t(CATEGORY_LABEL[move.category])}
+                {move.loss > 0.05 && ` −${formatPoints(move.loss, language)}`}
               </span>
             </div>
-            {trapNote(review, turn)}
+            {trapNote(review, turn, t)}
             {punishment && (
               <p class="punishment">
-                {punishment.turn === turn ? 'Ошибка бота' : 'Ваш ответ на ошибку бота'}: бот потерял {formatPoints(punishment.botLoss)}, ваш ответ —{' '}
-                {formatPoints(punishment.userLoss)}. {punishment.punished ? 'Наказано.' : `Не наказано, удержано ${formatPoints(punishment.kept)}.`}
+                {t('review.punishment.text', {
+                  who: t(punishment.turn === turn ? 'review.punishment.botMistake' : 'review.punishment.yourAnswer'),
+                  botLoss: formatPoints(punishment.botLoss, language),
+                  userLoss: formatPoints(punishment.userLoss, language),
+                  verdict: punishment.punished
+                    ? t('review.punishment.punished')
+                    : t('review.punishment.notPunished', { kept: formatPoints(punishment.kept, language) }),
+                })}
               </p>
             )}
           </>
@@ -465,38 +484,40 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variation
           {sel && sel.pv.length > 0 && branchStep === null && (
             <button onClick={() => setPvStep(1)}>
               <GitBranch aria-hidden="true" />
-              Показать ветку
+              {t('review.branch.show')}
             </button>
           )}
           {sel && branchStep !== null && (
             <>
-              <button class="icon" disabled={branchStep <= 1} onClick={() => setPvStep(branchStep - 1)} aria-label="Назад по ветке">
+              <button class="icon" disabled={branchStep <= 1} onClick={() => setPvStep(branchStep - 1)} aria-label={t('review.branch.back')}>
                 <ChevronLeft aria-hidden="true" />
               </button>
-              <span class="where">
-                Ветка: {branchStep} из {sel.pv.length}
-              </span>
-              <button class="icon" disabled={branchStep >= sel.pv.length} onClick={() => setPvStep(branchStep + 1)} aria-label="Вперёд по ветке">
+              <span class="where">{t('review.branch.step', { step: branchStep, total: sel.pv.length })}</span>
+              <button class="icon" disabled={branchStep >= sel.pv.length} onClick={() => setPvStep(branchStep + 1)} aria-label={t('review.branch.forward')}>
                 <ChevronRight aria-hidden="true" />
               </button>
               <button class="ghost" onClick={() => setPvStep(null)}>
-                Скрыть ветку
+                {t('review.branch.hide')}
               </button>
             </>
           )}
           <button aria-pressed={showOwnership} onClick={() => setShowOwnership(!showOwnership)}>
             <MapIcon aria-hidden="true" />
-            Территория
+            {t('review.territory')}
           </button>
           {!variation && (
             <button aria-pressed={deeper} onClick={() => setDeeperTurn(deeper ? null : turn)}>
               <Telescope aria-hidden="true" />
-              Глубже
+              {t('review.deeper')}
             </button>
           )}
           {!variation && deeper && (
             <span class="where" aria-live="polite">
-              {deepResult ? `визитов: ${formatCount(deepResult.visits)}` : !result && connected ? 'KataGo считает…' : ''}
+              {deepResult
+                ? t('common.visits', { value: formatCount(deepResult.visits, language) })
+                : !result && connected
+                  ? t('review.katagoCalculating')
+                  : ''}
             </span>
           )}
         </div>
@@ -511,7 +532,7 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variation
           )}
           <button disabled={busy} onClick={() => onReplay(turn)}>
             <RotateCcw aria-hidden="true" />
-            Переиграть этот ход
+            {t('review.replayMove')}
           </button>
           <button class="ghost" onClick={onNew}>
             <FolderOpen aria-hidden="true" />

@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import type { InstallFile } from '@joseki-dojo/shared'
+import { translator, type InstallFile } from '@joseki-dojo/shared'
 import { canStartInstall, installFinishedAtOnce, downloadSizeText, fileProgressText, INSTALL_STEP_TEXT, isInstalling } from './install-format'
+
+const t = translator('ru')
 
 const file = (over: Partial<InstallFile>): InstallFile => ({ name: 'net.bin.gz', label: { key: 'install.file.mainNet' }, received: 0, total: 0, done: false, ...over })
 
 describe('install screen texts', () => {
-  it('warns that the GPU step is slow', () => {
-    expect(INSTALL_STEP_TEXT['benchmarking-gpu']).toBe('Настраиваю видеокарту — это может занять несколько минут')
+  it('warns that the GPU step is slow and says nothing while idle', () => {
+    const key = INSTALL_STEP_TEXT['benchmarking-gpu']
+    expect(key && t(key)).toBe('Настраиваю видеокарту — это может занять несколько минут')
+    expect(INSTALL_STEP_TEXT.idle).toBeNull()
   })
 
   it('tells running steps from finished ones', () => {
@@ -18,10 +22,15 @@ describe('install screen texts', () => {
   })
 
   it('shows file progress in megabytes', () => {
-    expect(fileProgressText(file({}))).toBe('ожидает')
-    expect(fileProgressText(file({ received: 12_897_485, total: 97_898_094 }))).toBe('12,3 из 93,4 МБ')
-    expect(fileProgressText(file({ received: 3_145_728 }))).toBe('3,0 МБ')
-    expect(fileProgressText(file({ received: 10, total: 10, done: true }))).toBe('готово')
+    expect(fileProgressText(file({}), t, 'ru')).toBe('ожидает')
+    expect(fileProgressText(file({ received: 12_897_485, total: 97_898_094 }), t, 'ru')).toBe('12,3 из 93,4 МБ')
+    expect(fileProgressText(file({ received: 3_145_728 }), t, 'ru')).toBe('3,0 МБ')
+    expect(fileProgressText(file({ received: 10, total: 10, done: true }), t, 'ru')).toBe('готово')
+  })
+
+  it('writes the megabytes in the reader’s language', () => {
+    expect(fileProgressText(file({ received: 12_897_485, total: 97_898_094 }), translator('en'), 'en')).toBe('12.3 of 93.4 MB')
+    expect(fileProgressText(file({ received: 3_145_728 }), translator('ja'), 'ja')).toBe('3.0MB')
   })
 })
 
@@ -42,8 +51,9 @@ describe('canStartInstall', () => {
 
 describe('downloadSizeText', () => {
   it('names the size for the player system', () => {
-    expect(downloadSizeText(false)).toBe('около 210 МБ')
-    expect(downloadSizeText(true)).toBe('около 280 МБ')
+    expect(downloadSizeText(false, t)).toBe('около 210 МБ')
+    expect(downloadSizeText(true, t)).toBe('около 280 МБ')
+    expect(downloadSizeText(false, translator('en'))).toBe('about 210 MB')
   })
 })
 

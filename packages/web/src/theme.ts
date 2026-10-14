@@ -1,6 +1,13 @@
-import type { Theme } from '@joseki-dojo/shared'
+import type { MessageKey, Theme } from '@joseki-dojo/shared'
 
-/** The colours to show: the chosen theme, or the system's when the choice is «Как в системе». */
+/** The theme choices in the order the settings show them, with their labels. */
+export const THEME_OPTIONS: readonly { value: Theme; label: MessageKey }[] = [
+  { value: 'system', label: 'settings.theme.system' },
+  { value: 'light', label: 'settings.theme.light' },
+  { value: 'dark', label: 'settings.theme.dark' },
+]
+
+/** The colours to show: the chosen theme, or the system's when the choice is 'system'. */
 export const resolveTheme = (theme: Theme, systemDark: boolean): 'light' | 'dark' => (theme === 'system' ? (systemDark ? 'dark' : 'light') : theme)
 
 let chosen: Theme = 'system'
@@ -12,7 +19,7 @@ function paint(): void {
   document.documentElement.dataset.theme = resolveTheme(chosen, systemDark())
 }
 
-/** Applies the theme at once; with «Как в системе» it follows later system changes too. The desktop app also themes its window. */
+/** Applies the theme at once; with 'system' it follows later system changes too. The desktop app also themes its window. */
 export function applyTheme(theme: Theme): void {
   chosen = theme
   paint()

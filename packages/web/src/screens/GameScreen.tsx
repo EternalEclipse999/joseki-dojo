@@ -1,10 +1,11 @@
 import type { Marker } from '@sabaki/shudan'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import { Flag, LoaderCircle, Split } from 'lucide-preact'
-import { inZone, Position, type ClientMessage, type SessionView, type Vertex } from '@joseki-dojo/shared'
+import { inZone, Position, type ClientMessage, type MessageKey, type SessionView, type Vertex } from '@joseki-dojo/shared'
 import { emptyMap, isVertex } from '../board-maps'
 import { Board } from '../components/Board'
-import { colorLabel, CORNER_LABEL, moveLabel, rankLabel } from '../format'
+import { ACTOR_LABEL, colorLabel, CORNER_LABEL, moveLabel, rankLabel } from '../format'
+import { useT } from '../i18n'
 
 export interface GameScreenProps {
   session: SessionView
@@ -13,12 +14,12 @@ export interface GameScreenProps {
   send: (msg: ClientMessage) => void
 }
 
-const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
-
 /** Spec 6: the board on the left; status, facts, moves and actions on the right. */
 export function GameScreen({ session, errorSeq, send }: GameScreenProps) {
+  const t = useT()
   const [pending, setPending] = useState(false)
-  const [hint, setHint] = useState<string | null>(null)
+  // A key, so that the hint follows a language switch.
+  const [hint, setHint] = useState<MessageKey | null>(null)
   useEffect(() => setPending(false), [session, errorSeq])
   useEffect(() => setHint(null), [session.moves.length])
 
@@ -34,8 +35,8 @@ export function GameScreen({ session, errorSeq, send }: GameScreenProps) {
 
   const play = (v: Vertex): void => {
     if (!userTurn) return
-    if (!inZone(corner, v)) return setHint('Ходить можно только внутри выделенной зоны угла')
-    if (!position.isLegal(userColor, v)) return setHint('Недопустимый ход')
+    if (!inZone(corner, v)) return setHint('game.hint.outsideZone')
+    if (!position.isLegal(userColor, v)) return setHint('error.move.illegal')
     setPending(true)
     send({ type: 'playMove', sessionId: session.id, vertex: v })
   }
@@ -46,7 +47,7 @@ export function GameScreen({ session, errorSeq, send }: GameScreenProps) {
   const finish = (): void => send({ type: 'finish', sessionId: session.id })
   const keepPlaying = (): void => send({ type: 'continuePlaying', sessionId: session.id })
 
-  const status = session.botThinking ? 'Бот думает…' : session.toMove === userColor ? 'Ваш ход' : 'Ход бота'
+  const status = t(session.botThinking ? 'game.status.botThinking' : session.toMove === userColor ? 'game.status.yourTurn' : 'game.status.botTurn')
 
   return (
     <main class="layout game">
@@ -57,29 +58,29 @@ export function GameScreen({ session, errorSeq, send }: GameScreenProps) {
             {status}
             {session.botThinking && <LoaderCircle class="spin" aria-hidden="true" />}
           </h1>
-          <p class="muted">
-            {capitalize(colorLabel(userColor))} против бота {rankLabel(botRank)} · {CORNER_LABEL[corner]} угол
-          </p>
+          <p class="muted">{t('game.matchup', { color: colorLabel(userColor, t), rank: rankLabel(botRank, t), corner: t(CORNER_LABEL[corner]) })}</p>
         </div>
 
         <hr class="divider" />
         <div class="facts">
           <div class="fact">
-            <span>Сыграно ходов</span>
+            <span>{t('game.movesPlayed')}</span>
             <span data-testid="moves-count">{session.moves.length}</span>
           </div>
           <div class="fact">
-            <span>Последний ход</span>
-            <span>{last ? `${moveLabel(last.vertex)} · ${last.color === userColor ? 'вы' : 'бот'}` : '—'}</span>
+            <span>{t('game.lastMove')}</span>
+            <span>
+              {last ? t('game.lastMoveBy', { move: moveLabel(last.vertex, t), actor: t(ACTOR_LABEL[last.color === userColor ? 'user' : 'bot']) }) : '—'}
+            </span>
           </div>
         </div>
 
         {session.moves.length > 0 && (
-          <ol class="chips moves" aria-label="Ходы">
+          <ol class="chips moves" aria-label={t('game.moves')}>
             {session.moves.map((m, i) => (
-              <li key={i} class={i === session.moves.length - 1 ? 'chip last' : 'chip'} title={`Ход ${i + 1}`}>
+              <li key={i} class={i === session.moves.length - 1 ? 'chip last' : 'chip'} title={t('game.moveN', { n: i + 1 })}>
                 <span class={m.color === 'B' ? 'stone black' : 'stone white'} />
-                {moveLabel(m.vertex)}
+                {moveLabel(m.vertex, t)}
               </li>
             ))}
           </ol>
@@ -87,25 +88,25 @@ export function GameScreen({ session, errorSeq, send }: GameScreenProps) {
 
         {session.endProposed && (
           <div class="card accent proposal" role="status">
-            <p>Бот сыграл в другом месте.</p>
+            <p>{t('game.botTenuki')}</p>
             <div class="actions">
               <button class="primary" onClick={finish}>
-                К разбору
+                {t('game.toReview')}
               </button>
-              <button onClick={keepPlaying}>Играть дальше</button>
+              <button onClick={keepPlaying}>{t('game.keepPlaying')}</button>
             </div>
           </div>
         )}
-        {hint && <p class="hint">{hint}</p>}
+        {hint && <p class="hint">{t(hint)}</p>}
 
         <div class="actions">
           <button disabled={!userTurn} onClick={tenuki}>
             <Split aria-hidden="true" />
-            Тэнуки
+            {t('game.tenuki')}
           </button>
           <button class="ghost" onClick={finish}>
             <Flag aria-hidden="true" />
-            Закончить
+            {t('game.finish')}
           </button>
         </div>
       </aside>

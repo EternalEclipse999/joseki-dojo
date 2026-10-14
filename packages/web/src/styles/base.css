@@ -161,6 +161,23 @@ progress::-webkit-progress-value { background: var(--accent); border-radius: 3px
 .logo { width: 22px; height: 22px; flex: none; }
 .logo .b { fill: #17181c; stroke: var(--stone-ring); stroke-width: 1; }
 .logo .w { fill: #ffffff; stroke: #a3a3ab; stroke-width: 1; }
+.header-end { display: flex; align-items: center; gap: 8px; }
+
+/* Language menu: the globe in the header and its popup (spec (languages) 5). */
+.language-menu { position: relative; }
+.language-popup { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; display: grid; min-width: 160px; padding: 4px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+.language-popup button { display: flex; align-items: center; gap: 8px; justify-content: flex-start; padding: 6px 10px; border: 0; background: none; text-align: left; }
+.language-popup button:hover, .language-popup button:focus-visible { background: var(--surface); }
+.language-popup .invisible { visibility: hidden; }
+.language-screen .language-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+
+/* Spec (languages) 5: the characters in the shapes of each language. */
+:lang(zh-Hans) { font-family: 'Inter Variable', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif; }
+:lang(zh-Hant) { font-family: 'Inter Variable', 'Microsoft JhengHei', 'PingFang TC', 'Noto Sans CJK TC', sans-serif; }
+:lang(ja) { font-family: 'Inter Variable', 'Yu Gothic UI', 'Hiragino Sans', 'Noto Sans CJK JP', sans-serif; }
+:lang(ko) { font-family: 'Inter Variable', 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', sans-serif; }
+/* The rules above reach every element, so code blocks keep their monospace font explicitly. */
+pre:is(:lang(zh-Hans), :lang(zh-Hant), :lang(ja), :lang(ko)) { font-family: var(--mono); }
 .bar { display: flex; align-items: center; gap: 10px; padding: 8px 20px; border-bottom: 1px solid var(--border); background: var(--surface); font-size: 13px; }
 .bar > svg { width: 16px; height: 16px; flex: none; color: var(--accent); }
 .bar .text { flex: 1; min-width: 0; }

@@ -10,7 +10,7 @@ import { Bar } from './Bar'
 export function AppUpdateBanner() {
   const desktop = window.dojoDesktop
   const [state, setState] = useState<AppUpdateState>({ status: 'idle' })
-  const { language } = useI18n()
+  const { language, t } = useI18n()
 
   useEffect(() => {
     if (!desktop) return
@@ -41,7 +41,7 @@ export function AppUpdateBanner() {
     <Bar
       tone={view.error ? 'error' : 'info'}
       icon={view.error ? undefined : Download}
-      action={view.button ? { label: view.button.label, onClick: act, primary: true } : undefined}
+      action={view.button ? { label: t(view.button.label), onClick: act, primary: true } : undefined}
     >
       {errorText(view.text, language)}
     </Bar>

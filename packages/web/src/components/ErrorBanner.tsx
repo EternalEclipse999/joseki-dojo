@@ -3,10 +3,10 @@ import { errorText } from '../error-text'
 import { useI18n } from '../i18n'
 import { Bar } from './Bar'
 
-export function ErrorBanner({ error, onRetry }: { error: LocalizedText | string; onRetry?: () => void }) {
-  const { language } = useI18n()
+export function ErrorBanner({ error, onRetry }: { error: LocalizedText; onRetry?: () => void }) {
+  const { language, t } = useI18n()
   return (
-    <Bar tone="error" action={onRetry ? { label: 'Повторить', onClick: onRetry } : undefined}>
+    <Bar tone="error" action={onRetry ? { label: t('common.retry'), onClick: onRetry } : undefined}>
       {errorText(error, language)}
     </Bar>
   )

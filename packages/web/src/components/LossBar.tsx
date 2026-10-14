@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 import type { Category, Color, MoveReview } from '@joseki-dojo/shared'
 import { ACTOR_LABEL, CATEGORY_LABEL, formatPoints, moveLabel } from '../format'
+import { useI18n } from '../i18n'
 
 const GAP = 2
 const HALF = 43
@@ -32,6 +33,7 @@ export interface LossBarProps {
 
 /** Spec 7: the loss of every move, the player's up and the bot's down, across the panel's width. */
 export function LossBar({ moves, userColor, selected, onSelect }: LossBarProps) {
+  const { t, language } = useI18n()
   const ref = useRef<HTMLElement>(null)
   const [width, setWidth] = useState(320)
   useLayoutEffect(() => {
@@ -57,28 +59,35 @@ export function LossBar({ moves, userColor, selected, onSelect }: LossBarProps) 
   const height = HALF * 2 + 1
   return (
     <figure class="lossbar" ref={ref}>
-      <svg width={svgWidth} height={height} viewBox={`0 0 ${svgWidth} ${height}`} role="img" aria-label="Потери по ходам">
+      <svg width={svgWidth} height={height} viewBox={`0 0 ${svgWidth} ${height}`} role="img" aria-label={t('review.lossBar.label')}>
         <line class="baseline" x1={0} x2={svgWidth} y1={HALF + 0.5} y2={HALF + 0.5} />
         {moves.map((m) => {
           const mine = m.color === userColor
           const h = Math.max(2, (Math.min(m.loss, MAX_LOSS) / MAX_LOSS) * (HALF - 3))
           const x = m.turn * slot + GAP / 2
           const y = mine ? HALF - h : HALF + 1
+          const title = t('review.lossBar.moveTitle', {
+            n: m.turn + 1,
+            actor: t(ACTOR_LABEL[m.actor]),
+            move: moveLabel(m.vertex, t),
+            loss: formatPoints(m.loss, language),
+            category: t(CATEGORY_LABEL[m.category]),
+          })
           return (
             <g key={m.turn} class={m.turn === selected ? 'slot selected' : 'slot'} onClick={() => onSelect(m.turn)}>
               <rect class="hit" x={m.turn * slot} y={0} width={slot} height={height} rx={4} />
               <path d={barPath(x, y, slot - GAP, h, mine)} fill={FILL[m.category]} />
-              <title>{`Ход ${m.turn + 1} (${ACTOR_LABEL[m.actor]}): ${moveLabel(m.vertex)} — потеря ${formatPoints(m.loss)}, ${CATEGORY_LABEL[m.category]}`}</title>
+              <title>{title}</title>
             </g>
           )
         })}
       </svg>
       <figcaption>
-        <span>↑ ваши ходы · ↓ ходы бота</span>
+        <span>{t('review.lossBar.legend')}</span>
         {CATEGORIES.map((c) => (
           <span key={c}>
             <i class="swatch" style={{ background: FILL[c] }} />
-            {CATEGORY_LABEL[c]}
+            {t(CATEGORY_LABEL[c])}
           </span>
         ))}
       </figcaption>

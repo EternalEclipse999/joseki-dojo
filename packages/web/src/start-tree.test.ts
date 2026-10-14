@@ -1,4 +1,4 @@
-import type { StartBranch, StartGroupHead, StartListEntry } from '@joseki-dojo/shared'
+import { translator, type StartBranch, type StartGroupHead, type StartListEntry } from '@joseki-dojo/shared'
 import { describe, expect, it } from 'vitest'
 import { buildStartTree, findById, findNode, nodeTitle, type StartTreeNode } from './start-tree'
 
@@ -17,9 +17,10 @@ const BRANCHES = [branch('R16 P17', 'Малое приближение'), branch
 // The server offers the 3-4 stone only.
 const GROUPS: StartGroupHead[] = [{ id: 'камень 3-4', group: '3-4', moves: ['R16'] }]
 const names = (n: StartTreeNode): string[] => n.children.map((c) => c.short)
+const ROOT = translator('ru')('tree.root')
 
 describe('buildStartTree', () => {
-  const root = buildStartTree(LIST, BRANCHES, GROUPS)
+  const root = buildStartTree(LIST, BRANCHES, GROUPS, ROOT)
   const g44 = root.children[0]
   const g34 = root.children[1]
   const high = g34.children[1]
@@ -65,6 +66,6 @@ describe('buildStartTree', () => {
   })
 
   it('is just the root for an empty list', () => {
-    expect(buildStartTree([], [])).toMatchObject({ kind: 'root', children: [], count: 0 })
+    expect(buildStartTree([], [], [], ROOT)).toMatchObject({ kind: 'root', children: [], count: 0 })
   })
 })

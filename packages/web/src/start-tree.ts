@@ -7,7 +7,7 @@ export interface StartTreeNode {
   /** '' for the root, `group:<group>` for a group, the moves joined by spaces for a branch or a position. */
   key: string
   kind: StartTreeKind
-  /** A position's full name, a branch's name, the group, or «Пустой угол». */
+  /** A position's full name, a branch's name, the group, or the root caption (`tree.root`, «Пустой угол»). */
   name: string
   /** The caption in the outline, the crumbs and on the cards. */
   short: string
@@ -21,8 +21,6 @@ export interface StartTreeNode {
   parent: StartTreeNode | null
   children: StartTreeNode[]
 }
-
-const ROOT_NAME = 'Пустой угол'
 
 const make = (key: string, kind: StartTreeKind, name: string, short: string, moves: string[], id: string | null, rare: boolean): StartTreeNode => ({
   key,
@@ -49,9 +47,10 @@ const adopt = (parent: StartTreeNode, child: StartTreeNode): void => {
  * Spec (starts) 5.1: «Пустой угол» → the groups with positions, in the fixed order → branches and positions. The parent
  * of a branch or a position is the branch or position with the longest moves that begin its moves, else its group;
  * unnamed moves in between are skipped. Children follow the file order of the first position in their subtree.
+ * `rootName` is the root's caption in the current language.
  */
-export function buildStartTree(list: readonly StartListEntry[], branches: readonly StartBranch[], groups: readonly StartGroupHead[] = []): StartTreeNode {
-  const root = make('', 'root', ROOT_NAME, ROOT_NAME, [], null, false)
+export function buildStartTree(list: readonly StartListEntry[], branches: readonly StartBranch[], groups: readonly StartGroupHead[], rootName: string): StartTreeNode {
+  const root = make('', 'root', rootName, rootName, [], null, false)
   const fileIndex = new Map<StartTreeNode, number>()
   for (const group of START_GROUPS) {
     const entries = list.filter((e) => e.group === group)
