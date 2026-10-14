@@ -13,7 +13,7 @@
 - Spec: `docs/superpowers/specs/2026-10-13-start-positions-design.md`; JDB and ids: `docs/superpowers/specs/2026-10-12-traps-mode-design.md` (3.2, 3.3).
 - Node category `4` = `start`; categories 5–7 are a read error ('Повреждённые флаги узла в базе'). Format version stays `1`. Base kind `starts` (code 2).
 - Start id = `trapId(canonical path)` (first 8 hex chars of SHA-1 of the canonical path).
-- List file: JSON array of `{ "group": "4-4" | "3-4" | "3-3" | "5-4" | "5-3", "name": string, "moves": "Q16 O17 …" }`; group order on screen fixed `4-4, 3-4, 3-3, 5-4, 5-3`, file order inside a group; an entry whose path is not a start of the base is skipped with a log line.
+- List file (Task 6 on): a JSON object `{ "branches": [{ "moves", "name" }], "positions": [{ "group", "name", "short"?, "moves", "rare"? }] }`; groups `4-4, 3-4, 3-3, 5-4, 5-3`, fixed order on screen; a position whose path is not a normal start of the base is skipped with a log line; a branch (2–8 moves, not a position) with no positions under it is skipped with a log line.
 - Missing or broken `starts.jdb`: both start modes off; missing or broken list: only «Из списка» off; one log line with the reason.
 - Modes: `'free' | 'traps' | 'random' | 'list'`; `'list'` requires `startId`.
 - Placement: the canonical moves go to the chosen corner, mirrored in the corner's diagonal by one coin; colours unchanged (Black first); the moves become `initialMoves`; if the bot is to move, it moves first.
@@ -1123,3 +1123,957 @@ Expected: all PASS.
 git add packages/server packages/shared packages/web
 git commit -m "feat(starts): starts after the opponent's dubious move in «Случайно»" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
+
+---
+
+## The tree of positions in «Из списка» (spec 3.3, 4.2, 5.1, 6)
+
+«Из списка» shows only a tree: an outline on the left, a corner board with lettered continuations and cards on the right. The list file gains branches (names of the 2-move nodes), short captions and the «редко» flag; all 88 chapter positions are on it.
+
+### Task 6: The list file with branches, short names and rare positions
+
+**Files:**
+- Modify: `packages/shared/src/types.ts`
+- Modify: `packages/server/src/starts/book.ts`, `packages/server/src/starts/fixture.ts`, `packages/server/src/starts/book.test.ts`
+- Modify: `packages/server/src/api/starts-routes.ts`, `packages/server/src/api/api.test.ts`, `packages/server/src/start.test.ts`
+- Modify: `packages/web/src/next-settings.test.ts` (the `entry` helper only), `e2e/make-starts.ts`, `README.md`
+
+**Interfaces:**
+- Produces: `StartListEntry` with `short: string` (the name when the file has none) and `rare: boolean`; `StartBranch { moves: string[]; name: string }` (canonical GTP); `StartsInfo.branches: StartBranch[]`; `StartBook.branches(): StartBranch[]`; `TEST_STARTS_LIST` is an object `{ branches, positions }`.
+
+- [ ] **Step 1: Types in `packages/shared/src/types.ts`** — replace `StartListEntry` and `StartsInfo`:
+
+```ts
+/** One position of the named list; `moves` are canonical (top-right corner, Black first) in GTP. */
+export interface StartListEntry {
+  id: string
+  group: StartGroup
+  /** The full name: crumbs of the game and the review. */
+  name: string
+  /** The caption in the tree (starts spec 5.1); the full name when the list file has none. */
+  short: string
+  /** Played by pros fewer than 10 times since 2016 (starts spec 3.3): shown muted with «редко». */
+  rare: boolean
+  moves: string[]
+}
+
+/** A named node of the tree that is not a position itself, e.g. «Малое приближение» (starts spec 3.3); canonical GTP moves. */
+export interface StartBranch {
+  moves: string[]
+  name: string
+}
+
+/** What `GET /api/starts` reports: how many start positions the base holds, the named list and its branches. */
+export interface StartsInfo {
+  count: number
+  list: StartListEntry[]
+  branches: StartBranch[]
+}
+```
+
+- [ ] **Step 2: Fixture `packages/server/src/starts/fixture.ts`** — replace `TEST_STARTS_LIST`:
+
+```ts
+export const TEST_STARTS_LIST = {
+  branches: [{ moves: 'Q16 O17', name: 'Тестовая ветка' }],
+  positions: [
+    { group: '4-4', name: 'Тестовое начало 4-4', short: 'Начало 4-4', moves: 'Q16 O17 R14' },
+    { group: '3-4', name: 'Тестовое начало 3-4', moves: 'Q17 R15', rare: true },
+  ],
+}
+```
+
+- [ ] **Step 3: Failing tests in `packages/server/src/starts/book.test.ts`** — replace the tests «reads the named list in file order», «canonicalizes the moves of a list entry», «skips bad list entries with a log line each» and «refuses a list that is not an array»; in «skips a dubious path in the list» wrap the array: `JSON.stringify({ positions: [{ group: '4-4', name: 'X', moves: 'Q16 O17 O16' }] })`.
+
+```ts
+  it('reads the named list in file order, with short names, rare marks and branches', () => {
+    const b = listed()
+    expect(b.list()).toEqual([
+      { id: B, group: '4-4', name: 'Тестовое начало 4-4', short: 'Начало 4-4', rare: false, moves: ['Q16', 'O17', 'R14'] },
+      { id: C, group: '3-4', name: 'Тестовое начало 3-4', short: 'Тестовое начало 3-4', rare: true, moves: ['Q17', 'R15'] },
+    ])
+    expect(b.branches()).toEqual([{ moves: ['Q16', 'O17'], name: 'Тестовая ветка' }])
+    expect([b.isListed(B), b.isListed(A)]).toEqual([true, false])
+    expect([b.nameOf(C), b.nameOf(A)]).toEqual(['Тестовое начало 3-4', null])
+  })
+
+  it('canonicalizes the moves of positions and branches', () => {
+    // R14 is O17 mirrored in the diagonal.
+    const b = book().withList(JSON.stringify({ branches: [{ moves: 'Q16 R14', name: 'Ветка' }], positions: [{ group: '4-4', name: 'Зеркально', moves: 'Q16 R14 O17' }] }), () => {})
+    expect(b.list().map((e) => e.moves)).toEqual([['Q16', 'O17', 'R14']])
+    expect(b.branches()).toEqual([{ moves: ['Q16', 'O17'], name: 'Ветка' }])
+  })
+
+  it('skips bad positions with a log line each', () => {
+    const lines: string[] = []
+    const positions = [
+      { group: '6-6', name: 'x', moves: 'Q16 O17' },
+      { group: '4-4', name: ' ', moves: 'Q16 O17' },
+      { group: '4-4', name: 'x', moves: 'Q16 Z99' },
+      { group: '4-4', name: 'x', moves: 'Q16 O16' },
+      { group: '4-4', name: 'first', moves: 'Q16 O17' },
+      { group: '4-4', name: 'again', moves: 'Q16 O17' },
+      null,
+    ]
+    const b = book().withList(JSON.stringify({ positions }), (l) => lines.push(l))
+    expect(b.list().map((e) => e.name)).toEqual(['first'])
+    expect(lines).toHaveLength(6)
+    expect(lines[0]).toMatch(/^Список стартовых позиций, позиция 1: /)
+  })
+
+  it('skips bad branches with a log line each', () => {
+    const lines: string[] = []
+    const branches = [
+      { moves: 'Q16 O17', name: ' ' },
+      { moves: 'Q16', name: 'один ход' },
+      { moves: 'Q16 Z99', name: 'плохой ход' },
+      { moves: 'Q16 O17 R14', name: 'это позиция' },
+      { moves: 'Q17 R16', name: 'без позиций' },
+      { moves: 'Q16 O17', name: 'ветка' },
+      { moves: 'Q16 O17', name: 'повтор' },
+    ]
+    const b = book().withList(JSON.stringify({ branches, positions: TEST_STARTS_LIST.positions }), (l) => lines.push(l))
+    expect(b.branches()).toEqual([{ moves: ['Q16', 'O17'], name: 'ветка' }])
+    expect(lines).toHaveLength(6)
+    expect(lines[0]).toMatch(/^Список стартовых позиций, ветка 1: /)
+  })
+
+  it('refuses a list that is not an object with positions', () => {
+    for (const text of ['[]', '{"branches":[]}', 'null']) expect(() => book().withList(text, () => {})).toThrow('Список стартовых позиций должен быть объектом с массивом positions')
+    expect(() => book().withList('not json', () => {})).toThrow()
+  })
+```
+
+Run: `npx vitest run packages/server/src/starts/book.test.ts`
+Expected: FAIL (`branches` is not a function, entries without `short`/`rare`).
+
+- [ ] **Step 4: `StartBook` in `packages/server/src/starts/book.ts`**
+
+Import `type StartBranch` from `@joseki-dojo/shared`. The constructor gets the branches after the entries:
+
+```ts
+  private constructor(
+    /** Canonical path of each playable start, by id (the trap id of the path), in tree order. */
+    private readonly paths: ReadonlyMap<string, CanonicalMove[]>,
+    /** The same for the starts after the opponent's dubious move. */
+    private readonly dubiousPaths: ReadonlyMap<string, CanonicalMove[]>,
+    private readonly entries: readonly StartListEntry[],
+    private readonly branchList: readonly StartBranch[],
+    /** Ids of the starts left out because they cannot be played. */
+    readonly skipped: readonly string[] = [],
+  ) {}
+```
+
+`empty()` returns `new StartBook(new Map(), new Map(), [], [])`; `fromBase` returns `new StartBook(paths, dubiousPaths, [], [], skipped)`. Replace `withList`:
+
+```ts
+  /**
+   * Spec (starts) 4.2: this book with the named list from `json`, the text of starts-list.json — `positions` (the list)
+   * and `branches` (names of tree nodes that are not positions). A bad position or branch is left out with one `log`
+   * line. Throws when the text is not an object with a `positions` array.
+   */
+  withList(json: string, log: (line: string) => void): StartBook {
+    const raw = JSON.parse(json) as unknown
+    const file = (raw ?? {}) as Record<string, unknown>
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw) || !Array.isArray(file.positions)) {
+      throw new Error('Список стартовых позиций должен быть объектом с массивом positions')
+    }
+    const entries: StartListEntry[] = []
+    ;(file.positions as unknown[]).forEach((item, k) => {
+      const skip = (why: string): void => log(`Список стартовых позиций, позиция ${k + 1}: ${why}`)
+      const e = (item ?? {}) as Record<string, unknown>
+      if (!isStartGroup(e.group)) return skip('неизвестная группа')
+      if (typeof e.name !== 'string' || e.name.trim() === '') return skip('нет названия')
+      const path = parseMoves(e.moves)
+      if (!path) return skip('недопустимые ходы')
+      const id = trapId(path)
+      if (!this.paths.has(id)) return skip('такой стартовой позиции нет в базе')
+      if (entries.some((x) => x.id === id)) return skip('эта позиция уже есть в списке')
+      const name = e.name.trim()
+      const short = typeof e.short === 'string' && e.short.trim() !== '' ? e.short.trim() : name
+      entries.push({ id, group: e.group, name, short, rare: e.rare === true, moves: path.map(vertexToGtp) })
+    })
+    const branches: StartBranch[] = []
+    const same = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((m, i) => m === b[i])
+    ;(Array.isArray(file.branches) ? (file.branches as unknown[]) : []).forEach((item, k) => {
+      const skip = (why: string): void => log(`Список стартовых позиций, ветка ${k + 1}: ${why}`)
+      const b = (item ?? {}) as Record<string, unknown>
+      if (typeof b.name !== 'string' || b.name.trim() === '') return skip('нет названия')
+      const path = parseMoves(b.moves)
+      if (!path || path.length < 2 || path.length > 8) return skip('недопустимые ходы')
+      const moves = path.map(vertexToGtp)
+      if (entries.some((e) => same(e.moves, moves))) return skip('совпадает с позицией списка')
+      if (branches.some((x) => same(x.moves, moves))) return skip('эта ветка уже есть')
+      if (!entries.some((e) => e.moves.length > moves.length && same(e.moves.slice(0, moves.length), moves))) return skip('под веткой нет позиций')
+      branches.push({ moves, name: b.name.trim() })
+    })
+    return new StartBook(this.paths, this.dubiousPaths, entries, branches, this.skipped)
+  }
+```
+
+Add next to `list()`:
+
+```ts
+  branches(): StartBranch[] {
+    return [...this.branchList]
+  }
+```
+
+Run: `npx vitest run packages/server/src/starts/book.test.ts`
+Expected: PASS.
+
+- [ ] **Step 5: API** — `packages/server/src/api/starts-routes.ts`:
+
+```ts
+  app.get('/api/starts', async (): Promise<StartsInfo> => ({ count: starts.count, list: starts.list(), branches: starts.branches() }))
+```
+
+In `packages/server/src/api/api.test.ts` the empty book reports `{ count: 0, list: [], branches: [] }` and the loaded one `{ count: 3, list: starts.list(), branches: starts.branches() }`. In `packages/server/src/start.test.ts` add `branches: []` to the three `toEqual` objects (`{ count: 0, list: [], branches: [] }` twice, `{ count: 3, list: [], branches: [] }` once).
+
+- [ ] **Step 6: The rest of the list's readers**
+- `packages/web/src/next-settings.test.ts`: `const entry = (id: string, group: StartListEntry['group']): StartListEntry => ({ id, group, name: id, short: id, rare: false, moves: [] })`.
+- `e2e/make-starts.ts`: the list becomes `{ branches: [], positions: [{ group: '4-4', name: 'Тестовое начало', moves: 'Q16 R17' }] }`.
+- `README.md`, the paragraph on `starts-list.json`:
+
+```md
+`packages/server/bases/starts-list.json` is the named list for «Из списка»: a JSON object with `positions` — `{ group, name, short, moves, rare }` in chapter order, with the groups `4-4`, `3-4`, `3-3`, `5-4` and `5-3`, canonical moves in GTP, the caption `short` for the tree and `rare: true` for positions pros rarely play — and `branches` — `{ moves, name }`, the names of tree nodes that are not positions (an approach, say). A position whose path is not a normal start of the base, or a branch with no positions under it, is skipped with a log line. A missing or broken base turns both start modes off; a missing or broken list turns off only «Из списка».
+```
+
+- [ ] **Step 7: Run everything**
+
+Run: `npm test && npm run typecheck && npm run e2e`
+Expected: all PASS.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add packages/shared packages/server packages/web e2e README.md
+git commit -m "feat(starts): branches, short names and rare positions in the list file" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 7: The tree model and the order of «Следующая позиция»
+
+**Files:**
+- Create: `packages/web/src/start-tree.ts`, `packages/web/src/start-tree.test.ts`
+- Modify: `packages/web/src/next-settings.ts`, `packages/web/src/next-settings.test.ts`, `packages/web/src/App.tsx`
+
+**Interfaces:**
+- Consumes: `StartListEntry` (`short`, `rare`), `StartBranch`, `StartsInfo.branches` (Task 6).
+- Produces: `StartTreeNode`, `buildStartTree(list, branches): StartTreeNode`, `treePositions(root): StartTreeNode[]`, `findNode(root, key): StartTreeNode | null`, `findById(root, id): StartTreeNode | null`; `nextSettings(settings, ids: readonly string[])`; in `App.tsx` the memos `startTree` and `startOrder`.
+
+- [ ] **Step 1: Failing tests `packages/web/src/start-tree.test.ts`**
+
+```ts
+import type { StartBranch, StartListEntry } from '@joseki-dojo/shared'
+import { describe, expect, it } from 'vitest'
+import { buildStartTree, findById, findNode, treePositions, type StartTreeNode } from './start-tree'
+
+const pos = (id: string, group: StartListEntry['group'], moves: string, rare = false): StartListEntry => ({ id, group, name: `Полное ${id}`, short: id, rare, moves: moves.split(' ') })
+const branch = (moves: string, name: string): StartBranch => ({ moves: moves.split(' '), name })
+// File order: chapter order, with a 4-4 position in the middle.
+const LIST = [
+  pos('косуми', '3-4', 'R16 P17 Q15'),
+  pos('снизу', '3-4', 'R16 P16 P17'),
+  pos('хане', '3-4', 'R16 P16 P17 O17'),
+  pos('лавина', '3-4', 'R16 P16 P17 Q16 Q17 R15'),
+  pos('кэйма', '4-4', 'Q16 R14 O17'),
+  pos('меч', '3-4', 'R16 P16 M16', true),
+]
+const BRANCHES = [branch('R16 P17', 'Малое приближение'), branch('R16 P16', 'Высокое приближение'), branch('Q16 R14', 'Малое приближение'), branch('R17 Q16', 'Без позиций')]
+const names = (n: StartTreeNode): string[] => n.children.map((c) => c.short)
+
+describe('buildStartTree', () => {
+  const root = buildStartTree(LIST, BRANCHES)
+  const g34 = root.children[1]
+  const high = g34.children[1]
+  const under = high.children[0]
+
+  it('puts the groups under the empty corner in the fixed order, only those with positions', () => {
+    expect(root).toMatchObject({ key: '', kind: 'root', name: 'Пустой угол', short: 'Пустой угол', moves: [], parent: null, count: 6 })
+    expect(names(root)).toEqual(['4-4', '3-4'])
+    expect(g34).toMatchObject({ key: 'group:3-4', kind: 'group', name: '3-4', moves: ['R16'], count: 5 })
+  })
+
+  it('hangs each node under the longest branch or position that begins its moves, skipping unnamed moves', () => {
+    expect(names(g34)).toEqual(['Малое приближение', 'Высокое приближение'])
+    expect(names(high)).toEqual(['снизу', 'меч'])
+    expect(names(under)).toEqual(['хане', 'лавина'])
+    expect(under).toMatchObject({ key: 'R16 P16 P17', kind: 'position', id: 'снизу', name: 'Полное снизу', count: 2 })
+    expect(under.children[1].parent).toBe(under)
+    expect(high).toMatchObject({ kind: 'branch', id: null, name: 'Высокое приближение', count: 4 })
+  })
+
+  it('keeps the rare mark and leaves out a branch with no positions under it', () => {
+    expect(high.children[1].rare).toBe(true)
+    expect(findNode(root, 'R17 Q16')).toBeNull()
+  })
+
+  it('lists the positions depth-first for «Следующая позиция»', () => {
+    expect(treePositions(root).map((n) => n.id)).toEqual(['кэйма', 'косуми', 'снизу', 'хане', 'лавина', 'меч'])
+  })
+
+  it('finds nodes by key and by id', () => {
+    expect(findNode(root, 'group:4-4')?.short).toBe('4-4')
+    expect(findNode(root, '')).toBe(root)
+    expect(findById(root, 'хане')?.key).toBe('R16 P16 P17 O17')
+    expect(findById(root, 'нет')).toBeNull()
+  })
+
+  it('is just the root for an empty list', () => {
+    expect(buildStartTree([], [])).toMatchObject({ kind: 'root', children: [], count: 0 })
+  })
+})
+```
+
+Run: `npx vitest run packages/web/src/start-tree.test.ts`
+Expected: FAIL (module not found).
+
+- [ ] **Step 2: `packages/web/src/start-tree.ts`**
+
+```ts
+import { START_GROUPS, type StartBranch, type StartListEntry } from '@joseki-dojo/shared'
+
+export type StartTreeKind = 'root' | 'group' | 'branch' | 'position'
+
+/** Spec (starts) 5.1: a node of the tree of start positions in «Из списка». */
+export interface StartTreeNode {
+  /** '' for the root, `group:<group>` for a group, the moves joined by spaces for a branch or a position. */
+  key: string
+  kind: StartTreeKind
+  /** A position's full name, a branch's name, the group, or «Пустой угол». */
+  name: string
+  /** The caption in the outline, the crumbs and on the cards. */
+  short: string
+  /** Canonical GTP moves; a group has the first move of its positions (none if they differ), the root none. */
+  moves: string[]
+  /** The start id of a position; null for the other kinds. */
+  id: string | null
+  rare: boolean
+  /** Positions below the node, the node itself not counted. */
+  count: number
+  parent: StartTreeNode | null
+  children: StartTreeNode[]
+}
+
+const ROOT_NAME = 'Пустой угол'
+
+const make = (key: string, kind: StartTreeKind, name: string, short: string, moves: string[], id: string | null, rare: boolean): StartTreeNode => ({
+  key,
+  kind,
+  name,
+  short,
+  moves,
+  id,
+  rare,
+  count: 0,
+  parent: null,
+  children: [],
+})
+
+/** `moves` continue `prefix` (and are longer). */
+const continues = (moves: readonly string[], prefix: readonly string[]): boolean => prefix.length < moves.length && prefix.every((m, i) => moves[i] === m)
+
+const adopt = (parent: StartTreeNode, child: StartTreeNode): void => {
+  child.parent = parent
+  parent.children.push(child)
+}
+
+/**
+ * Spec (starts) 5.1: «Пустой угол» → the groups with positions, in the fixed order → branches and positions. The parent
+ * of a branch or a position is the branch or position with the longest moves that begin its moves, else its group;
+ * unnamed moves in between are skipped. Children follow the file order of the first position in their subtree.
+ */
+export function buildStartTree(list: readonly StartListEntry[], branches: readonly StartBranch[]): StartTreeNode {
+  const root = make('', 'root', ROOT_NAME, ROOT_NAME, [], null, false)
+  const fileIndex = new Map<StartTreeNode, number>()
+  for (const group of START_GROUPS) {
+    const entries = list.filter((e) => e.group === group)
+    if (entries.length === 0) continue
+    const first = entries[0].moves[0]
+    const head = make(`group:${group}`, 'group', group, group, entries.every((e) => e.moves[0] === first) ? [first] : [], null, false)
+    adopt(root, head)
+    const items = [
+      ...branches.filter((b) => entries.some((e) => continues(e.moves, b.moves))).map((b) => make(b.moves.join(' '), 'branch', b.name, b.name, [...b.moves], null, false)),
+      ...entries.map((e) => {
+        const n = make(e.moves.join(' '), 'position', e.name, e.short, [...e.moves], e.id, e.rare)
+        fileIndex.set(n, list.indexOf(e))
+        return n
+      }),
+    ]
+    for (const item of items) {
+      const parent = items.filter((p) => continues(item.moves, p.moves)).reduce<StartTreeNode | null>((best, p) => (best && best.moves.length >= p.moves.length ? best : p), null)
+      adopt(parent ?? head, item)
+    }
+  }
+  finish(root, fileIndex, new Map())
+  return root
+}
+
+/** Counts the positions below each node and orders the children (not the groups) by their first position in the file. */
+function finish(n: StartTreeNode, own: ReadonlyMap<StartTreeNode, number>, first: Map<StartTreeNode, number>): void {
+  let min = own.get(n) ?? Number.POSITIVE_INFINITY
+  let count = 0
+  for (const c of n.children) {
+    finish(c, own, first)
+    min = Math.min(min, first.get(c) ?? Number.POSITIVE_INFINITY)
+    count += c.count + (c.kind === 'position' ? 1 : 0)
+  }
+  if (n.kind !== 'root') n.children.sort((a, b) => (first.get(a) ?? 0) - (first.get(b) ?? 0))
+  first.set(n, min)
+  n.count = count
+}
+
+/** The positions in outline order (depth-first, a node before its children): the order of «Следующая позиция». */
+export function treePositions(root: StartTreeNode): StartTreeNode[] {
+  const out: StartTreeNode[] = []
+  const walk = (n: StartTreeNode): void => {
+    if (n.kind === 'position') out.push(n)
+    n.children.forEach(walk)
+  }
+  walk(root)
+  return out
+}
+
+function find(root: StartTreeNode, test: (n: StartTreeNode) => boolean): StartTreeNode | null {
+  if (test(root)) return root
+  for (const c of root.children) {
+    const hit = find(c, test)
+    if (hit) return hit
+  }
+  return null
+}
+
+export const findNode = (root: StartTreeNode, key: string): StartTreeNode | null => find(root, (n) => n.key === key)
+export const findById = (root: StartTreeNode, id: string): StartTreeNode | null => find(root, (n) => n.id === id)
+```
+
+Run: `npx vitest run packages/web/src/start-tree.test.ts`
+Expected: PASS.
+
+- [ ] **Step 3: `nextSettings` takes the ids in outline order** — `packages/web/src/next-settings.ts`:
+
+```ts
+import type { SessionSettings } from '@joseki-dojo/shared'
+
+/**
+ * «Следующая позиция»: the same start-screen settings; in «Из списка» the next position in outline order (`ids`, the
+ * positions of the tree depth-first), wrapping around (starts spec 5.1).
+ */
+export function nextSettings(settings: SessionSettings, ids: readonly string[]): SessionSettings {
+  if (settings.mode !== 'list' || ids.length === 0) return settings
+  const at = ids.indexOf(settings.startId ?? '')
+  return { ...settings, startId: ids[(at + 1) % ids.length] }
+}
+```
+
+`packages/web/src/next-settings.test.ts`:
+
+```ts
+import type { SessionSettings } from '@joseki-dojo/shared'
+import { describe, expect, it } from 'vitest'
+import { nextSettings } from './next-settings'
+
+const IDS = ['b', 'a', 'c']
+const settings = (over: Partial<SessionSettings> = {}): SessionSettings => ({ mode: 'list', environment: 'empty', userColor: 'random', botRank: '7k', corner: 'random', startId: 'b', ...over })
+
+describe('nextSettings', () => {
+  it('keeps the settings of the other modes', () => {
+    const free = settings({ mode: 'free', startId: undefined })
+    expect(nextSettings(free, IDS)).toBe(free)
+  })
+
+  it('takes the next position in outline order and wraps around', () => {
+    expect(nextSettings(settings({ startId: 'b' }), IDS).startId).toBe('a')
+    expect(nextSettings(settings({ startId: 'a' }), IDS).startId).toBe('c')
+    expect(nextSettings(settings({ startId: 'c' }), IDS).startId).toBe('b')
+  })
+
+  it('starts from the top when the position is no longer on the list, and keeps the rest of the settings', () => {
+    expect(nextSettings(settings({ startId: 'gone' }), IDS)).toEqual(settings({ startId: 'b' }))
+  })
+
+  it('keeps the settings when the list is empty', () => {
+    const s = settings()
+    expect(nextSettings(s, [])).toBe(s)
+  })
+})
+```
+
+- [ ] **Step 4: `App.tsx`** — build the tree once per `starts` and pass the order to `nextSettings`:
+
+```ts
+import { buildStartTree, treePositions } from './start-tree'
+```
+```ts
+  const startTree = useMemo(() => buildStartTree(starts?.list ?? [], starts?.branches ?? []), [starts])
+  const startOrder = useMemo(() => treePositions(startTree).flatMap((n) => (n.id ? [n.id] : [])), [startTree])
+```
+(next to the other hooks, before any early return), and in the review screen:
+
+```tsx
+        onNext={lastSettings ? () => startWith(nextSettings(lastSettings, startOrder)) : null}
+```
+
+- [ ] **Step 5: Run everything**
+
+Run: `npm test && npm run typecheck`
+Expected: all PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add packages/web
+git commit -m "feat(starts): the tree of the named list and the order of «Следующая позиция»" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 8: The tree on the start screen
+
+**Files:**
+- Create: `packages/web/src/components/CornerBoard.tsx`, `packages/web/src/components/StartTree.tsx`
+- Delete: `packages/web/src/components/StartList.tsx`
+- Modify: `packages/web/src/screens/StartScreen.tsx`, `packages/web/src/App.tsx`, `packages/web/src/styles/screens.css`
+- Modify: `e2e/make-starts.ts`, `e2e/starts.spec.ts`
+
+**Interfaces:**
+- Consumes: `StartTreeNode`, `findNode`, `findById` (Task 7); the `startTree` memo in `App.tsx` (Task 7).
+- Produces: `CornerBoard` (`moves`, `ghost?`, `marks?`, `lastMove?`, `onMarkEnter?`, `onMarkLeave?`, `onMarkClick?`, `class?`); `StartTree` (`root`, `current`, `onCurrent`, `onStart`); `StartScreen` props `startTree?: StartTreeNode` (replaces `startsList`) and `lastStartId?: string | null`.
+
+- [ ] **Step 1: `packages/web/src/components/CornerBoard.tsx`** (the corner drawing of the old `StartPreview`, plus letters and a translucent continuation):
+
+```tsx
+import { BOARD_SIZE, gtpToVertex, ZONE_SIZE } from '@joseki-dojo/shared'
+
+const N = ZONE_SIZE
+const STEP = 10
+const PAD = 6
+const SIZE = PAD * 2 + STEP * (N - 1)
+const at = (i: number): number => PAD + i * STEP
+/** The zone is the top-right ZONE_SIZE x ZONE_SIZE corner: its first column. */
+const ZONE_X0 = BOARD_SIZE - ZONE_SIZE
+/** The 4-4 star point in zone coordinates. */
+const STAR = 3
+const BLACK = '#17181c'
+const WHITE = '#f4f4f1'
+
+const point = (gtp: string): { x: number; y: number } | null => {
+  const v = gtpToVertex(gtp)
+  return v === 'pass' ? null : { x: v[0] - ZONE_X0, y: v[1] }
+}
+
+/** A continuation's letter on its first move; `active` while it is hovered. */
+export interface CornerMark {
+  letter: string
+  move: string
+  active: boolean
+}
+
+export interface CornerBoardProps {
+  /** Canonical moves in GTP, Black first. */
+  moves: string[]
+  /** A continuation shown as translucent stones, numbered from moves.length + 1. */
+  ghost?: string[]
+  marks?: CornerMark[]
+  /** Mark the last stone of `moves`. */
+  lastMove?: boolean
+  onMarkEnter?: (letter: string) => void
+  onMarkLeave?: () => void
+  onMarkClick?: (letter: string) => void
+  class?: string
+}
+
+/** Spec (starts) 5.1: the top-right 11×11 corner with a position, its continuations' letters and a hovered continuation. */
+export function CornerBoard({ moves, ghost = [], marks = [], lastMove = false, onMarkEnter, onMarkLeave, onMarkClick, class: cls = 'start-preview' }: CornerBoardProps) {
+  const stones = moves.flatMap((m, i) => {
+    const p = point(m)
+    return p ? [{ ...p, black: i % 2 === 0 }] : []
+  })
+  const last = lastMove && moves.length > 0 ? point(moves[moves.length - 1]) : null
+  const ghosts = ghost.flatMap((m, i) => {
+    const p = point(m)
+    return p ? [{ ...p, black: (moves.length + i) % 2 === 0, n: moves.length + i + 1 }] : []
+  })
+  return (
+    <svg class={cls} viewBox={`0 0 ${SIZE} ${SIZE}`} aria-hidden="true">
+      <rect width={SIZE} height={SIZE} rx="4" fill="var(--board)" />
+      <g stroke="var(--board-line)" stroke-width="0.6">
+        {Array.from({ length: N }, (_, i) => (
+          <path key={`h${i}`} d={`M0 ${at(i)}H${at(N - 1)}`} />
+        ))}
+        {Array.from({ length: N }, (_, i) => (
+          <path key={`v${i}`} d={`M${at(i)} ${at(0)}V${SIZE}`} />
+        ))}
+      </g>
+      <circle cx={at(BOARD_SIZE - 1 - STAR - ZONE_X0)} cy={at(STAR)} r="1.4" fill="var(--board-line)" />
+      {stones.map((s, i) => (
+        <circle key={i} cx={at(s.x)} cy={at(s.y)} r="4.4" fill={s.black ? BLACK : WHITE} stroke="var(--stone-ring)" stroke-width="0.6" />
+      ))}
+      {last && <circle cx={at(last.x)} cy={at(last.y)} r="1.8" fill="none" stroke="var(--last-move)" stroke-width="1" />}
+      {ghosts.map((s) => (
+        <g key={`g${s.n}`} class="corner-ghost" opacity="0.6">
+          <circle cx={at(s.x)} cy={at(s.y)} r="4.4" fill={s.black ? BLACK : WHITE} />
+          <text x={at(s.x)} y={at(s.y) + 2.1} text-anchor="middle" font-size="6" fill={s.black ? WHITE : BLACK}>
+            {s.n}
+          </text>
+        </g>
+      ))}
+      {marks.map((m) => {
+        const p = point(m.move)
+        if (!p) return null
+        return (
+          <g key={m.letter} class={`corner-mark${m.active ? ' active' : ''}`} onMouseEnter={() => onMarkEnter?.(m.letter)} onMouseLeave={() => onMarkLeave?.()} onClick={() => onMarkClick?.(m.letter)}>
+            <circle cx={at(p.x)} cy={at(p.y)} r="4.6" />
+            <text x={at(p.x)} y={at(p.y) + 2.2} text-anchor="middle" font-size="6.4">
+              {m.letter}
+            </text>
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+```
+
+- [ ] **Step 2: `packages/web/src/components/StartTree.tsx`**
+
+```tsx
+import { useState } from 'preact/hooks'
+import type { StartTreeNode } from '../start-tree'
+import { CornerBoard } from './CornerBoard'
+
+const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+const chain = (n: StartTreeNode): StartTreeNode[] => {
+  const out: StartTreeNode[] = []
+  for (let x: StartTreeNode | null = n; x; x = x.parent) out.unshift(x)
+  return out
+}
+
+/** The line under the name: moves on the board for a position, positions inside otherwise. */
+const details = (n: StartTreeNode): string => (n.kind === 'position' ? `Ходов на доске: ${n.moves.length}` : `Позиций внутри: ${n.count}`)
+
+export interface StartTreeProps {
+  root: StartTreeNode
+  current: StartTreeNode
+  onCurrent: (node: StartTreeNode) => void
+  /** Enter on a position: «Начать тренировку». */
+  onStart: () => void
+}
+
+/** Spec (starts) 5.1: «Из списка» — the outline, the corner board with lettered continuations, the cards. */
+export function StartTree({ root, current, onCurrent, onStart }: StartTreeProps) {
+  const [hover, setHover] = useState<number | null>(null)
+  const path = chain(current)
+  const kids = current.children
+  const hovered = hover !== null ? (kids[hover] ?? null) : null
+  const shown = hovered ?? current
+  const go = (n: StartTreeNode): void => {
+    setHover(null)
+    onCurrent(n)
+  }
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.code.startsWith('Key')) {
+      const i = LETTERS.indexOf(e.code.slice(3))
+      if (i >= 0 && i < kids.length) {
+        e.preventDefault()
+        go(kids[i])
+      }
+    } else if ((e.key === 'ArrowLeft' || e.key === 'Backspace') && current.parent) {
+      e.preventDefault()
+      go(current.parent)
+    } else if (e.key === 'Enter' && e.target === e.currentTarget && current.kind === 'position') {
+      e.preventDefault()
+      onStart()
+    }
+  }
+  return (
+    <div class="start-tree" tabIndex={0} onKeyDown={onKey} aria-label="Дерево стартовых позиций">
+      <nav class="start-outline" aria-label="Оглавление">
+        <OutlineRow node={root} depth={0} path={path} current={current} onPick={go} />
+      </nav>
+      <div class="start-explorer">
+        <div class="start-crumbs">
+          {path.map((n, i) =>
+            i < path.length - 1 ? (
+              <span key={n.key} class="start-crumb">
+                <button type="button" onClick={() => go(n)}>
+                  {n.short}
+                </button>
+                <span aria-hidden="true">›</span>
+              </span>
+            ) : (
+              <span key={n.key} aria-current="location">
+                {n.short}
+              </span>
+            ),
+          )}
+        </div>
+        <div class="start-focus">
+          <CornerBoard
+            class="start-board"
+            moves={current.moves}
+            lastMove
+            ghost={hovered ? hovered.moves.slice(current.moves.length) : []}
+            marks={kids.flatMap((c, i) => {
+              const move = c.moves[current.moves.length]
+              return move ? [{ letter: LETTERS[i], move, active: i === hover }] : []
+            })}
+            onMarkEnter={(l) => setHover(LETTERS.indexOf(l))}
+            onMarkLeave={() => setHover(null)}
+            onMarkClick={(l) => go(kids[LETTERS.indexOf(l)])}
+          />
+          <div class="start-info">
+            <div class="start-info-name">{shown.name}</div>
+            <div class="start-info-sub">{details(shown)}</div>
+            {shown.rare && <div class="start-rare">редко играют</div>}
+          </div>
+        </div>
+        {kids.length > 0 && (
+          <div class="start-cards" onMouseLeave={() => setHover(null)}>
+            {kids.map((c, i) => (
+              <button
+                type="button"
+                key={c.key}
+                class={`start-card${c.rare ? ' rare' : ''}${i === hover ? ' hover' : ''}`}
+                onMouseEnter={() => setHover(i)}
+                onFocus={() => setHover(i)}
+                onBlur={() => setHover(null)}
+                onClick={() => go(c)}
+              >
+                <b>{LETTERS[i]}</b>
+                <CornerBoard moves={c.moves} />
+                <span class="start-card-name">{c.short}</span>
+                {c.rare && <span class="start-rare">редко</span>}
+                {c.count > 0 && <span class="start-count">{c.count}</span>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+interface OutlineRowProps {
+  node: StartTreeNode
+  depth: number
+  path: StartTreeNode[]
+  current: StartTreeNode
+  onPick: (node: StartTreeNode) => void
+}
+
+/** One row of the outline; the rows on the path to the current node are open. */
+function OutlineRow({ node, depth, path, current, onPick }: OutlineRowProps) {
+  const onPath = path.includes(node)
+  const open = onPath && node.children.length > 0
+  const cls = `start-outline-row${node === current ? ' current' : onPath ? ' on-path' : ''}${node.rare ? ' rare' : ''}`
+  return (
+    <>
+      <button type="button" class={cls} style={{ paddingLeft: `${6 + depth * 14}px` }} aria-current={node === current ? 'true' : undefined} onClick={() => onPick(node)}>
+        <span class="start-outline-arrow" aria-hidden="true">
+          {node.children.length === 0 ? '' : open ? '▾' : '▸'}
+        </span>
+        <span class="start-outline-name">{node.short}</span>
+        {node.count > 0 && <span class="start-count">{node.count}</span>}
+      </button>
+      {open && node.children.map((c) => <OutlineRow key={c.key} node={c} depth={depth + 1} path={path} current={current} onPick={onPick} />)}
+    </>
+  )
+}
+```
+
+- [ ] **Step 3: `StartScreen.tsx`** — the tree replaces the list.
+
+Imports: drop `StartList` and `StartListEntry`; add
+
+```ts
+import { StartTree } from '../components/StartTree'
+import { findById, findNode, type StartTreeNode } from '../start-tree'
+```
+
+Props: replace `startsList?: StartListEntry[]` with
+
+```ts
+  /** The tree of the named list (starts spec 5.1); a root without children turns «Из списка» off. */
+  startTree?: StartTreeNode
+  /** The position of the last training from the list: the tree opens on it. */
+  lastStartId?: string | null
+```
+
+Module level, next to the other constants:
+
+```ts
+const EMPTY_TREE: StartTreeNode = { key: '', kind: 'root', name: 'Пустой угол', short: 'Пустой угол', moves: [], id: null, rare: false, count: 0, parent: null, children: [] }
+/** Spec (starts) 5.1: the last current node of the tree, remembered in the browser. */
+const TREE_KEY = 'joseki-dojo.start-tree'
+const readTreeKey = (): string => {
+  try {
+    return localStorage.getItem(TREE_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+const writeTreeKey = (key: string): void => {
+  try {
+    localStorage.setItem(TREE_KEY, key)
+  } catch {
+    // Storage is off: the tree opens at its root next time.
+  }
+}
+```
+
+The component signature becomes `({ onStart, busy, defaultRank, trapsCount = 0, startsCount = 0, startTree = EMPTY_TREE, lastStartId = null }: StartScreenProps)`. Replace the `chosenId`/`startId` lines with:
+
+```ts
+  const [currentKey, setCurrentKey] = useState<string>(() => (lastStartId ? findById(startTree, lastStartId)?.key : null) ?? readTreeKey())
+  const current = findNode(startTree, currentKey) ?? startTree
+  const startId = current.kind === 'position' ? current.id : null
+  const listReady = startTree.children.length > 0
+  const pick = (node: StartTreeNode): void => {
+    setCurrentKey(node.key)
+    writeTreeKey(node.key)
+  }
+  const canStart = !busy && !(mode === 'list' && startId === null)
+  const start = (): void => {
+    if (canStart) onStart({ mode, environment: 'empty', userColor, botRank, corner, ...(mode === 'list' && startId ? { startId } : {}) })
+  }
+```
+
+Then:
+- `<div class="page start">` → `<div class={`page start${mode === 'list' ? ' wide' : ''}`}>`;
+- the «Из списка» radio: `disabled={!listReady}` and the caption `{listReady ? 'выберите дзёсеки' : 'база стартовых позиций недоступна'}`;
+- `{mode === 'list' && <StartList … />}` → `{mode === 'list' && <StartTree root={startTree} current={current} onCurrent={pick} onStart={start} />}`;
+- the start button: `<button class="primary lg" disabled={!canStart} onClick={start}>`.
+
+- [ ] **Step 4: `App.tsx`** — the start screen gets the tree from Task 7's memo and the last list position:
+
+```tsx
+      <StartScreen
+        key={defaultRank}
+        defaultRank={defaultRank}
+        trapsCount={traps?.count ?? 0}
+        startsCount={starts?.count ?? 0}
+        startTree={startTree}
+        lastStartId={lastSettings?.mode === 'list' ? (lastSettings.startId ?? null) : null}
+        busy={starting || !connected}
+        onStart={startWith}
+      />
+```
+
+- [ ] **Step 5: Styles in `packages/web/src/styles/screens.css`** — replace the six `.start-list`, `.start-rows`, `.start-row…` rules (keep `.start-preview`) with:
+
+```css
+.start-tree { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; margin-top: 12px; border-radius: 10px; }
+.start-tree:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.start-outline { display: grid; align-content: start; gap: 1px; }
+.start-outline-row { justify-content: flex-start; gap: 4px; width: 100%; height: auto; padding: 4px 6px; border: 0; border-radius: 6px; background: none; color: var(--text); font-weight: 400; text-align: left; white-space: normal; }
+.start-outline-row.on-path { color: var(--accent-text); }
+.start-outline-row.current { background: var(--accent-bg); color: var(--accent-text); font-weight: 500; }
+.start-outline-row.rare .start-outline-name, .start-card.rare .start-card-name { color: var(--text-3); }
+.start-outline-arrow { width: 12px; flex: none; color: var(--text-3); }
+.start-count { margin-left: auto; padding-left: 6px; font-size: 11px; font-weight: 400; color: var(--text-2); }
+.start-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 8px; font-size: 13px; color: var(--text-2); }
+.start-crumb { display: inline-flex; align-items: center; gap: 4px; }
+.start-crumb button { height: auto; padding: 0; border: 0; background: none; color: var(--accent-text); font-weight: 400; }
+.start-crumb button:hover:not(:disabled) { background: none; text-decoration: underline; }
+.start-focus { display: flex; align-items: flex-start; gap: 14px; }
+.start-board { width: 250px; height: 250px; flex: none; }
+.start-info { display: grid; gap: 4px; min-width: 0; }
+.start-info-name { font-size: 16px; font-weight: 600; }
+.start-info-sub { font-size: 13px; color: var(--text-2); }
+.start-rare { font-size: 11px; font-weight: 400; color: var(--warning-text); }
+.start-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; margin-top: 12px; }
+.start-card { justify-content: flex-start; gap: 6px; height: auto; padding: 4px 6px; border-color: var(--border); font-size: 12px; font-weight: 400; line-height: 1.3; text-align: left; white-space: normal; }
+.start-card.hover, .start-card:focus-visible { border-color: var(--accent); background: var(--accent-bg); }
+.start-card b { width: 12px; flex: none; color: var(--accent-text); }
+.start-card .start-preview { width: 34px; height: 34px; }
+.start-card .start-rare { margin-left: auto; }
+.start-card .start-rare + .start-count { margin-left: 0; }
+.corner-mark { cursor: pointer; }
+.corner-mark circle { fill: var(--board); }
+.corner-mark text { fill: var(--board-accent); font-weight: 600; }
+.corner-mark.active circle { fill: var(--last-move); }
+.corner-mark.active text { fill: #ffffff; }
+.corner-ghost { pointer-events: none; }
+@media (max-width: 640px) { .start-tree { grid-template-columns: 1fr; } .start-board { width: 200px; height: 200px; } }
+```
+
+Delete `packages/web/src/components/StartList.tsx` (nothing else imports it).
+
+- [ ] **Step 6: e2e data `e2e/make-starts.ts`** — two starts: «Тестовое начало» (Q16 R17, the user's move) and its continuation (one more Black move, the bot's turn):
+
+```ts
+// Writes e2e/starts.test.jdb and e2e/starts-list.test.json: «Тестовое начало» — Q16 R17, on the corner's diagonal, so
+// its coordinates do not depend on the random mirror, Black (the user) to move — and «Тестовое продолжение», one more
+// Black move, under it in the tree.
+import { writeFileSync } from 'node:fs'
+import { canonicalize, encodeJdb, moveText, type CanonicalMove, type JdbNode } from '../packages/server/src/jdb'
+
+const node = (move: CanonicalMove, category: JdbNode['category'] = 'none', children: JdbNode[] = []): JdbNode => ({ move, category, loss: null, children })
+
+const [a, b, c] = canonicalize([[15, 3], [16, 2], [16, 3]])
+const tree = { kind: 'starts' as const, verified: false, roots: [node(a, 'none', [node(b, 'start', [node(c, 'start')])])] }
+writeFileSync('e2e/starts.test.jdb', encodeJdb(tree))
+const positions = [
+  { group: '4-4', name: 'Тестовое начало', short: 'Начало', moves: [a, b].map(moveText).join(' ') },
+  { group: '4-4', name: 'Тестовое продолжение', short: 'Продолжение', moves: [a, b, c].map(moveText).join(' ') },
+]
+writeFileSync('e2e/starts-list.test.json', JSON.stringify({ branches: [], positions }))
+```
+
+- [ ] **Step 7: e2e `e2e/starts.spec.ts`** — the list test walks the tree (a card, then a letter on the board); the random test accepts either name:
+
+```ts
+test('a start from the tree: the position is on the board and its name is in the crumbs', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('radio', { name: /Из списка/ }).check()
+  const start = page.getByRole('button', { name: 'Начать тренировку' })
+  await expect(start).toBeDisabled()
+  const tree = page.locator('.start-tree')
+  await tree.locator('.start-card', { hasText: '4-4' }).click()
+  await tree.locator('.start-board .corner-mark', { hasText: 'A' }).click()
+  await expect(tree.locator('.start-info-name')).toHaveText('Тестовое начало')
+  await expect(tree.locator('.start-card', { hasText: 'Продолжение' })).toBeVisible()
+  await expect(tree.locator('.start-outline-row.current')).toContainText('Начало')
+  await page.getByLabel('Чёрные').check()
+  await page.getByLabel('Правый верхний').check()
+  await start.click()
+
+  await expect(page.getByRole('heading', { name: 'Ваш ход' })).toBeVisible()
+  await expect(page.getByText('Тестовое начало')).toBeVisible()
+  await expect(page.getByTestId('moves-count')).toHaveText('0')
+  await vertex(page, 13, 2).click()
+  await expect(page.getByTestId('moves-count')).toHaveText('2')
+  await page.getByRole('button', { name: 'Закончить' }).click()
+  await expect(page.getByText('Разбор: Тестовое начало')).toBeVisible()
+})
+
+test('a random start: its name is in the crumbs', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('radio', { name: /Случайно/ }).first().check()
+  await page.getByLabel('Чёрные').check()
+  await page.getByRole('button', { name: 'Начать тренировку' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Ваш ход' })).toBeVisible()
+  await expect(page.getByText(/Тестовое (начало|продолжение)/)).toBeVisible()
+})
+```
+
+- [ ] **Step 8: Run everything**
+
+Run: `npm test && npm run typecheck && npm run e2e`
+Expected: all PASS.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add -A packages/web e2e
+git commit -m "feat(starts): the tree of positions in «Из списка»" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 9 (controller, outside the repository): the list data in the new format
+
+- [ ] **Step 1:** In `D:\private\joseki-dojo-starts\chapters.mjs` every chapter position gets a short caption (the step from its parent: «Косуми Сюсаку», «Хане», «Малая лавина»), and a `BRANCHES` list names the 2-move nodes («Малое приближение», «Высокое приближение», «Вторжение в 3-3» and the like).
+- [ ] **Step 2:** `make-list.mts` writes every chapter position with `short` and `rare` (fewer than 10 pro games since 2016 and not famous), plus the branches.
+- [ ] **Step 3:** `build-starts.mts` writes `starts-list.json` as `{ branches, positions }` with all 88 positions; a chapter position equal to a candidate keeps the chapter path and drops the candidate's path (spec 3.3), so the two 5-3 positions stay under 5-3.
+- [ ] **Step 4:** Check with the server's `loadStarts`: no log lines, 88 positions, every branch kept. Then `npm test && npm run e2e`.
+- [ ] **Step 5:** Fold the data into the data commit when the branch is squashed for the push.
