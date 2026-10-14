@@ -51,7 +51,7 @@ describe('AnalysisScheduler', () => {
 })
 
 describe('compactAnalysis', () => {
-  it('keeps the five best move infos in order', () => {
+  it('keeps the six best move infos in order', () => {
     const r: AnalysisResponse = {
       id: 'x',
       turnNumber: 0,
@@ -61,7 +61,7 @@ describe('compactAnalysis', () => {
       ownership: [0.5],
     }
     const a = compactAnalysis(r)
-    expect(a.moveInfos.map((m) => m.order)).toEqual([0, 1, 2, 3, 4])
+    expect(a.moveInfos.map((m) => m.order)).toEqual([0, 1, 2, 3, 4, 5])
     expect(a.moveInfos[0]).toEqual({ move: 'D4', order: 0, visits: 10, scoreLead: 0, winrate: 0.5, pv: ['D4'] })
     expect(a.rootInfo).toEqual({ currentPlayer: 'B', scoreLead: 1, winrate: 0.6, visits: 100 })
     expect(a.ownership).toEqual([0.5])

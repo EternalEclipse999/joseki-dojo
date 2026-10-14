@@ -43,8 +43,22 @@ describe('candidatesOf', () => {
     expect(candidatesOf(a)).toEqual([
       { vertex: [15, 5], loss: 0, pv: [[15, 5], [16, 5]] },
       { vertex: [16, 5], loss: 1, pv: [[16, 5]] },
-      { vertex: 'pass', loss: 5, pv: [] },
     ])
+  })
+
+  const withLosses = (losses: number[]): StoredAnalysis => ({
+    rootInfo: { currentPlayer: 'B', scoreLead: 0, winrate: 0.5, visits: 10 },
+    moveInfos: losses.map((l, order) => ({ move: 'D4', order, visits: 1, scoreLead: -l, winrate: 0.5, pv: ['D4'] })),
+    ownership: null,
+  })
+
+  it('keeps the best and the moves within the maximal loss only', () => {
+    expect(candidatesOf(withLosses([0, 0.4, 1.5, 1.6, 1.7, 2])).map((c) => c.loss)).toEqual([0, 0.4, 1.5])
+    expect(candidatesOf(withLosses([0, 3, 4]))).toHaveLength(1)
+  })
+
+  it('shows at most six candidates', () => {
+    expect(candidatesOf(withLosses([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]))).toHaveLength(6)
   })
 })
 

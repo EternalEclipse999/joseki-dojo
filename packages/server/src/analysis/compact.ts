@@ -1,7 +1,7 @@
 import type { AnalysisResponse } from '../engine/katago-types'
 import type { StoredAnalysis } from '../store/records'
 
-export const STORED_MOVE_INFOS = 5
+export const STORED_MOVE_INFOS = 6
 
 export function compactAnalysis(r: AnalysisResponse): StoredAnalysis {
   const moveInfos = [...r.moveInfos]

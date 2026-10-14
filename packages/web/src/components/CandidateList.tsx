@@ -3,7 +3,7 @@ import type { Candidate, MoveVertex, Vertex } from '@joseki-dojo/shared'
 import { isVertex, sameVertex } from '../board-maps'
 import { formatPoints, moveLabel } from '../format'
 
-export const LABELS = 'ABC'
+export const LABELS = 'ABCDEF'
 
 export interface CandidateListProps {
   candidates: Candidate[]

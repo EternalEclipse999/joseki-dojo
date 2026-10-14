@@ -1,6 +1,6 @@
 import type { JSX } from 'preact'
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import type { AnalysisSettings, ClientMessage, HealthResponse, InstallStatus, ReviewData, SessionView, TrapsInfo } from '@joseki-dojo/shared'
+import type { AnalysisSettings, ClientMessage, HealthResponse, InstallStatus, ReviewData, SessionSettings, SessionView, TrapsInfo } from '@joseki-dojo/shared'
 import { LoaderCircle, RefreshCw } from 'lucide-preact'
 import { DojoSocket, fetchHealth, fetchInstall, fetchReview, fetchSettings, fetchTraps, fetchUi, recheckHealth } from './api'
 import { AppHeader } from './components/AppHeader'
@@ -35,6 +35,8 @@ export function App() {
   const [defaultRank, setDefaultRank] = useState<string | undefined>(undefined)
   // True from sending startSession/replayFrom until the server answers (sessionState/error) or the link drops.
   const [starting, setStarting] = useState(false)
+  // The settings of the last startSession sent: «Следующая тренировка» starts with the same ones (in memory only).
+  const [lastSettings, setLastSettings] = useState<SessionSettings | null>(null)
   const [install, setInstall] = useState<InstallStatus | null>(null)
   const [installChecked, setInstallChecked] = useState(false)
   // An engine update (from the banner) or a re-pick (Settings, engine screen) is on screen.
@@ -185,6 +187,10 @@ export function App() {
     setStarting(true)
     send(msg)
   }
+  const startWith = (settings: SessionSettings): void => {
+    setLastSettings(settings)
+    sendStarting({ type: 'startSession', settings })
+  }
   const resetToStart = (): void => {
     setSession(null)
     setReview(null)
@@ -259,7 +265,7 @@ export function App() {
         defaultRank={defaultRank}
         trapsCount={traps?.count ?? 0}
         busy={starting || !connected}
-        onStart={(settings) => sendStarting({ type: 'startSession', settings })}
+        onStart={startWith}
       />
     )
   } else if (session.status === 'playing') {
@@ -274,6 +280,7 @@ export function App() {
         busy={starting}
         onReplay={(turn) => sendStarting({ type: 'replayFrom', sessionId: session.id, turn })}
         onNew={resetToStart}
+        onNext={lastSettings ? () => startWith(lastSettings) : null}
         variations={{
           update: variationUpdate,
           analyze: (fromTurn, moves) => send({ type: 'analyzeVariation', sessionId: session.id, fromTurn, moves }),

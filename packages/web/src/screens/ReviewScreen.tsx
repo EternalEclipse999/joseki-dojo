@@ -1,7 +1,7 @@
 import type { JSX } from 'preact'
 import type { Marker } from '@sabaki/shudan'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { ChevronLeft, ChevronRight, GitBranch, LoaderCircle, Map as MapIcon, Plus, RotateCcw, Swords, Telescope } from 'lucide-preact'
+import { ChevronLeft, ChevronRight, FolderOpen, GitBranch, LoaderCircle, Map as MapIcon, Play, RotateCcw, Swords, Telescope } from 'lucide-preact'
 import { nextColor, Position, type AnalysisSettings, type Move, type MoveVertex, type ReviewData, type TrapVerdict, type Vertex } from '@joseki-dojo/shared'
 import { emptyMap, isVertex, ownershipMap, pvMoves, sameVertex } from '../board-maps'
 import { Board } from '../components/Board'
@@ -48,12 +48,15 @@ export interface ReviewScreenProps {
   review: ReviewData | null
   progress: { done: number; total: number } | null
   onReplay: (turn: number) => void
+  /** «К выбору тренировки»: the start screen. */
   onNew: () => void
+  /** «Следующая тренировка»: a new game with the last settings; null while they are unknown. */
+  onNext: (() => void) | null
   busy?: boolean
   variations: VariationLink
 }
 
-export function ReviewScreen({ review, progress, onReplay, onNew, busy, variations }: ReviewScreenProps) {
+export function ReviewScreen({ review, progress, onReplay, onNew, onNext, busy, variations }: ReviewScreenProps) {
   if (!review) {
     return (
       <main>
@@ -72,8 +75,15 @@ export function ReviewScreen({ review, progress, onReplay, onNew, busy, variatio
               </>
             )}
             <div class="actions">
+              {onNext && (
+                <button class="primary" disabled={busy} onClick={onNext}>
+                  <Play aria-hidden="true" />
+                  Следующая тренировка
+                </button>
+              )}
               <button class="ghost" onClick={onNew}>
-                Новая тренировка
+                <FolderOpen aria-hidden="true" />
+                К выбору тренировки
               </button>
             </div>
           </div>
@@ -88,8 +98,15 @@ export function ReviewScreen({ review, progress, onReplay, onNew, busy, variatio
           <div class="card section">
             <p>В этой тренировке не было ходов.</p>
             <div class="actions">
-              <button class="primary" onClick={onNew}>
-                Новая тренировка
+              {onNext && (
+                <button class="primary" disabled={busy} onClick={onNext}>
+                  <Play aria-hidden="true" />
+                  Следующая тренировка
+                </button>
+              )}
+              <button class={onNext ? 'ghost' : 'primary'} onClick={onNew}>
+                <FolderOpen aria-hidden="true" />
+                К выбору тренировки
               </button>
             </div>
           </div>
@@ -97,7 +114,7 @@ export function ReviewScreen({ review, progress, onReplay, onNew, busy, variatio
       </main>
     )
   }
-  return <ReviewLoaded key={review.sessionId} review={review} onReplay={onReplay} onNew={onNew} busy={busy} variations={variations} />
+  return <ReviewLoaded key={review.sessionId} review={review} onReplay={onReplay} onNew={onNew} onNext={onNext} busy={busy} variations={variations} />
 }
 
 const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
@@ -153,6 +170,7 @@ interface ReviewLoadedProps {
   review: ReviewData
   onReplay: (turn: number) => void
   onNew: () => void
+  onNext: (() => void) | null
   busy?: boolean
   variations: VariationLink
 }
@@ -161,7 +179,7 @@ interface ReviewLoadedProps {
  * Spec 7: summary, loss chart, move navigator, candidates and the branch, next to the board.
  * Variations spec 3–5: a variation instead of a game move, its deepening analysis and KataGo's replies.
  */
-function ReviewLoaded({ review, onReplay, onNew, busy, variations }: ReviewLoadedProps) {
+function ReviewLoaded({ review, onReplay, onNew, onNext, busy, variations }: ReviewLoadedProps) {
   const [turn, setTurn] = useState(0)
   const [pvStep, setPvStep] = useState<number | null>(null)
   const [showOwnership, setShowOwnership] = useState(false)
@@ -380,16 +398,18 @@ function ReviewLoaded({ review, onReplay, onNew, busy, variations }: ReviewLoade
         ) : (
           <>
             <div class="navigator">
-              <button class="ghost icon" disabled={turn === 0} onClick={() => step(-1)} aria-label="Предыдущий ход">
-                <ChevronLeft aria-hidden="true" />
-              </button>
               <span class="where">
                 Ход {turn + 1} из {review.moves.length}
                 <kbd aria-hidden="true">← →</kbd>
               </span>
-              <button class="ghost icon" disabled={turn === lastTurn} onClick={() => step(1)} aria-label="Следующий ход">
-                <ChevronRight aria-hidden="true" />
-              </button>
+              <input
+                type="range"
+                min={1}
+                max={review.moves.length}
+                value={turn + 1}
+                aria-label="Ход партии"
+                onInput={(e) => selectTurn(Number(e.currentTarget.value) - 1)}
+              />
             </div>
 
             <div class="move-line">
@@ -465,13 +485,19 @@ function ReviewLoaded({ review, onReplay, onNew, busy, variations }: ReviewLoade
 
         <hr class="divider" />
         <div class="actions">
-          <button class="primary" disabled={busy} onClick={() => onReplay(turn)}>
+          {onNext && (
+            <button class="primary" disabled={busy} onClick={onNext}>
+              <Play aria-hidden="true" />
+              Следующая тренировка
+            </button>
+          )}
+          <button disabled={busy} onClick={() => onReplay(turn)}>
             <RotateCcw aria-hidden="true" />
             Переиграть этот ход
           </button>
           <button class="ghost" onClick={onNew}>
-            <Plus aria-hidden="true" />
-            Новая тренировка
+            <FolderOpen aria-hidden="true" />
+            К выбору тренировки
           </button>
         </div>
       </aside>
