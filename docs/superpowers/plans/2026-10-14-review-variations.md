@@ -334,3 +334,19 @@ Tests: start, play at the end, play after stepping back replaces the tail, step 
 - [ ] **Step 5: e2e `e2e/variations.spec.ts`** — play a free training with a few moves (follow `e2e/game.spec.ts` or the traps spec for starting and finishing), open the review, click an empty board point on move 1 → the variation bar shows «Вариант от хода 1», after the fake KataGo's answers the reply appears (two stones of the variation on the board, the bar lists two moves), ‹ goes back to the first move, a click on another point replaces the tail, «Вернуться к партии» hides the bar.
 - [ ] **Step 6: Run** `npm test && npm run typecheck && npm run e2e` — all pass. Check the screen once by eye in light and dark themes.
 - [ ] **Step 7: Commit** `feat(web): variations in the review with KataGo replies and deepening analysis`
+
+---
+
+### Task 5: Review refinements from the owner's feedback (spec section 8)
+
+**Files:**
+- Modify: `packages/server/src/analysis/compact.ts`, `packages/server/src/review/compute.ts` (+ tests)
+- Modify: `packages/web/src/components/CandidateList.tsx`, `packages/web/src/screens/ReviewScreen.tsx`, `packages/web/src/App.tsx`, `packages/web/src/styles/screens.css`
+- Modify: e2e specs that click «Новая тренировка» or the move buttons in the review
+
+- [ ] **Step 1: Candidates up to F.** `STORED_MOVE_INFOS = 6`. `candidatesOf(a)` returns up to `CANDIDATE_LIMIT = 6` candidates: the best always, the others only when their loss ≤ `CANDIDATE_MAX_LOSS = 1.5` (export both constants from compute.ts with a doc comment pointing at spec 8). Tests: 6 moves with losses 0, 0.4, 1.5, 1.6, … → A, B, C only; a list of 7 within the limit → 6. `LABELS = 'ABCDEF'` in CandidateList.tsx; check the board letters and the list for 6 rows.
+- [ ] **Step 2: Move slider.** In the game navigator, replace the ‹ › buttons with `<input type="range" min={1} max={moves.length} value={turn + 1} aria-label="Ход партии">` next to the label «Ход N из M» and the ← → hint; ← → keys keep working; while a variation is open the variation bar stays as it is. Style it with the existing tokens (full width of the panel).
+- [ ] **Step 3: Buttons.** `App.tsx` remembers the last `SessionSettings` sent with `startSession` (state, in memory); the review gets `onNext` when they are known: it sends `startSession` with the same settings. In the review actions: «Следующая тренировка» (primary, `onNext`, hidden when unknown), «Переиграть этот ход» (secondary), «К выбору тренировки» (ghost, the old `onNew`). The loading and «не было ходов» screens use «К выбору тренировки» too (and «Следующая тренировка» when known). Update the e2e specs that click «Новая тренировка» and the navigator buttons; add an e2e step: after a review, «Следующая тренировка» starts a new game with the same mode.
+- [ ] **Step 4: Run** `npm test && npm run typecheck && npm run e2e`; check the review by eye once.
+- [ ] **Step 5: Commit** `feat(review): candidates up to F, a move slider, «Следующая тренировка»`
+
