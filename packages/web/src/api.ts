@@ -1,4 +1,4 @@
-import type { ClientMessage, HealthResponse, InstallStatus, ReviewData, ServerMessage, SettingsResponse, SettingsUpdate, SettingsView, Theme, TrapsInfo, UiSettings } from '@joseki-dojo/shared'
+import type { ClientMessage, HealthResponse, InstallStatus, ReviewData, ServerMessage, SettingsResponse, SettingsUpdate, SettingsView, StartsInfo, Theme, TrapsInfo, UiSettings } from '@joseki-dojo/shared'
 
 export async function fetchHealth(): Promise<HealthResponse> {
   const res = await fetch('/api/health')
@@ -70,6 +70,13 @@ export async function saveTheme(theme: Theme): Promise<UiSettings> {
   const res = await fetch('/api/ui', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ theme }) })
   if (!res.ok) throw new Error(`Не удалось сохранить оформление: HTTP ${res.status}`)
   return (await res.json()) as UiSettings
+}
+
+/** Spec (starts) 5.1: the size of the starts base and the named list; an empty base turns both start modes off. */
+export async function fetchStarts(): Promise<StartsInfo> {
+  const res = await fetch('/api/starts')
+  if (!res.ok) throw new Error(`Не удалось узнать базу стартовых позиций: HTTP ${res.status}`)
+  return (await res.json()) as StartsInfo
 }
 
 /** Spec (traps) 5: how many traps the base holds; 0 disables the mode. */

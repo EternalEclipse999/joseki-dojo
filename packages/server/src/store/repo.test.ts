@@ -37,10 +37,10 @@ describe('migrations', () => {
 
   it('applies only the migrations not recorded yet', () => {
     const db = openDb(':memory:')
-    const next = { version: 3, name: '003_extra.sql', sql: 'CREATE TABLE extra (id INTEGER PRIMARY KEY)' }
-    expect(migrate(db, [...MIGRATIONS, next])).toEqual([3])
+    const next = { version: 4, name: '004_extra.sql', sql: 'CREATE TABLE extra (id INTEGER PRIMARY KEY)' }
+    expect(migrate(db, [...MIGRATIONS, next])).toEqual([4])
     expect(migrate(db, [...MIGRATIONS, next])).toEqual([])
-    expect(db.prepare('SELECT name FROM schema_migrations ORDER BY version').all()).toEqual([{ name: '001_init.sql' }, { name: '002_traps.sql' }, { name: '003_extra.sql' }])
+    expect(db.prepare('SELECT name FROM schema_migrations ORDER BY version').all()).toEqual([{ name: '001_init.sql' }, { name: '002_traps.sql' }, { name: '003_starts.sql' }, { name: '004_extra.sql' }])
   })
 })
 
@@ -123,7 +123,7 @@ describe('migration 2 and trap attempts', () => {
       `INSERT INTO sessions (id, created_at, mode, environment, user_color, bot_rank, corner, status, initial_moves_json)
        VALUES ('s1', '2026-10-06T10:00:00.000Z', 'free', 'empty', 'B', '7k', 'TR', 'playing', '[]')`,
     ).run()
-    expect(migrate(db)).toEqual([2])
+    expect(migrate(db)).toEqual([2, 3])
     const cols = db.prepare("SELECT name FROM pragma_table_info('sessions')").all() as { name: string }[]
     expect(cols.map((c) => c.name)).toContain('trap_json')
     expect(db.prepare('SELECT id, trap_json FROM sessions').all()).toEqual([{ id: 's1', trap_json: null }])

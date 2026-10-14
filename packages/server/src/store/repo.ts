@@ -1,4 +1,4 @@
-import { gtpToVertex, moveToGtp, type Actor, type Color, type Corner, type Mode, type PlayedMove, type ReviewSummary, type SessionStatus, type TrapRef } from '@joseki-dojo/shared'
+import { gtpToVertex, moveToGtp, type Actor, type Color, type Corner, type Mode, type PlayedMove, type ReviewSummary, type SessionStatus, type StartRef, type TrapRef } from '@joseki-dojo/shared'
 import type { Db } from './db'
 import type { AnalysisKind, MissedPunishmentRow, SessionRecord, StoredAnalysis, TrapAttemptRow } from './records'
 
@@ -15,6 +15,7 @@ interface SessionRow {
   initial_moves_json: string
   summary_json: string | null
   trap_json: string | null
+  start_json: string | null
 }
 
 interface MoveRow {
@@ -46,8 +47,8 @@ export class SessionRepo {
     this.db.transaction(() => {
       this.db
         .prepare(
-          `INSERT INTO sessions (id, created_at, finished_at, mode, environment, user_color, bot_rank, corner, status, parent_session_id, initial_moves_json, summary_json, trap_json)
-           VALUES (@id, @createdAt, @finishedAt, @mode, @environment, @userColor, @botRank, @corner, @status, @parentSessionId, @initialMoves, @summary, @trap)`,
+          `INSERT INTO sessions (id, created_at, finished_at, mode, environment, user_color, bot_rank, corner, status, parent_session_id, initial_moves_json, summary_json, trap_json, start_json)
+           VALUES (@id, @createdAt, @finishedAt, @mode, @environment, @userColor, @botRank, @corner, @status, @parentSessionId, @initialMoves, @summary, @trap, @start)`,
         )
         .run({
           id: r.id,
@@ -63,6 +64,7 @@ export class SessionRepo {
           initialMoves: JSON.stringify(r.initialMoves),
           summary: r.summary ? JSON.stringify(r.summary) : null,
           trap: r.settings.trap ? JSON.stringify(r.settings.trap) : null,
+          start: r.settings.start ? JSON.stringify(r.settings.start) : null,
         })
       r.moves.forEach((m, turn) => this.insertMove(r.id, turn, m))
     })()
@@ -99,6 +101,7 @@ export class SessionRepo {
         botRank: row.bot_rank,
         corner: row.corner as Corner,
         ...(row.trap_json ? { trap: JSON.parse(row.trap_json) as TrapRef } : {}),
+        ...(row.start_json ? { start: JSON.parse(row.start_json) as StartRef } : {}),
       },
       status: row.status as SessionStatus,
       parentSessionId: row.parent_session_id,
@@ -171,6 +174,14 @@ export class SessionRepo {
     this.db
       .prepare('INSERT INTO trap_attempts (session_id, trap_id, result, created_at) VALUES (@sessionId, @trapId, @result, @createdAt)')
       .run(row)
+  }
+
+  /** Spec (starts) 5.3: finished sessions per start position id. */
+  startShows(): Map<string, number> {
+    const rows = this.db
+      .prepare(`SELECT json_extract(start_json, '$.id') AS start_id, COUNT(*) AS n FROM sessions WHERE status = 'finished' AND start_json IS NOT NULL GROUP BY start_id`)
+      .all() as { start_id: string; n: number }[]
+    return new Map(rows.map((r) => [r.start_id, r.n]))
   }
 
   /** How many times each trap has been shown: rows in `trap_attempts` per trap id. */

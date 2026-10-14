@@ -4,7 +4,7 @@ import { JdbError } from './errors'
 import { readVarint, writeVarint } from './varint'
 
 export type JdbKind = 'traps' | 'starts'
-export type NodeCategory = 'none' | 'good' | 'caught' | 'trap'
+export type NodeCategory = 'none' | 'good' | 'caught' | 'trap' | 'start' | 'dubious'
 export interface JdbNode {
   move: CanonicalMove
   category: NodeCategory
@@ -21,7 +21,7 @@ const MAGIC = [0x4a, 0x44, 0x42, 0x31] // "JDB1"
 export const JDB_VERSION = 1
 const HEADER = 16
 const KIND_CODE: Record<JdbKind, number> = { traps: 1, starts: 2 }
-const CATEGORIES: NodeCategory[] = ['none', 'good', 'caught', 'trap']
+const CATEGORIES: NodeCategory[] = ['none', 'good', 'caught', 'trap', 'start', 'dubious']
 const HAS_LOSS = 0x08
 const TENUKI = 121
 const ESCAPE = 255

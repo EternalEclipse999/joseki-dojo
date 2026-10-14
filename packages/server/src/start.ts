@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import type { AddressInfo } from 'node:net'
 import { resolve } from 'node:path'
 import type { FastifyInstance } from 'fastify'
@@ -6,6 +7,7 @@ import { loadConfig, type AppConfig } from './config'
 import { engineCommand } from './engine/command'
 import { KataGoEngine, type EngineCommand } from './engine/engine'
 import { loadLock, type KataGoLock } from './engine/lock'
+import { StartBook } from './starts/book'
 import { TrapBook } from './traps/book'
 
 export interface ServerOptions {
@@ -31,6 +33,10 @@ export interface ServerOptions {
   fetch?: typeof fetch
   /** The traps base (packages/server/bases/traps.jdb); missing, null or unreadable leaves the traps mode empty. */
   trapsFile?: string | null
+  /** The start positions base (packages/server/bases/starts.jdb); missing, null or unreadable turns the start modes off. */
+  startsFile?: string | null
+  /** The named start list (packages/server/bases/starts-list.json); missing or unreadable turns «Из списка» off. */
+  startsListFile?: string | null
 }
 
 export interface RunningServer {
@@ -51,7 +57,8 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
   const commandFor = options.commandFor ?? engineCommand
   const engine = new KataGoEngine(commandFor(config), (line) => log(`[katago] ${line}`))
   const traps = loadTraps(options.trapsFile, log)
-  const services = createServices(config, engine, { configFile: options.configFile, enginesDir: options.enginesDir, lock, commandFor, log, fetch: options.fetch, traps })
+  const starts = loadStarts(options.startsFile, options.startsListFile, log)
+  const services = createServices(config, engine, { configFile: options.configFile, enginesDir: options.enginesDir, lock, commandFor, log, fetch: options.fetch, traps, starts })
   let app: FastifyInstance | undefined
   try {
     app = await buildApp(services, options.webDist)
@@ -91,5 +98,25 @@ export function loadTraps(file: string | null | undefined, log: (line: string) =
   } catch (err) {
     log(`База ловушек недоступна: ${err instanceof Error ? err.message : String(err)}`)
     return TrapBook.empty()
+  }
+}
+
+/** Spec (starts) 4.3: the starts base and its list; a missing or broken base turns both start modes off, a broken list only «Из списка». */
+export function loadStarts(baseFile: string | null | undefined, listFile: string | null | undefined, log: (line: string) => void): StartBook {
+  if (!baseFile) return StartBook.empty()
+  let book: StartBook
+  try {
+    book = StartBook.loadBase(baseFile)
+  } catch (err) {
+    log(`База стартовых позиций недоступна: ${err instanceof Error ? err.message : String(err)}`)
+    return StartBook.empty()
+  }
+  if (book.skipped.length > 0) log(`Пропущено стартовых позиций: ${book.skipped.length} (недопустимые позиции)`)
+  if (!listFile) return book
+  try {
+    return book.withList(readFileSync(listFile, 'utf8'), log)
+  } catch (err) {
+    log(`Список стартовых позиций недоступен: ${err instanceof Error ? err.message : String(err)}`)
+    return book
   }
 }

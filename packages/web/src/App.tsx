@@ -1,8 +1,9 @@
 import type { JSX } from 'preact'
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import type { AnalysisSettings, ClientMessage, HealthResponse, InstallStatus, ReviewData, SessionSettings, SessionView, TrapsInfo } from '@joseki-dojo/shared'
+import type { AnalysisSettings, ClientMessage, HealthResponse, InstallStatus, ResolvedSettings, ReviewData, SessionSettings, SessionView, StartsInfo, TrapsInfo } from '@joseki-dojo/shared'
 import { LoaderCircle, RefreshCw } from 'lucide-preact'
-import { DojoSocket, fetchHealth, fetchInstall, fetchReview, fetchSettings, fetchTraps, fetchUi, recheckHealth } from './api'
+import { nextSettings } from './next-settings'
+import { DojoSocket, fetchHealth, fetchInstall, fetchReview, fetchSettings, fetchStarts, fetchTraps, fetchUi, recheckHealth } from './api'
 import { AppHeader } from './components/AppHeader'
 import { AppUpdateBanner } from './components/AppUpdateBanner'
 import { Bar } from './components/Bar'
@@ -15,6 +16,12 @@ import { SettingsScreen } from './screens/SettingsScreen'
 import { StartScreen } from './screens/StartScreen'
 import { applyTheme } from './theme'
 import type { VariationUpdate } from './variation'
+
+/** Starts spec 5.4: a start session is named after its position; the other modes keep their names. */
+function sessionTitle(settings: ResolvedSettings): string {
+  if (settings.start) return settings.start.name ?? 'Случайная позиция'
+  return settings.mode === 'traps' ? 'Ловушка' : 'Свободная тренировка'
+}
 
 interface Progress {
   done: number
@@ -46,6 +53,7 @@ export function App() {
   // Variations spec 6.2: the latest analysis of a variation position; the review keeps the results.
   const [variationUpdate, setVariationUpdate] = useState<VariationUpdate | null>(null)
   const [analysisSettings, setAnalysisSettings] = useState<AnalysisSettings | null>(null)
+  const [starts, setStarts] = useState<StartsInfo | null>(null)
 
   const socket = useMemo(
     () =>
@@ -152,6 +160,14 @@ export function App() {
     fetchTraps()
       .then(setTraps)
       .catch(() => setTraps({ count: 0, verified: false }))
+  }, [ready, healthTick])
+
+  // Starts spec 5.1: the start cards are available only when the base holds positions.
+  useEffect(() => {
+    if (!ready) return
+    fetchStarts()
+      .then(setStarts)
+      .catch(() => setStarts({ count: 0, list: [] }))
   }, [ready, healthTick])
 
   // While a finished session has no review yet, poll for it: reviewReady may have been missed
@@ -264,15 +280,18 @@ export function App() {
         key={defaultRank}
         defaultRank={defaultRank}
         trapsCount={traps?.count ?? 0}
+        startsCount={starts?.count ?? 0}
+        startsList={starts?.list ?? []}
         busy={starting || !connected}
         onStart={startWith}
       />
     )
   } else if (session.status === 'playing') {
-    crumb = session.settings.mode === 'traps' ? 'Ловушка' : 'Свободная тренировка'
+    crumb = sessionTitle(session.settings)
     screen = <GameScreen session={session} errorSeq={errorSeq} send={send} />
   } else {
-    crumb = 'Разбор тренировки'
+    const start = session.settings.start
+    crumb = start ? `Разбор: ${start.name ?? (start.dubious ? 'случайная позиция (ход соперника похуже)' : 'случайная позиция')}` : 'Разбор тренировки'
     screen = (
       <ReviewScreen
         review={review}
@@ -280,7 +299,7 @@ export function App() {
         busy={starting}
         onReplay={(turn) => sendStarting({ type: 'replayFrom', sessionId: session.id, turn })}
         onNew={resetToStart}
-        onNext={lastSettings ? () => startWith(lastSettings) : null}
+        onNext={lastSettings ? () => startWith(nextSettings(lastSettings, starts?.list ?? [])) : null}
         variations={{
           update: variationUpdate,
           analyze: (fromTurn, moves) => send({ type: 'analyzeVariation', sessionId: session.id, fromTurn, moves }),

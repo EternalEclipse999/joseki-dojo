@@ -10,6 +10,8 @@ const server = await startServer({
   enginesDir: join(repoRoot, 'engines'),
   lockFile: join(repoRoot, 'katago.lock.json'),
   trapsFile: process.env.JOSEKI_TRAPS ?? join(repoRoot, 'packages', 'server', 'bases', 'traps.jdb'),
+  startsFile: process.env.JOSEKI_STARTS ?? join(repoRoot, 'packages', 'server', 'bases', 'starts.jdb'),
+  startsListFile: process.env.JOSEKI_STARTS_LIST ?? join(repoRoot, 'packages', 'server', 'bases', 'starts-list.json'),
   webDist: join(repoRoot, 'packages', 'web', 'dist'),
 })
 console.log(`Joseki Dojo: ${server.url}`)

@@ -9,6 +9,7 @@ import { registerHttp } from './api/http'
 import { Hub } from './api/hub'
 import { registerInstallRoutes } from './api/install-routes'
 import { registerSettingsRoutes } from './api/settings-routes'
+import { registerStartsRoutes } from './api/starts-routes'
 import { registerTrapsRoutes } from './api/traps-routes'
 import { registerUiRoutes } from './api/ui-routes'
 import { handleSocket } from './api/ws'
@@ -27,6 +28,7 @@ import { SettingsService } from './settings/service'
 import { openDb, type Db } from './store/db'
 import { SessionRepo } from './store/repo'
 import { UiService } from './settings/ui'
+import { StartBook } from './starts/book'
 import { TrapBook } from './traps/book'
 
 export interface AppServices {
@@ -41,6 +43,8 @@ export interface AppServices {
   installer: InstallerService
   /** The loaded traps base; empty when there is none. */
   traps: TrapBook
+  /** The loaded start positions; empty when there is none. */
+  starts: StartBook
   ui: UiService
   hub: Hub
 }
@@ -58,6 +62,8 @@ export interface ServiceOptions {
   fetch?: typeof fetch
   /** The traps base; default: an empty book. */
   traps?: TrapBook
+  /** The start positions; default: an empty book. */
+  starts?: StartBook
 }
 
 // The server only talks to the local browser. Checking Host defeats DNS rebinding, checking Origin stops other
@@ -73,6 +79,7 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
   const publish = (sessionId: string, msg: ServerMessage): void => hub.publish(sessionId, msg)
   const analysis = new AnalysisScheduler(engine, repo, config.analysis)
   const traps = options.traps ?? TrapBook.empty()
+  const starts = options.starts ?? StartBook.empty()
   const reviews = new ReviewService({ repo, analysis, config, publish, traps })
   const variations = new VariationService({ repo, engine, config })
   const sessions = new SessionService({
@@ -84,6 +91,7 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
     bot: new HumanBot(engine),
     strong: new StrongBot(engine),
     traps,
+    starts,
     log: options.log,
     onFinished: (id) => {
       reviews.prepare(id).catch((err: unknown) => publish(id, toErrorMessage(err)))
@@ -94,7 +102,7 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
   const settings = new SettingsService({ config, engine, health, lock, configFile, modelsDir: join(enginesDir, 'models'), commandFor, onSwitched: () => variations.clear() })
   const installer = new InstallerService({ config, lock, enginesDir, settings, commandFor, log, engine, health, fetch })
   const ui = new UiService(config, configFile)
-  return { config, db, engine, health, sessions, reviews, variations, settings, installer, hub, traps, ui }
+  return { config, db, engine, health, sessions, reviews, variations, settings, installer, hub, traps, starts, ui }
 }
 
 export async function buildApp(services: AppServices, webDist: string | null = null): Promise<FastifyInstance> {
@@ -116,6 +124,7 @@ export async function buildApp(services: AppServices, webDist: string | null = n
   registerSettingsRoutes(app, services.settings)
   registerInstallRoutes(app, services.installer)
   registerTrapsRoutes(app, services.traps)
+  registerStartsRoutes(app, services.starts)
   registerUiRoutes(app, services.ui)
   if (webDist && existsSync(webDist)) await app.register(fastifyStatic, { root: webDist })
   return app

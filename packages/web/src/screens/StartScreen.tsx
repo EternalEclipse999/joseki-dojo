@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks'
 import { ArrowRight, Dice3, ListChecks, Play, Shuffle, Swords } from 'lucide-preact'
-import { BOT_RANKS, DEFAULT_BOT_RANK, isBotRank, type SessionSettings } from '@joseki-dojo/shared'
+import { BOT_RANKS, DEFAULT_BOT_RANK, isBotRank, type SessionSettings, type StartListEntry } from '@joseki-dojo/shared'
+import { StartList } from '../components/StartList'
 import { rankLabel } from '../format'
 import { RANK_MARKS, rankAt, rankIndex } from '../rank-scale'
 
@@ -28,14 +29,21 @@ export interface StartScreenProps {
   defaultRank?: string
   /** Traps in the base; 0 disables the «Ловушки» mode. */
   trapsCount?: number
+  /** Start positions in the base; 0 turns «Случайно» and «Из списка» off. */
+  startsCount?: number
+  /** The named list; empty turns «Из списка» off. */
+  startsList?: StartListEntry[]
 }
 
 /** Spec 5: a new training — mode, corner, colour, bot strength and environment. */
-export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0 }: StartScreenProps) {
+export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, startsCount = 0, startsList = [] }: StartScreenProps) {
   const [mode, setMode] = useState<ModeChoice>('free')
   const [userColor, setUserColor] = useState<ColorChoice>('B')
   const [botRank, setBotRank] = useState(defaultRank && isBotRank(defaultRank) ? defaultRank : DEFAULT_BOT_RANK)
   const [corner, setCorner] = useState<CornerChoice>('random')
+  const [chosenId, setStartId] = useState<string | null>(null)
+  // A selection that is no longer on the list counts as empty.
+  const startId = chosenId !== null && startsList.some((e) => e.id === chosenId) ? chosenId : null
 
   return (
     <main>
@@ -61,23 +69,20 @@ export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0 }: Star
               <span class="d">{trapsCount > 0 ? 'бот разыграет известную ловушку' : 'нет базы ловушек'}</span>
             </label>
             <label class="mode">
-              <input type="radio" name="mode" disabled />
+              <input type="radio" name="mode" checked={mode === 'random'} disabled={startsCount === 0} onChange={() => setMode('random')} />
               <Dice3 aria-hidden="true" />
-              <b>
-                Случайно <span class="badge">скоро</span>
-              </b>
-              <span class="d">из базы дзёсеки</span>
+              <b>Случайно</b>
+              <span class="d">{startsCount > 0 ? 'позиция из базы дзёсеки' : 'база стартовых позиций недоступна'}</span>
             </label>
             <label class="mode">
-              <input type="radio" name="mode" disabled />
+              <input type="radio" name="mode" checked={mode === 'list'} disabled={startsList.length === 0} onChange={() => setMode('list')} />
               <ListChecks aria-hidden="true" />
-              <b>
-                Из списка <span class="badge">скоро</span>
-              </b>
-              <span class="d">выбрать самому</span>
+              <b>Из списка</b>
+              <span class="d">{startsList.length > 0 ? 'выберите дзёсеки' : 'база стартовых позиций недоступна'}</span>
             </label>
           </div>
         </div>
+        {mode === 'list' && <StartList entries={startsList} selected={startId} onSelect={setStartId} />}
 
         <div class="options">
           <div role="radiogroup" aria-label="Угол">
@@ -158,7 +163,9 @@ export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0 }: Star
         </div>
 
         <div class="start-actions">
-          <button class="primary lg" disabled={busy} onClick={() => onStart({ mode, environment: 'empty', userColor, botRank, corner })}>
+          <button class="primary lg" disabled={busy || (mode === 'list' && startId === null)}
+            onClick={() => onStart({ mode, environment: 'empty', userColor, botRank, corner, ...(mode === 'list' && startId ? { startId } : {}) })}
+          >
             Начать тренировку
             <ArrowRight aria-hidden="true" />
           </button>

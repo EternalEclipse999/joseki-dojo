@@ -11,3 +11,4 @@ playwright-report/
 *.log
 e2e/.repick/
 e2e/*.jdb
+e2e/starts-list.test.json

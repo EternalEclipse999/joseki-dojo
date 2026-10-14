@@ -80,4 +80,11 @@ CREATE TABLE trap_attempts (
 CREATE INDEX trap_attempts_trap ON trap_attempts (trap_id);
 `,
   },
+  {
+    version: 3,
+    name: '003_starts.sql',
+    sql: `
+ALTER TABLE sessions ADD COLUMN start_json TEXT;
+`,
+  },
 ]

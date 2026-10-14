@@ -174,3 +174,33 @@ describe('decode limits', () => {
     expect(decodeJdb(escape(360)).move(0)).toEqual([360 % 19, Math.floor(360 / 19)])
   })
 })
+
+describe('the start category', () => {
+  const startTree = (): JdbTree => ({
+    kind: 'starts',
+    verified: false,
+    roots: [{ move: [15, 3], category: 'none', loss: null, children: [{ move: [13, 2], category: 'start', loss: null, children: [] }] }],
+  })
+
+  it('writes and reads start nodes', () => {
+    const base = decodeJdb(encodeJdb(startTree()))
+    expect(base.kind).toBe('starts')
+    expect(base.nodesOf('start').map((i) => base.path(i))).toEqual([[[15, 3], [13, 2]]])
+  })
+
+  it('writes and reads dubious nodes', () => {
+    const tree = startTree()
+    tree.roots[0].children[0].category = 'dubious'
+    const base = decodeJdb(encodeJdb(tree))
+    expect(base.nodesOf('dubious').map((i) => base.path(i))).toEqual([[[15, 3], [13, 2]]])
+    expect(base.nodesOf('start')).toEqual([])
+  })
+
+  it('rejects a category above dubious', () => {
+    const bytes = encodeJdb({ kind: 'starts', verified: false, roots: [{ move: [15, 3], category: 'start', loss: null, children: [] }] })
+    // Header 16 bytes, root count (1 byte), the move (1 byte), then the flags.
+    bytes[18] = 6
+    new DataView(bytes.buffer).setUint32(12, crc32(bytes.subarray(16)), true)
+    expect(() => decodeJdb(bytes)).toThrow('Повреждённые флаги узла в базе')
+  })
+})

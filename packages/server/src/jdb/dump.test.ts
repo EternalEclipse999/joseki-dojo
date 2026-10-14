@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { testTrapsTree } from '../traps/fixture'
-import { decodeJdb, encodeJdb } from '.'
+import { testDubiousStartsTree } from '../starts/fixture'
+import { decodeJdb, encodeJdb, trapId } from '.'
 import { dumpSgf, dumpText } from './dump'
 
 const base = decodeJdb(encodeJdb(testTrapsTree()))
@@ -14,6 +15,17 @@ describe('dumpText', () => {
     expect(lines[3]).toMatch(/^ {4}O18 \[trap\] [0-9a-f]{8}$/)
     expect(lines[4]).toBe('      P17 [good]')
     expect(lines.some((l) => l.trim() === 'tenuki [good]')).toBe(true)
+  })
+
+  it('prints the header of a starts base and the ids of start and dubious nodes', () => {
+    const b = decodeJdb(encodeJdb(testDubiousStartsTree()))
+    const lines = dumpText(b).split('\n')
+    expect(lines[0]).toBe('starts, verified: no, nodes: 6, starts: 3, dubious: 1')
+    const id = (i: number): string => trapId(b.path(i))
+    const start = b.nodesOf('start')[0]
+    const dubious = b.nodesOf('dubious')[0]
+    expect(lines).toContain(`  O17 [start] ${id(start)}`)
+    expect(lines).toContain(`    O16 [dubious] ${id(dubious)}`)
   })
 
   it('prints the loss', () => {
