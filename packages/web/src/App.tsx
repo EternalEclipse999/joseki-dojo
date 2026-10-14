@@ -35,7 +35,7 @@ export function App() {
   const [defaultRank, setDefaultRank] = useState<string | undefined>(undefined)
   // True from sending startSession/replayFrom until the server answers (sessionState/error) or the link drops.
   const [starting, setStarting] = useState(false)
-  // The settings of the last startSession sent: «Следующая тренировка» starts with the same ones (in memory only).
+  // The settings of the last startSession sent: «Следующая позиция» starts with the same ones (in memory only).
   const [lastSettings, setLastSettings] = useState<SessionSettings | null>(null)
   const [install, setInstall] = useState<InstallStatus | null>(null)
   const [installChecked, setInstallChecked] = useState(false)

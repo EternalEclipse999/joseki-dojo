@@ -1,14 +1,22 @@
 import { sameVertex } from './board-maps'
 import { colorSign, nextColor, otherColor, Position, vertexToGtp, type Color, type Move, type MoveVertex, type PositionReview, type ServerMessage, type Vertex } from '@joseki-dojo/shared'
 
-/** Variations spec 3: the variation replaces game move `fromTurn`; `step` moves of it are shown (1..moves.length). */
+/** Variations spec 3: the variation replaces game move `fromTurn`; `step` moves of it are shown (1..moves.length); `originTurn` is the game move that was shown when it was started. */
 export interface Variation {
   fromTurn: number
+  /** The game move that was shown when the variation was started: leaving returns to it. */
+  originTurn: number
   moves: Vertex[]
   step: number
 }
 
-export const startVariation = (fromTurn: number, first: Vertex): Variation => ({ fromTurn, moves: [first], step: 1 })
+export const startVariation = (fromTurn: number, first: Vertex, originTurn = fromTurn): Variation => ({ fromTurn, originTurn, moves: [first], step: 1 })
+
+/** Variations spec 8: a board click at game move `turn` plays the move after it (the board shows the position after `turn`). */
+export const startAfterTurn = (turn: number, first: Vertex): Variation => startVariation(turn + 1, first, turn)
+
+/** Variations spec 8: leaving a variation shows the game move that was shown when it was started. */
+export const exitTurn = (v: Variation): number => v.originTurn
 
 /** A move after the shown part: the hidden tail is replaced. */
 export function playInVariation(v: Variation, next: Vertex): Variation {

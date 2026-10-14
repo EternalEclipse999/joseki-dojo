@@ -74,7 +74,7 @@ test('the board does not overlap the side panel in a wide window', async ({ page
   expect(board && panel && board.x + board.width <= panel.x).toBe(true)
 })
 
-test('«Следующая тренировка» starts a new game with the same settings, «К выбору тренировки» opens the start screen', async ({ page }) => {
+test('«Следующая позиция» starts a new game with the same settings, «К выбору тренировки» opens the start screen', async ({ page }) => {
   await startAsBlackTopRight(page)
   await vertex(page, 15, 3).click()
   await expect(page.getByTestId('moves-count')).toHaveText('2')
@@ -82,7 +82,7 @@ test('«Следующая тренировка» starts a new game with the sam
   await expect(page.getByText('Ход 1 из 2')).toBeVisible()
   await expect(page.getByRole('slider', { name: 'Ход партии' })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Следующая тренировка' }).click()
+  await page.getByRole('button', { name: 'Следующая позиция' }).click()
   await expect(page.getByRole('heading', { name: 'Ваш ход' })).toBeVisible()
   await expect(page.getByText(/^Чёрные против бота/)).toBeVisible()
   await expect(page.getByTestId('moves-count')).toHaveText('0')

@@ -27,7 +27,7 @@ export function VariationBar({ variation, onStep, onClose, autoReply, onAutoRepl
   return (
     <div class="variation-bar">
       <div class="nav">
-        <button class="ghost icon" disabled={step <= 1} onClick={() => onStep(-1)} aria-label="Назад по варианту">
+        <button class="ghost icon" onClick={() => onStep(-1)} aria-label="Назад по варианту">
           <ChevronLeft aria-hidden="true" />
         </button>
         <span class="line" data-testid="variation-line">

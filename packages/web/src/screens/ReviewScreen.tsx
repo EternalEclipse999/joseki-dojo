@@ -14,6 +14,7 @@ import {
   bestIsPass,
   candidateIndex,
   candidateLeft,
+  exitTurn,
   isLegalNext,
   mergeResult,
   moveLoss,
@@ -22,6 +23,7 @@ import {
   replyVertex,
   shouldReply,
   shownMoves,
+  startAfterTurn,
   startVariation,
   stepVariation,
   variationMoves,
@@ -50,7 +52,7 @@ export interface ReviewScreenProps {
   onReplay: (turn: number) => void
   /** «К выбору тренировки»: the start screen. */
   onNew: () => void
-  /** «Следующая тренировка»: a new game with the last settings; null while they are unknown. */
+  /** «Следующая позиция»: a new game with the last settings; null while they are unknown. */
   onNext: (() => void) | null
   busy?: boolean
   variations: VariationLink
@@ -78,7 +80,7 @@ export function ReviewScreen({ review, progress, onReplay, onNew, onNext, busy, 
               {onNext && (
                 <button class="primary" disabled={busy} onClick={onNext}>
                   <Play aria-hidden="true" />
-                  Следующая тренировка
+                  Следующая позиция
                 </button>
               )}
               <button class="ghost" onClick={onNew}>
@@ -101,7 +103,7 @@ export function ReviewScreen({ review, progress, onReplay, onNew, onNext, busy, 
               {onNext && (
                 <button class="primary" disabled={busy} onClick={onNext}>
                   <Play aria-hidden="true" />
-                  Следующая тренировка
+                  Следующая позиция
                 </button>
               )}
               <button class={onNext ? 'ghost' : 'primary'} onClick={onNew}>
@@ -228,15 +230,18 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, busy, variations }: Rev
   }, [live, key, finished, connected])
 
   const lastTurn = review.moves.length - 1
-  const inVariation = variation !== null
   const step = useMemo(
     () => (delta: number) => {
-      if (inVariation) {
-        setVariation((v) => v && stepVariation(v, delta))
+      if (variation) {
+        // Spec 8: «←» on the first variation move leaves the variation for the game position it started from.
+        if (delta < 0 && variation.step <= 1) {
+          setTurn(exitTurn(variation))
+          setVariation(null)
+        } else setVariation(stepVariation(variation, delta))
         setAwaiting(null)
       } else setTurn((t) => Math.min(lastTurn, Math.max(0, t + delta)))
     },
-    [inVariation, lastTurn],
+    [variation, lastTurn],
   )
   useArrowKeys(step)
 
@@ -283,24 +288,30 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, busy, variations }: Rev
   }, [awaiting, key, results, replyVisits])
 
   /** The user's moves from the shown position: a variation instead of game move `turn`, or more of the open one. */
-  const play = (vertices: Vertex[]): void => {
+  const play = (vertices: Vertex[], afterTurn = false): void => {
     if (awaiting !== null) return
     let next: Variation | null = variation
-    for (const v of vertices) next = next ? playInVariation(next, v) : startVariation(turn, v)
+    for (const v of vertices) next = next ? playInVariation(next, v) : afterTurn ? startAfterTurn(turn, v) : startVariation(turn, v)
     if (!next) return
     setVariation(next)
     setPassedKey(null)
     setAwaiting(autoReply ? positionKey(next.fromTurn, shownMoves(next)) : null)
   }
-  // A click plays at the position the candidates belong to, or after the shown branch.
+  // A click plays after the shown game move, or in the open variation, or after the shown branch.
   const onBoardClick = (v: Vertex): void => {
     if (awaiting !== null) return
     const pv = branch.map((m) => m.vertex)
+    // Spec 8: in the game, a click plays after the shown move (the letters are only hints); a shown branch is continued.
+    const plain = !variation && branchStep === null
+    if (plain) {
+      if (isLegalNext([...base, review.moves[turn]], v)) play([v], true)
+      return
+    }
     if (!pv.every(isVertex) || !isLegalNext([...base, ...branch], v)) return
     play([...pv, v])
   }
   const backToGame = (): void => {
-    if (variation) setTurn(variation.fromTurn)
+    if (variation) setTurn(exitTurn(variation))
     setVariation(null)
     setAwaiting(null)
   }
@@ -488,7 +499,7 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, busy, variations }: Rev
           {onNext && (
             <button class="primary" disabled={busy} onClick={onNext}>
               <Play aria-hidden="true" />
-              Следующая тренировка
+              Следующая позиция
             </button>
           )}
           <button disabled={busy} onClick={() => onReplay(turn)}>

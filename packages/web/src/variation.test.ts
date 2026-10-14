@@ -9,9 +9,11 @@ import {
   bestIsPass,
   candidateIndex,
   candidateLeft,
+  exitTurn,
   replyVertex,
   shouldReply,
   shownMoves,
+  startAfterTurn,
   startVariation,
   stepVariation,
   variationMoves,
@@ -44,18 +46,18 @@ const update = (moves: Vertex[], visits: number, done = false, lead = 0): Variat
 
 describe('a variation', () => {
   it('starts with one shown move', () => {
-    expect(startVariation(2, R6)).toEqual({ fromTurn: 2, moves: [R6], step: 1 })
+    expect(startVariation(2, R6)).toEqual({ fromTurn: 2, originTurn: 2, moves: [R6], step: 1 })
   })
 
   it('grows at the end', () => {
     const v = playInVariation(startVariation(0, R6), D4)
-    expect(v).toEqual({ fromTurn: 0, moves: [R6, D4], step: 2 })
+    expect(v).toEqual({ fromTurn: 0, originTurn: 0, moves: [R6, D4], step: 2 })
   })
 
   it('replaces the hidden tail when played after a step back', () => {
     const v = stepVariation(playInVariation(playInVariation(startVariation(0, R6), D4), Q16), -2)
     expect(v.step).toBe(1)
-    expect(playInVariation(v, C17)).toEqual({ fromTurn: 0, moves: [R6, C17], step: 2 })
+    expect(playInVariation(v, C17)).toEqual({ fromTurn: 0, originTurn: 0, moves: [R6, C17], step: 2 })
   })
 
   it('steps between its first and its last move', () => {
@@ -192,5 +194,17 @@ describe('the loss of a variation move', () => {
   it('is never negative', () => {
     expect(moveLoss('B', 1, 3)).toBe(0)
     expect(moveLoss('W', 3, 1)).toBe(0)
+  })
+})
+
+describe('where a variation starts and where it leaves to', () => {
+  it('a board click at game move N starts with the move after it, «Сыграть» replaces it', () => {
+    expect(startAfterTurn(3, R6)).toEqual({ fromTurn: 4, originTurn: 3, moves: [R6], step: 1 })
+    expect(startVariation(3, R6)).toEqual({ fromTurn: 3, originTurn: 3, moves: [R6], step: 1 })
+  })
+  it('leaving shows the game move that was shown at the start', () => {
+    expect(exitTurn(startAfterTurn(3, R6))).toBe(3)
+    expect(exitTurn(startVariation(3, R6))).toBe(3)
+    expect(exitTurn(startVariation(0, R6))).toBe(0)
   })
 })
