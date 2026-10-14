@@ -14,6 +14,7 @@ import { InstallScreen } from './screens/InstallScreen'
 import { ReviewScreen } from './screens/ReviewScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { StartScreen } from './screens/StartScreen'
+import { SessionFollow } from './session-follow'
 import { reviewLabels, reviewTitle, sessionTitle } from './session-title'
 import { applyTheme } from './theme'
 import type { VariationUpdate } from './variation'
@@ -37,7 +38,7 @@ export function App() {
   const [defaultRank, setDefaultRank] = useState<string | undefined>(undefined)
   // True from sending startSession/replayFrom until the server answers (sessionState/error) or the link drops.
   const [starting, setStarting] = useState(false)
-  // The settings of the last startSession sent: «Следующая позиция» starts with the same ones (in memory only).
+  // The settings of the last startSession sent: the review's new game and the start screen use them (in memory only).
   const [lastSettings, setLastSettings] = useState<SessionSettings | null>(null)
   const [install, setInstall] = useState<InstallStatus | null>(null)
   const [installChecked, setInstallChecked] = useState(false)
@@ -51,11 +52,13 @@ export function App() {
   const [starts, setStarts] = useState<StartsInfo | null>(null)
   const startTree = useMemo(() => buildStartTree(starts?.list ?? [], starts?.branches ?? [], starts?.groups ?? []), [starts])
 
+  const follow = useMemo(() => new SessionFollow(), [])
   const socket = useMemo(
     () =>
       new DojoSocket((msg) => {
         switch (msg.type) {
           case 'sessionState':
+            if (!follow.acceptState(msg.session.id)) break
             setSession(msg.session)
             setStarting(false)
             setError(null)
@@ -65,14 +68,15 @@ export function App() {
             }
             break
           case 'analysisProgress':
-            setProgress({ done: msg.done, total: msg.total })
+            if (follow.concerns(msg.sessionId)) setProgress({ done: msg.done, total: msg.total })
             break
           case 'variationAnalysis':
-            setVariationUpdate(msg)
+            if (follow.concerns(msg.sessionId)) setVariationUpdate(msg)
             break
           case 'reviewReady':
+            if (!follow.concerns(msg.sessionId)) break
             fetchReview(msg.sessionId)
-              .then((r) => r && setReview(r))
+              .then((r) => r && follow.concerns(r.sessionId) && setReview(r))
               .catch((e: Error) => {
                 setError(e.message)
                 setErrorSeq((n) => n + 1)
@@ -88,7 +92,7 @@ export function App() {
         setConnected(isConnected)
         if (!isConnected) setStarting(false)
       }),
-    [],
+    [follow],
   )
 
   useEffect(() => {
@@ -196,6 +200,7 @@ export function App() {
 
   const send = (msg: ClientMessage): void => socket.send(msg)
   const sendStarting = (msg: ClientMessage): void => {
+    follow.starting(session?.id ?? null)
     setStarting(true)
     send(msg)
   }
@@ -204,6 +209,7 @@ export function App() {
     sendStarting({ type: 'startSession', settings })
   }
   const resetToStart = (): void => {
+    follow.leave(session?.id ?? null)
     setSession(null)
     setReview(null)
     setProgress(null)
