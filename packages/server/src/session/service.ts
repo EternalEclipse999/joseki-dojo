@@ -10,6 +10,8 @@ import {
   type MoveVertex,
   type ResolvedSettings,
   type ServerMessage,
+  type StartRef,
+  type Mode,
   type TrapRef,
   type SessionSettings,
   type SessionView,
@@ -24,6 +26,7 @@ import type { AnalysisEngine } from '../engine/engine'
 import { baseQuery } from '../engine/query'
 import { toErrorMessage } from '../errors'
 import { trapReview } from '../review/trap'
+import { StartBook, type ListStart } from '../starts/book'
 import { TrapBook } from '../traps/book'
 import { movesBefore, type SessionRecord } from '../store/records'
 import type { SessionRepo } from '../store/repo'
@@ -37,6 +40,8 @@ export interface SessionServiceDeps {
   strong?: StrongChooser
   /** The traps base; default: an empty book (the traps mode is unavailable). */
   traps?: TrapBook
+  /** The start positions; default: an empty book (the start modes are unavailable). */
+  starts?: StartBook
   engine: AnalysisEngine
   config: AppConfig
   publish: (sessionId: string, msg: ServerMessage) => void
@@ -49,14 +54,17 @@ export interface SessionServiceDeps {
   now?: () => string
 }
 
+const MODES: readonly Mode[] = ['free', 'traps', 'random', 'list']
+
 export function validateSettings(s: SessionSettings): void {
   const ok =
-    (s.mode === 'free' || s.mode === 'traps') &&
+    MODES.includes(s.mode) &&
     s.environment === 'empty' &&
     (s.userColor === 'B' || s.userColor === 'W' || s.userColor === 'random') &&
     typeof s.botRank === 'string' &&
     isBotRank(s.botRank) &&
-    (s.corner === 'random' || CORNERS.includes(s.corner))
+    (s.corner === 'random' || CORNERS.includes(s.corner)) &&
+    (s.mode !== 'list' || (typeof s.startId === 'string' && s.startId !== ''))
   if (!ok) throw new SessionError('Некорректные настройки тренировки', 'bad_request')
 }
 
@@ -67,6 +75,7 @@ export class SessionService {
   private readonly now: () => string
   private readonly strong: StrongChooser
   private readonly traps: TrapBook
+  private readonly starts: StartBook
   private readonly log: (line: string) => void
   /** Sessions whose trap the book no longer knows (logged once each). */
   private readonly missingTrap = new Set<string>()
@@ -74,6 +83,7 @@ export class SessionService {
   constructor(private readonly d: SessionServiceDeps) {
     this.strong = d.strong ?? new StrongBot(d.engine)
     this.traps = d.traps ?? TrapBook.empty()
+    this.starts = d.starts ?? StartBook.empty()
     this.log = d.log ?? (() => {})
     this.rng = d.rng ?? Math.random
     this.newId = d.newId ?? randomUUID
@@ -90,6 +100,7 @@ export class SessionService {
       corner: settings.corner === 'random' ? CORNERS[Math.floor(this.rng() * CORNERS.length)] : settings.corner,
     }
     if (resolved.mode === 'traps') return this.startTrap(resolved)
+    if (resolved.mode === 'random' || resolved.mode === 'list') return this.startPosition(resolved, settings.startId)
     return this.create(resolved, [], null)
   }
 
@@ -103,6 +114,31 @@ export class SessionService {
     const { initialMoves, placement } = this.traps.place(id, resolved.corner, resolved.userColor, mirror)
     const trap: TrapRef = { id, index: initialMoves.length, mirror, swapColors: placement.swapColors }
     return this.create({ ...resolved, trap }, initialMoves, null)
+  }
+
+  /** Spec (starts) 5.2–5.3: a start from the list or picked by shows, put in the corner; the bot moves first when it is its turn. */
+  private startPosition(resolved: ResolvedSettings, startId: string | undefined): SessionView {
+    if (this.starts.count === 0) throw new SessionError('Стартовые позиции недоступны: нет базы', 'bad_request')
+    let id: string | null
+    let named: ListStart | null = null
+    if (resolved.mode === 'list') {
+      named = startId === undefined ? null : this.starts.listStart(startId)
+      if (startId === undefined || !named) throw new SessionError('Такой позиции нет в списке', 'bad_request')
+      id = startId
+    } else {
+      const shows = this.d.repo.startShows()
+      id = this.starts.pick((s) => shows.get(s) ?? 0, this.rng)
+    }
+    if (id === null) throw new SessionError('Стартовые позиции недоступны: нет базы', 'bad_request')
+    const mirror = this.rng() < 0.5
+    const dubious = this.starts.isDubious(id)
+    // Spec (starts) 5.2: after a dubious move the user answers at once — swap the colours when the user chose the side that played it.
+    const swapColors = dubious && this.starts.lastColor(id) === resolved.userColor
+    const initialMoves = this.starts.place(id, resolved.corner, mirror, swapColors)
+    // «Случайно» names a start only by the list positions: a branch can share the moves of an unnamed start of the base.
+    named ??= this.starts.entryOf(id)
+    const start: StartRef = { id, name: named?.name ?? null, ...(named?.group ? { group: named.group } : {}), mirror, ...(dubious ? { dubious: true, swapColors } : {}) }
+    return this.create({ ...resolved, start }, initialMoves, null)
   }
 
   replayFrom(sessionId: string, turn: number): SessionView {

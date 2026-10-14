@@ -6,6 +6,7 @@ import { FAKE_KATAGO, REPO_LOCK, tempDir } from '../test/helpers'
 import { createInstallFixture, fakeBuildCommand, type InstallFixture } from '../test/install-fixture'
 import { encodeJdb, type JdbNode, type JdbTree } from './jdb'
 import { startServer, type RunningServer } from './start'
+import { writeTestStarts } from './starts/fixture'
 import { writeTestTraps } from './traps/fixture'
 
 const servers: RunningServer[] = []
@@ -147,6 +148,64 @@ describe('startServer', () => {
       const { lines, traps } = await startWith(file)
       expect(lines.some((l) => l.includes('База ловушек недоступна'))).toBe(false)
       expect(traps).toEqual({ count: 2, verified: true })
+    })
+  })
+
+  describe('starts base', () => {
+    async function startWith(startsFile?: string, startsListFile?: string): Promise<{ lines: string[]; starts: unknown }> {
+      const root = tempDir()
+      const lines: string[] = []
+      const server = await startServer({
+        configFile: join(root, 'config.json'),
+        dataDir: join(root, 'data'),
+        enginesDir: join(root, 'engines'),
+        lockFile: REPO_LOCK,
+        webDist: null,
+        port: 0,
+        log: (line) => void lines.push(line),
+        startsFile,
+        startsListFile,
+      })
+      servers.push(server)
+      return { lines, starts: await getJson(`${server.url}/api/starts`) }
+    }
+    const noStartsLog = (lines: string[]): boolean => lines.some((l) => l.startsWith('База стартовых позиций') || l.startsWith('Список стартовых позиций'))
+
+    it('serves a valid base and its list', async () => {
+      const dir = tempDir()
+      const base = join(dir, 'starts.jdb')
+      const list = join(dir, 'starts-list.json')
+      writeTestStarts(base, list)
+      const { lines, starts } = await startWith(base, list)
+      expect(noStartsLog(lines)).toBe(false)
+      expect(starts).toMatchObject({ count: 3 })
+      expect((starts as { list: unknown[] }).list).toHaveLength(2)
+    })
+
+    it('turns the start modes off for a broken base', async () => {
+      const dir = tempDir()
+      const base = join(dir, 'starts.jdb')
+      writeFileSync(base, 'nonsense')
+      const { lines, starts } = await startWith(base, join(dir, 'starts-list.json'))
+      expect(lines.some((l) => l.startsWith('База стартовых позиций недоступна: '))).toBe(true)
+      expect(starts).toEqual({ count: 0, list: [], branches: [], groups: [] })
+    })
+
+    it('turns only the list off for a broken list', async () => {
+      const dir = tempDir()
+      const base = join(dir, 'starts.jdb')
+      const list = join(dir, 'starts-list.json')
+      writeTestStarts(base, list)
+      writeFileSync(list, 'not json')
+      const { lines, starts } = await startWith(base, list)
+      expect(lines.some((l) => l.startsWith('Список стартовых позиций недоступен: '))).toBe(true)
+      expect(starts).toEqual({ count: 3, list: [], branches: [], groups: [] })
+    })
+
+    it('serves an empty book when no files are given', async () => {
+      const { lines, starts } = await startWith()
+      expect(noStartsLog(lines)).toBe(false)
+      expect(starts).toEqual({ count: 0, list: [], branches: [], groups: [] })
     })
   })
 })

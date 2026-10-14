@@ -122,6 +122,16 @@ The one-time run on the GPU machine:
 5. `npm run traps:gpu` (roughly 20-90 minutes depending on the GPU; keep the machine awake).
 6. `git push` (`git push -u origin HEAD` for a new branch).
 
+### Start positions base
+
+The start modes read `packages/server/bases/starts.jdb`, a JDB base of kind `starts`. A node of category `start` is a start position: its path, in canonical form, is the moves put on the board. A node of category `dubious` is a start that ends with the opponent's dubious move; it is used only by «Случайно» (about one pick in ten), with the colours swapped so that the user answers that move. The ids are the same as for traps (the first 8 hex characters of the SHA-1 of the canonical path).
+
+`packages/server/bases/starts-list.json` is the named list for «Из списка»: a JSON object with `positions` — `{ group, name, short, moves, rare }` in chapter order, with the groups `4-4`, `3-4`, `3-3`, `5-4` and `5-3`, canonical moves in GTP, the caption `short` for the tree and `rare: true` for positions pros rarely play — and `branches` — `{ moves, name }`, the names of tree nodes that are not positions (an approach, say). A position whose path is not a normal start of the base, or a branch with no positions under it, is skipped with a log line. A missing or broken base turns both start modes off; a missing or broken list turns off only «Из списка».
+
+```bash
+npm run jdb:dump -- packages/server/bases/starts.jdb
+```
+
 ### Project layout
 
 - `packages/shared`: types, coordinates, the corner zone, Go rules

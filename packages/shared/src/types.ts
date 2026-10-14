@@ -17,7 +17,7 @@ export interface PlayedMove extends Move {
   inZone: boolean
 }
 
-export type Mode = 'free' | 'traps'
+export type Mode = 'free' | 'traps' | 'random' | 'list'
 export type Environment = 'empty'
 
 export interface SessionSettings {
@@ -26,6 +26,8 @@ export interface SessionSettings {
   userColor: Color | 'random'
   botRank: string
   corner: Corner | 'random'
+  /** Mode 'list': the id of the chosen node of the tree — a position, a branch or a group's corner stone. */
+  startId?: string
 }
 
 /** The trap of a traps-mode session and how its canonical form was put on the board. */
@@ -37,6 +39,23 @@ export interface TrapRef {
   swapColors: boolean
 }
 
+/** The start position of a 'random' or 'list' session and how its canonical form was put on the board. */
+export interface StartRef {
+  id: string
+  /** The name on the list: a position's full name, a branch's name, or the group for its corner stone; null for a position that is not on it. */
+  name: string | null
+  /**
+   * The group on the list; the same name can stand in two groups (starts spec 5.4). None for a group's corner stone,
+   * whose name is the group, and in sessions saved before it.
+   */
+  group?: StartGroup
+  mirror: boolean
+  /** Spec (starts) 3.4: the start ends with the opponent's dubious move («Случайно» only). */
+  dubious?: boolean
+  /** The colours of a dubious start were swapped so that the user answers the dubious move. */
+  swapColors?: boolean
+}
+
 export interface ResolvedSettings {
   mode: Mode
   environment: Environment
@@ -45,6 +64,8 @@ export interface ResolvedSettings {
   corner: Corner
   /** Only in traps mode. */
   trap?: TrapRef
+  /** Only in the start modes ('random', 'list'). */
+  start?: StartRef
 }
 
 export type SessionStatus = 'playing' | 'finished' | 'abandoned'
@@ -164,4 +185,46 @@ export interface UiSettings {
 export interface TrapsInfo {
   count: number
   verified: boolean
+}
+
+/** Groups of the named start list, in screen order: the first move in the corner. */
+export const START_GROUPS = ['4-4', '3-4', '3-3', '5-4', '5-3'] as const
+export type StartGroup = (typeof START_GROUPS)[number]
+export const isStartGroup = (value: unknown): value is StartGroup => (START_GROUPS as readonly unknown[]).includes(value)
+
+/** One position of the named list; `moves` are canonical (top-right corner, Black first) in GTP. */
+export interface StartListEntry {
+  id: string
+  group: StartGroup
+  /** The full name: crumbs of the game and the review. */
+  name: string
+  /** The caption in the tree (starts spec 5.1); the full name when the list file has none. */
+  short: string
+  /** Played by pros fewer than 10 times since 2016 (starts spec 3.3): shown muted with «редко». */
+  rare: boolean
+  moves: string[]
+}
+
+/** A named node of the tree that is not a position itself, e.g. «Малое приближение» (starts spec 3.3); canonical GTP moves. */
+export interface StartBranch {
+  /** A training can start from a branch (starts spec 5.1): the start id of its moves. */
+  id: string
+  moves: string[]
+  name: string
+}
+
+/** The corner stone of a group whose positions all begin with it; a training can start from it (starts spec 5.1). */
+export interface StartGroupHead {
+  id: string
+  group: StartGroup
+  /** The one canonical GTP move. */
+  moves: string[]
+}
+
+/** What `GET /api/starts` reports: how many start positions the base holds, the named list, its branches and group stones. */
+export interface StartsInfo {
+  count: number
+  list: StartListEntry[]
+  branches: StartBranch[]
+  groups: StartGroupHead[]
 }

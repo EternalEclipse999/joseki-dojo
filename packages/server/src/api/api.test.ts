@@ -9,6 +9,8 @@ import type { ClientMessage, ServerMessage } from '@joseki-dojo/shared'
 import { fakeEngine, serviceOptions, testConfig } from '../../test/helpers'
 import { buildApp, createServices, type AppServices } from '../app'
 import { HealthMonitor } from '../engine/health'
+import { StartBook } from '../starts/book'
+import { TEST_STARTS_LIST, testStartsTree } from '../starts/fixture'
 import { TrapBook } from '../traps/book'
 import { testTrapsTree } from '../traps/fixture'
 import { decodeJdb, encodeJdb } from '../jdb'
@@ -285,6 +287,27 @@ describe('GET /api/traps', () => {
       await other.close()
       await withTraps.engine.stop()
       withTraps.db.close()
+    }
+  })
+})
+
+describe('GET /api/starts', () => {
+  it('reports an empty book without a base', async () => {
+    expect(await (await fetch(`http://${host}/api/starts`)).json()).toEqual({ count: 0, list: [], branches: [], groups: [] })
+  })
+
+  it('reports the loaded base and its list', async () => {
+    const config = testConfig()
+    const starts = StartBook.fromBase(decodeJdb(encodeJdb(testStartsTree()))).withList(JSON.stringify(TEST_STARTS_LIST), () => {})
+    const services = createServices(config, fakeEngine(), serviceOptions(config, { starts }))
+    const other = await buildApp(services)
+    try {
+      const res = await other.inject({ method: 'GET', url: '/api/starts', headers: { host: '127.0.0.1:1' } })
+      expect(res.json()).toEqual({ count: 3, list: starts.list(), branches: starts.branches(), groups: starts.groups() })
+    } finally {
+      await other.close()
+      await services.engine.stop()
+      services.db.close()
     }
   })
 })

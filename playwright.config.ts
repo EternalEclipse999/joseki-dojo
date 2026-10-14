@@ -8,9 +8,9 @@ export default defineConfig({
   // Playwright starts these one after another: the first builds the web UI that the second serves too.
   webServer: [
     {
-      command: `node -e "require('fs').rmSync('e2e/.data',{recursive:true,force:true})" && npx tsx e2e/make-traps.ts && npm run build && npx tsx packages/server/src/main.ts`,
+      command: `node -e "require('fs').rmSync('e2e/.data',{recursive:true,force:true})" && npx tsx e2e/make-traps.ts && npx tsx e2e/make-starts.ts && npm run build && npx tsx packages/server/src/main.ts`,
       url: 'http://127.0.0.1:5180/api/health',
-      env: { JOSEKI_CONFIG: 'e2e/config.e2e.json', JOSEKI_TRAPS: 'e2e/traps.test.jdb' },
+      env: { JOSEKI_CONFIG: 'e2e/config.e2e.json', JOSEKI_TRAPS: 'e2e/traps.test.jdb', JOSEKI_STARTS: 'e2e/starts.test.jdb', JOSEKI_STARTS_LIST: 'e2e/starts-list.test.json' },
       reuseExistingServer: false,
       timeout: 120_000,
     },

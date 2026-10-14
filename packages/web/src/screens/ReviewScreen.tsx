@@ -10,6 +10,7 @@ import { LossBar } from '../components/LossBar'
 import { VariationBar } from '../components/VariationBar'
 import { ACTOR_LABEL, CATEGORY_LABEL, formatCount, formatPoints, moveLabel } from '../format'
 import { summaryTiles } from '../review-summary'
+import type { ReviewLabels } from '../session-title'
 import {
   bestIsPass,
   candidateIndex,
@@ -50,15 +51,17 @@ export interface ReviewScreenProps {
   review: ReviewData | null
   progress: { done: number; total: number } | null
   onReplay: (turn: number) => void
-  /** «К выбору тренировки»: the start screen. */
+  /** Back to the start screen. */
   onNew: () => void
-  /** «Следующая позиция»: a new game with the last settings; null while they are unknown. */
+  /** A new game with the last settings; null while they are unknown. */
   onNext: (() => void) | null
+  /** The captions of `onNext` and `onNew`, which depend on the mode. */
+  labels: ReviewLabels
   busy?: boolean
   variations: VariationLink
 }
 
-export function ReviewScreen({ review, progress, onReplay, onNew, onNext, busy, variations }: ReviewScreenProps) {
+export function ReviewScreen({ review, progress, onReplay, onNew, onNext, labels, busy, variations }: ReviewScreenProps) {
   if (!review) {
     return (
       <main>
@@ -80,12 +83,12 @@ export function ReviewScreen({ review, progress, onReplay, onNew, onNext, busy, 
               {onNext && (
                 <button class="primary" disabled={busy} onClick={onNext}>
                   <Play aria-hidden="true" />
-                  Следующая позиция
+                  {labels.next}
                 </button>
               )}
               <button class="ghost" onClick={onNew}>
                 <FolderOpen aria-hidden="true" />
-                К выбору тренировки
+                {labels.back}
               </button>
             </div>
           </div>
@@ -103,12 +106,12 @@ export function ReviewScreen({ review, progress, onReplay, onNew, onNext, busy, 
               {onNext && (
                 <button class="primary" disabled={busy} onClick={onNext}>
                   <Play aria-hidden="true" />
-                  Следующая позиция
+                  {labels.next}
                 </button>
               )}
               <button class={onNext ? 'ghost' : 'primary'} onClick={onNew}>
                 <FolderOpen aria-hidden="true" />
-                К выбору тренировки
+                {labels.back}
               </button>
             </div>
           </div>
@@ -116,7 +119,7 @@ export function ReviewScreen({ review, progress, onReplay, onNew, onNext, busy, 
       </main>
     )
   }
-  return <ReviewLoaded key={review.sessionId} review={review} onReplay={onReplay} onNew={onNew} onNext={onNext} busy={busy} variations={variations} />
+  return <ReviewLoaded key={review.sessionId} review={review} onReplay={onReplay} onNew={onNew} onNext={onNext} labels={labels} busy={busy} variations={variations} />
 }
 
 const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
@@ -173,6 +176,7 @@ interface ReviewLoadedProps {
   onReplay: (turn: number) => void
   onNew: () => void
   onNext: (() => void) | null
+  labels: ReviewLabels
   busy?: boolean
   variations: VariationLink
 }
@@ -181,7 +185,7 @@ interface ReviewLoadedProps {
  * Spec 7: summary, loss chart, move navigator, candidates and the branch, next to the board.
  * Variations spec 3–5: a variation instead of a game move, its deepening analysis and KataGo's replies.
  */
-function ReviewLoaded({ review, onReplay, onNew, onNext, busy, variations }: ReviewLoadedProps) {
+function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variations }: ReviewLoadedProps) {
   const [turn, setTurn] = useState(0)
   const [pvStep, setPvStep] = useState<number | null>(null)
   const [showOwnership, setShowOwnership] = useState(false)
@@ -502,7 +506,7 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, busy, variations }: Rev
           {onNext && (
             <button class="primary" disabled={busy} onClick={onNext}>
               <Play aria-hidden="true" />
-              Следующая позиция
+              {labels.next}
             </button>
           )}
           <button disabled={busy} onClick={() => onReplay(turn)}>
@@ -511,7 +515,7 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, busy, variations }: Rev
           </button>
           <button class="ghost" onClick={onNew}>
             <FolderOpen aria-hidden="true" />
-            К выбору тренировки
+            {labels.back}
           </button>
         </div>
       </aside>

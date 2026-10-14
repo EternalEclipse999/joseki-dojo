@@ -1,8 +1,9 @@
 import type { JSX } from 'preact'
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import type { AnalysisSettings, ClientMessage, HealthResponse, InstallStatus, ReviewData, SessionSettings, SessionView, TrapsInfo } from '@joseki-dojo/shared'
+import type { AnalysisSettings, ClientMessage, HealthResponse, InstallStatus, ResolvedSettings, ReviewData, SessionSettings, SessionView, StartsInfo, TrapsInfo } from '@joseki-dojo/shared'
 import { LoaderCircle, RefreshCw } from 'lucide-preact'
-import { DojoSocket, fetchHealth, fetchInstall, fetchReview, fetchSettings, fetchTraps, fetchUi, recheckHealth } from './api'
+import { buildStartTree } from './start-tree'
+import { DojoSocket, fetchHealth, fetchInstall, fetchReview, fetchSettings, fetchStarts, fetchTraps, fetchUi, recheckHealth } from './api'
 import { AppHeader } from './components/AppHeader'
 import { AppUpdateBanner } from './components/AppUpdateBanner'
 import { Bar } from './components/Bar'
@@ -13,6 +14,8 @@ import { InstallScreen } from './screens/InstallScreen'
 import { ReviewScreen } from './screens/ReviewScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { StartScreen } from './screens/StartScreen'
+import { SessionFollow } from './session-follow'
+import { reviewLabels, reviewTitle, sessionTitle } from './session-title'
 import { applyTheme } from './theme'
 import type { VariationUpdate } from './variation'
 
@@ -35,7 +38,7 @@ export function App() {
   const [defaultRank, setDefaultRank] = useState<string | undefined>(undefined)
   // True from sending startSession/replayFrom until the server answers (sessionState/error) or the link drops.
   const [starting, setStarting] = useState(false)
-  // The settings of the last startSession sent: «Следующая позиция» starts with the same ones (in memory only).
+  // The settings of the last startSession sent: the review's new game and the start screen use them (in memory only).
   const [lastSettings, setLastSettings] = useState<SessionSettings | null>(null)
   const [install, setInstall] = useState<InstallStatus | null>(null)
   const [installChecked, setInstallChecked] = useState(false)
@@ -46,12 +49,16 @@ export function App() {
   // Variations spec 6.2: the latest analysis of a variation position; the review keeps the results.
   const [variationUpdate, setVariationUpdate] = useState<VariationUpdate | null>(null)
   const [analysisSettings, setAnalysisSettings] = useState<AnalysisSettings | null>(null)
+  const [starts, setStarts] = useState<StartsInfo | null>(null)
+  const startTree = useMemo(() => buildStartTree(starts?.list ?? [], starts?.branches ?? [], starts?.groups ?? []), [starts])
 
+  const follow = useMemo(() => new SessionFollow(), [])
   const socket = useMemo(
     () =>
       new DojoSocket((msg) => {
         switch (msg.type) {
           case 'sessionState':
+            if (!follow.acceptState(msg.session.id)) break
             setSession(msg.session)
             setStarting(false)
             setError(null)
@@ -61,14 +68,15 @@ export function App() {
             }
             break
           case 'analysisProgress':
-            setProgress({ done: msg.done, total: msg.total })
+            if (follow.concerns(msg.sessionId)) setProgress({ done: msg.done, total: msg.total })
             break
           case 'variationAnalysis':
-            setVariationUpdate(msg)
+            if (follow.concerns(msg.sessionId)) setVariationUpdate(msg)
             break
           case 'reviewReady':
+            if (!follow.concerns(msg.sessionId)) break
             fetchReview(msg.sessionId)
-              .then((r) => r && setReview(r))
+              .then((r) => r && follow.concerns(r.sessionId) && setReview(r))
               .catch((e: Error) => {
                 setError(e.message)
                 setErrorSeq((n) => n + 1)
@@ -84,7 +92,7 @@ export function App() {
         setConnected(isConnected)
         if (!isConnected) setStarting(false)
       }),
-    [],
+    [follow],
   )
 
   useEffect(() => {
@@ -154,6 +162,14 @@ export function App() {
       .catch(() => setTraps({ count: 0, verified: false }))
   }, [ready, healthTick])
 
+  // Starts spec 5.1: the start cards are available only when the base holds positions.
+  useEffect(() => {
+    if (!ready) return
+    fetchStarts()
+      .then(setStarts)
+      .catch(() => setStarts({ count: 0, list: [], branches: [], groups: [] }))
+  }, [ready, healthTick])
+
   // While a finished session has no review yet, poll for it: reviewReady may have been missed
   // (socket drop) and the server does not re-send it on resync.
   const finishedId = session?.status === 'finished' ? session.id : null
@@ -184,6 +200,7 @@ export function App() {
 
   const send = (msg: ClientMessage): void => socket.send(msg)
   const sendStarting = (msg: ClientMessage): void => {
+    follow.starting(session?.id ?? null)
     setStarting(true)
     send(msg)
   }
@@ -192,6 +209,7 @@ export function App() {
     sendStarting({ type: 'startSession', settings })
   }
   const resetToStart = (): void => {
+    follow.leave(session?.id ?? null)
     setSession(null)
     setReview(null)
     setProgress(null)
@@ -264,15 +282,18 @@ export function App() {
         key={defaultRank}
         defaultRank={defaultRank}
         trapsCount={traps?.count ?? 0}
+        startsCount={starts?.count ?? 0}
+        startTree={startTree}
+        last={lastSettings}
         busy={starting || !connected}
         onStart={startWith}
       />
     )
   } else if (session.status === 'playing') {
-    crumb = session.settings.mode === 'traps' ? 'Ловушка' : 'Свободная тренировка'
+    crumb = sessionTitle(session.settings)
     screen = <GameScreen session={session} errorSeq={errorSeq} send={send} />
   } else {
-    crumb = 'Разбор тренировки'
+    crumb = reviewTitle(session.settings)
     screen = (
       <ReviewScreen
         review={review}
@@ -281,6 +302,7 @@ export function App() {
         onReplay={(turn) => sendStarting({ type: 'replayFrom', sessionId: session.id, turn })}
         onNew={resetToStart}
         onNext={lastSettings ? () => startWith(lastSettings) : null}
+        labels={reviewLabels(session.settings.mode)}
         variations={{
           update: variationUpdate,
           analyze: (fromTurn, moves) => send({ type: 'analyzeVariation', sessionId: session.id, fromTurn, moves }),

@@ -3,14 +3,15 @@ import type { JdbBase } from './format'
 
 /** Text dump: a header line, then one line per node, indented by depth. */
 export function dumpText(base: JdbBase): string {
-  const lines = [`${base.kind}, verified: ${base.verified ? 'yes' : 'no'}, nodes: ${base.size}, traps: ${base.nodesOf('trap').length}`]
+  const counts = base.kind === 'starts' ? `starts: ${base.nodesOf('start').length}, dubious: ${base.nodesOf('dubious').length}` : `traps: ${base.nodesOf('trap').length}`
+  const lines = [`${base.kind}, verified: ${base.verified ? 'yes' : 'no'}, nodes: ${base.size}, ${counts}`]
   const walk = (i: number, depth: number): void => {
     const cat = base.category(i)
     const loss = base.loss(i)
     let line = `${'  '.repeat(depth)}${moveText(base.move(i))}`
     if (cat !== 'none') line += ` [${cat}]`
     if (loss !== null) line += ` loss ${loss}`
-    if (cat === 'trap') line += ` ${trapId(base.path(i))}`
+    if (cat === 'trap' || cat === 'start' || cat === 'dubious') line += ` ${trapId(base.path(i))}`
     lines.push(line)
     for (const c of base.children(i)) walk(c, depth + 1)
   }

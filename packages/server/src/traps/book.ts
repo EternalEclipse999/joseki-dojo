@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { otherColor, Position, type Color, type Corner, type Move, type MoveVertex, type TrapVerdict, type Vertex } from '@joseki-dojo/shared'
-import type { Rng } from '../bot/rng'
+import { pickLeastShown, type Rng } from '../bot/rng'
 import { decodeJdb, fromTopRight, JdbError, mirrorDiagonal, mirrorMoves, sameMove, toTopRight, trapId, zoneIndex, type CanonicalMove, type JdbBase } from '../jdb'
 
 export interface TrapPlacement {
@@ -72,15 +72,7 @@ export class TrapBook {
 
   /** Weighted random trap: weight 1 / (1 + shows). One `rng()` draw; null for an empty book. */
   pick(shows: (id: string) => number, rng: Rng): string | null {
-    const ids = this.ids()
-    if (ids.length === 0) return null
-    const weights = ids.map((id) => 1 / (1 + shows(id)))
-    let r = rng() * weights.reduce((a, b) => a + b, 0)
-    for (let k = 0; k < ids.length; k++) {
-      r -= weights[k]
-      if (r < 0) return ids[k]
-    }
-    return ids[ids.length - 1]
+    return pickLeastShown(this.ids(), shows, rng)
   }
 
   private nodeOf(id: string): { base: JdbBase; node: number } {
