@@ -26,7 +26,7 @@ import type { AnalysisEngine } from '../engine/engine'
 import { baseQuery } from '../engine/query'
 import { toErrorMessage } from '../errors'
 import { trapReview } from '../review/trap'
-import { StartBook } from '../starts/book'
+import { StartBook, type ListStart } from '../starts/book'
 import { TrapBook } from '../traps/book'
 import { movesBefore, type SessionRecord } from '../store/records'
 import type { SessionRepo } from '../store/repo'
@@ -120,8 +120,10 @@ export class SessionService {
   private startPosition(resolved: ResolvedSettings, startId: string | undefined): SessionView {
     if (this.starts.count === 0) throw new SessionError('Стартовые позиции недоступны: нет базы', 'bad_request')
     let id: string | null
+    let named: ListStart | null = null
     if (resolved.mode === 'list') {
-      if (startId === undefined || !this.starts.isListed(startId)) throw new SessionError('Такой позиции нет в списке', 'bad_request')
+      named = startId === undefined ? null : this.starts.listStart(startId)
+      if (startId === undefined || !named) throw new SessionError('Такой позиции нет в списке', 'bad_request')
       id = startId
     } else {
       const shows = this.d.repo.startShows()
@@ -133,7 +135,9 @@ export class SessionService {
     // Spec (starts) 5.2: after a dubious move the user answers at once — swap the colours when the user chose the side that played it.
     const swapColors = dubious && this.starts.lastColor(id) === resolved.userColor
     const initialMoves = this.starts.place(id, resolved.corner, mirror, swapColors)
-    const start: StartRef = { id, name: this.starts.nameOf(id), mirror, ...(dubious ? { dubious: true, swapColors } : {}) }
+    // «Случайно» names a start only by the list positions: a branch can share the moves of an unnamed start of the base.
+    named ??= this.starts.entryOf(id)
+    const start: StartRef = { id, name: named?.name ?? null, ...(named?.group ? { group: named.group } : {}), mirror, ...(dubious ? { dubious: true, swapColors } : {}) }
     return this.create({ ...resolved, start }, initialMoves, null)
   }
 

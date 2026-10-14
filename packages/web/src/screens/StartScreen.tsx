@@ -1,9 +1,10 @@
 import { useState } from 'preact/hooks'
 import { ArrowRight, Dice3, ListChecks, Play, Shuffle, Swords } from 'lucide-preact'
-import { BOT_RANKS, DEFAULT_BOT_RANK, isBotRank, type SessionSettings, type StartListEntry } from '@joseki-dojo/shared'
-import { StartList } from '../components/StartList'
+import { BOT_RANKS, DEFAULT_BOT_RANK, isBotRank, type SessionSettings } from '@joseki-dojo/shared'
+import { StartTree } from '../components/StartTree'
 import { rankLabel } from '../format'
 import { RANK_MARKS, rankAt, rankIndex } from '../rank-scale'
+import { findById, findNode, nodeTitle, type StartTreeNode } from '../start-tree'
 
 type ModeChoice = SessionSettings['mode']
 type ColorChoice = SessionSettings['userColor']
@@ -21,6 +22,23 @@ const QUADRANTS: { value: Exclude<CornerChoice, 'random'>; label: string; cls: s
   { value: 'BR', label: 'Правый нижний', cls: 'q-br' },
 ]
 const SOON_ENVIRONMENTS = ['фусеки', 'лесенка', 'смешанно']
+const EMPTY_TREE: StartTreeNode = { key: '', kind: 'root', name: 'Пустой угол', short: 'Пустой угол', moves: [], id: null, rare: false, count: 0, parent: null, children: [] }
+/** Spec (starts) 5.1: the last current node of the tree, remembered in the browser. */
+const TREE_KEY = 'joseki-dojo.start-tree'
+const readTreeKey = (): string => {
+  try {
+    return localStorage.getItem(TREE_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+const writeTreeKey = (key: string): void => {
+  try {
+    localStorage.setItem(TREE_KEY, key)
+  } catch {
+    // Storage is off: the tree opens at its root next time.
+  }
+}
 
 export interface StartScreenProps {
   onStart: (settings: SessionSettings) => void
@@ -31,23 +49,46 @@ export interface StartScreenProps {
   trapsCount?: number
   /** Start positions in the base; 0 turns «Случайно» and «Из списка» off. */
   startsCount?: number
-  /** The named list; empty turns «Из списка» off. */
-  startsList?: StartListEntry[]
+  /** The tree of the named list (starts spec 5.1); a root without children turns «Из списка» off. */
+  startTree?: StartTreeNode
+  /** The settings of the last training: the screen opens with them, and the tree on its node (starts spec 5.1). */
+  last?: SessionSettings | null
 }
 
 /** Spec 5: a new training — mode, corner, colour, bot strength and environment. */
-export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, startsCount = 0, startsList = [] }: StartScreenProps) {
-  const [mode, setMode] = useState<ModeChoice>('free')
-  const [userColor, setUserColor] = useState<ColorChoice>('B')
-  const [botRank, setBotRank] = useState(defaultRank && isBotRank(defaultRank) ? defaultRank : DEFAULT_BOT_RANK)
-  const [corner, setCorner] = useState<CornerChoice>('random')
-  const [chosenId, setStartId] = useState<string | null>(null)
-  // A selection that is no longer on the list counts as empty.
-  const startId = chosenId !== null && startsList.some((e) => e.id === chosenId) ? chosenId : null
+// The node of the last trained start (remembered for the next reload), else the stored key.
+const initialTreeKey = (tree: StartTreeNode, lastStartId: string | null): string => {
+  const trained = lastStartId ? findById(tree, lastStartId)?.key : null
+  if (trained) {
+    writeTreeKey(trained)
+    return trained
+  }
+  return readTreeKey()
+}
+
+export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, startsCount = 0, startTree = EMPTY_TREE, last = null }: StartScreenProps) {
+  const listReady = startTree.children.length > 0
+  const available = (m: ModeChoice): boolean => (m === 'traps' ? trapsCount > 0 : m === 'random' ? startsCount > 0 : m === 'list' ? listReady : true)
+  const [mode, setMode] = useState<ModeChoice>(last && available(last.mode) ? last.mode : 'free')
+  const [userColor, setUserColor] = useState<ColorChoice>(last?.userColor ?? 'B')
+  const [botRank, setBotRank] = useState(last && isBotRank(last.botRank) ? last.botRank : defaultRank && isBotRank(defaultRank) ? defaultRank : DEFAULT_BOT_RANK)
+  const [corner, setCorner] = useState<CornerChoice>(last?.corner ?? 'random')
+  const [currentKey, setCurrentKey] = useState<string>(() => initialTreeKey(startTree, last?.mode === 'list' ? (last.startId ?? null) : null))
+  const current = findNode(startTree, currentKey) ?? startTree
+  // Spec (starts) 5.1: any node but the empty corner can be started from.
+  const startId = current.id
+  const pick = (node: StartTreeNode): void => {
+    setCurrentKey(node.key)
+    writeTreeKey(node.key)
+  }
+  const canStart = !busy && !(mode === 'list' && startId === null)
+  const start = (): void => {
+    if (canStart) onStart({ mode, environment: 'empty', userColor, botRank, corner, ...(mode === 'list' && startId ? { startId } : {}) })
+  }
 
   return (
     <main>
-      <div class="page start">
+      <div class={`page start${mode === 'list' ? ' wide' : ''}`}>
         <div class="page-head">
           <h1>Новая тренировка</h1>
           <p>Бот разыграет с вами дзёсеки в выбранном углу и ошибётся, как живой соперник</p>
@@ -75,14 +116,14 @@ export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, starts
               <span class="d">{startsCount > 0 ? 'позиция из базы дзёсеки' : 'база стартовых позиций недоступна'}</span>
             </label>
             <label class="mode">
-              <input type="radio" name="mode" checked={mode === 'list'} disabled={startsList.length === 0} onChange={() => setMode('list')} />
+              <input type="radio" name="mode" checked={mode === 'list'} disabled={!listReady} onChange={() => setMode('list')} />
               <ListChecks aria-hidden="true" />
               <b>Из списка</b>
-              <span class="d">{startsList.length > 0 ? 'выберите дзёсеки' : 'база стартовых позиций недоступна'}</span>
+              <span class="d">{listReady ? 'выберите дзёсеки' : 'база стартовых позиций недоступна'}</span>
             </label>
           </div>
         </div>
-        {mode === 'list' && <StartList entries={startsList} selected={startId} onSelect={setStartId} />}
+        {mode === 'list' && <StartTree root={startTree} current={current} onCurrent={pick} onStart={start} />}
 
         <div class="options">
           <div role="radiogroup" aria-label="Угол">
@@ -163,9 +204,8 @@ export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, starts
         </div>
 
         <div class="start-actions">
-          <button class="primary lg" disabled={busy || (mode === 'list' && startId === null)}
-            onClick={() => onStart({ mode, environment: 'empty', userColor, botRank, corner, ...(mode === 'list' && startId ? { startId } : {}) })}
-          >
+          {mode === 'list' && <span class="start-pick">{startId ? nodeTitle(current) : 'Выберите группу, ветку или позицию'}</span>}
+          <button class="primary lg" disabled={!canStart} onClick={start}>
             Начать тренировку
             <ArrowRight aria-hidden="true" />
           </button>

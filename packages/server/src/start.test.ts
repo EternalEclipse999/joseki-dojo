@@ -188,7 +188,7 @@ describe('startServer', () => {
       writeFileSync(base, 'nonsense')
       const { lines, starts } = await startWith(base, join(dir, 'starts-list.json'))
       expect(lines.some((l) => l.startsWith('База стартовых позиций недоступна: '))).toBe(true)
-      expect(starts).toEqual({ count: 0, list: [] })
+      expect(starts).toEqual({ count: 0, list: [], branches: [], groups: [] })
     })
 
     it('turns only the list off for a broken list', async () => {
@@ -199,13 +199,13 @@ describe('startServer', () => {
       writeFileSync(list, 'not json')
       const { lines, starts } = await startWith(base, list)
       expect(lines.some((l) => l.startsWith('Список стартовых позиций недоступен: '))).toBe(true)
-      expect(starts).toEqual({ count: 3, list: [] })
+      expect(starts).toEqual({ count: 3, list: [], branches: [], groups: [] })
     })
 
     it('serves an empty book when no files are given', async () => {
       const { lines, starts } = await startWith()
       expect(noStartsLog(lines)).toBe(false)
-      expect(starts).toEqual({ count: 0, list: [] })
+      expect(starts).toEqual({ count: 0, list: [], branches: [], groups: [] })
     })
   })
 })

@@ -52,25 +52,45 @@ describe('StartBook', () => {
     expect(b.skipped).toHaveLength(2)
   })
 
-  it('reads the named list in file order', () => {
+  it('reads the named list in file order, with short names, rare marks and branches', () => {
     const b = listed()
     expect(b.list()).toEqual([
-      { id: B, group: '4-4', name: 'Тестовое начало 4-4', moves: ['Q16', 'O17', 'R14'] },
-      { id: C, group: '3-4', name: 'Тестовое начало 3-4', moves: ['Q17', 'R15'] },
+      { id: B, group: '4-4', name: 'Тестовое начало 4-4', short: 'Начало 4-4', rare: false, moves: ['Q16', 'O17', 'R14'] },
+      { id: C, group: '3-4', name: 'Тестовое начало 3-4', short: 'Тестовое начало 3-4', rare: true, moves: ['Q17', 'R15'] },
     ])
+    expect(b.branches()).toEqual([{ id: A, moves: ['Q16', 'O17'], name: 'Тестовая ветка' }])
     expect([b.isListed(B), b.isListed(A)]).toEqual([true, false])
-    expect([b.nameOf(C), b.nameOf(A)]).toEqual(['Тестовое начало 3-4', null])
+    expect([b.entryOf(C)?.group, b.entryOf(C)?.name, b.entryOf(A)]).toEqual(['3-4', 'Тестовое начало 3-4', null])
   })
 
-  it('canonicalizes the moves of a list entry', () => {
+  it('offers the corner stone of each group whose positions all begin with it', () => {
+    expect(listed().groups()).toEqual([
+      { id: id('Q16'), group: '4-4', moves: ['Q16'] },
+      { id: id('Q17'), group: '3-4', moves: ['Q17'] },
+    ])
+    const split = book().withList(JSON.stringify({ positions: [{ group: '4-4', name: 'a', moves: 'Q16 O17' }, { group: '4-4', name: 'b', moves: 'Q17 R15' }] }), () => {})
+    expect(split.groups()).toEqual([])
+  })
+
+  it('starts the tree from a position, a branch or a group stone, each named for the crumbs', () => {
+    const b = listed()
+    expect(b.listStart(B)).toEqual({ name: 'Тестовое начало 4-4', group: '4-4' })
+    expect(b.listStart(A)).toEqual({ name: 'Тестовая ветка', group: '4-4' })
+    expect(b.listStart(id('Q17'))).toEqual({ name: '3-4' })
+    expect(b.listStart(id('Q16 R14'))).toBeNull()
+    expect(b.place(id('Q17'), 'TR', false)).toEqual([{ color: 'B', vertex: v('Q17') }])
+  })
+
+  it('canonicalizes the moves of positions and branches', () => {
     // R14 is O17 mirrored in the diagonal.
-    const b = book().withList(JSON.stringify([{ group: '4-4', name: 'Зеркально', moves: 'Q16 R14' }]), () => {})
-    expect(b.list()).toEqual([{ id: A, group: '4-4', name: 'Зеркально', moves: ['Q16', 'O17'] }])
+    const b = book().withList(JSON.stringify({ branches: [{ moves: 'Q16 R14', name: 'Ветка' }], positions: [{ group: '4-4', name: 'Зеркально', moves: 'Q16 R14 O17' }] }), () => {})
+    expect(b.list().map((e) => e.moves)).toEqual([['Q16', 'O17', 'R14']])
+    expect(b.branches()).toEqual([{ id: A, moves: ['Q16', 'O17'], name: 'Ветка' }])
   })
 
-  it('skips bad list entries with a log line each', () => {
+  it('skips bad positions with a log line each', () => {
     const lines: string[] = []
-    const entries = [
+    const positions = [
       { group: '6-6', name: 'x', moves: 'Q16 O17' },
       { group: '4-4', name: ' ', moves: 'Q16 O17' },
       { group: '4-4', name: 'x', moves: 'Q16 Z99' },
@@ -79,14 +99,31 @@ describe('StartBook', () => {
       { group: '4-4', name: 'again', moves: 'Q16 O17' },
       null,
     ]
-    const b = book().withList(JSON.stringify(entries), (l) => lines.push(l))
+    const b = book().withList(JSON.stringify({ positions }), (l) => lines.push(l))
     expect(b.list().map((e) => e.name)).toEqual(['first'])
     expect(lines).toHaveLength(6)
-    expect(lines[0]).toMatch(/^Список стартовых позиций, запись 1: /)
+    expect(lines[0]).toMatch(/^Список стартовых позиций, позиция 1: /)
   })
 
-  it('refuses a list that is not an array', () => {
-    expect(() => book().withList('{"group":"4-4"}', () => {})).toThrow('Список стартовых позиций должен быть массивом')
+  it('skips bad branches with a log line each', () => {
+    const lines: string[] = []
+    const branches = [
+      { moves: 'Q16 O17', name: ' ' },
+      { moves: 'Q16', name: 'один ход' },
+      { moves: 'Q16 Z99', name: 'плохой ход' },
+      { moves: 'Q16 O17 R14', name: 'это позиция' },
+      { moves: 'Q17 R16', name: 'без позиций' },
+      { moves: 'Q16 O17', name: 'ветка' },
+      { moves: 'Q16 O17', name: 'повтор' },
+    ]
+    const b = book().withList(JSON.stringify({ branches, positions: TEST_STARTS_LIST.positions }), (l) => lines.push(l))
+    expect(b.branches()).toEqual([{ id: A, moves: ['Q16', 'O17'], name: 'ветка' }])
+    expect(lines).toHaveLength(6)
+    expect(lines[0]).toMatch(/^Список стартовых позиций, ветка 1: /)
+  })
+
+  it('refuses a list that is not an object with positions', () => {
+    for (const text of ['[]', '{"branches":[]}', 'null']) expect(() => book().withList(text, () => {})).toThrow('Список стартовых позиций должен быть объектом с массивом positions')
     expect(() => book().withList('not json', () => {})).toThrow()
   })
 
@@ -127,7 +164,7 @@ describe('dubious starts', () => {
 
   it('skips a dubious path in the list', () => {
     const log: string[] = []
-    const b = dubiousBook().withList(JSON.stringify([{ group: '4-4', name: 'X', moves: 'Q16 O17 O16' }]), (l) => log.push(l))
+    const b = dubiousBook().withList(JSON.stringify({ positions: [{ group: '4-4', name: 'X', moves: 'Q16 O17 O16' }] }), (l) => log.push(l))
     expect(b.list()).toEqual([])
     expect(log).toHaveLength(1)
     expect(log[0].endsWith('такой стартовой позиции нет в базе')).toBe(true)

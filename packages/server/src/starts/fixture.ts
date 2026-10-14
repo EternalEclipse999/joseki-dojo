@@ -26,10 +26,13 @@ export function testDubiousStartsTree(): JdbTree {
   return tree
 }
 
-export const TEST_STARTS_LIST = [
-  { group: '4-4', name: 'Тестовое начало 4-4', moves: 'Q16 O17 R14' },
-  { group: '3-4', name: 'Тестовое начало 3-4', moves: 'Q17 R15' },
-]
+export const TEST_STARTS_LIST = {
+  branches: [{ moves: 'Q16 O17', name: 'Тестовая ветка' }],
+  positions: [
+    { group: '4-4', name: 'Тестовое начало 4-4', short: 'Начало 4-4', moves: 'Q16 O17 R14' },
+    { group: '3-4', name: 'Тестовое начало 3-4', moves: 'Q17 R15', rare: true },
+  ],
+}
 
 export function writeTestStarts(baseFile: string, listFile: string): void {
   writeFileSync(baseFile, encodeJdb(testStartsTree()))

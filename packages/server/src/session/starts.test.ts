@@ -57,9 +57,26 @@ describe('start position sessions', () => {
       { color: 'B', vertex: V('Q17') },
       { color: 'W', vertex: V('R15') },
     ])
-    expect(v.settings.start).toEqual({ id: ID_C, name: 'Тестовое начало 3-4', mirror: false })
+    expect(v.settings.start).toEqual({ id: ID_C, name: 'Тестовое начало 3-4', group: '3-4', mirror: false })
     expect(v.toMove).toBe('B')
     expect(v.moves).toEqual([])
+  })
+
+  it('starts from a group stone or a branch of the tree and names it for the crumbs', () => {
+    const head = setup().service.start(settings({ startId: trapId([V('Q16')]) }))
+    expect(head.initialMoves).toEqual([{ color: 'B', vertex: V('Q16') }])
+    expect(head.settings.start).toEqual({ id: trapId([V('Q16')]), name: '4-4', mirror: false })
+    const branch = setup().service.start(settings({ startId: trapId(['Q16', 'O17'].map(V)) }))
+    expect(branch.initialMoves).toHaveLength(2)
+    expect(branch.settings.start).toMatchObject({ name: 'Тестовая ветка', group: '4-4' })
+  })
+
+  it('names a random start only by the list positions', () => {
+    // Q16 O17 is an unnamed start of the base and also the moves of a branch.
+    const { service } = setup(book(), [0, 0.9])
+    const v = service.start(settings({ mode: 'random', startId: undefined }))
+    expect(v.settings.start).toMatchObject({ id: trapId(['Q16', 'O17'].map(V)), name: null })
+    expect(v.settings.start?.group).toBeUndefined()
   })
 
   it('lets the bot move first when it is the bot\'s turn', async () => {
@@ -84,6 +101,7 @@ describe('start position sessions', () => {
     expect(v.settings.mode).toBe('random')
     expect(v.settings.start?.id).toBe(ID_C)
     expect(v.settings.start?.name).toBe('Тестовое начало 3-4')
+    expect(v.settings.start?.group).toBe('3-4')
   })
 
   it('refuses the start modes without a base and a list id that is not on the list', () => {

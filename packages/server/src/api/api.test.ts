@@ -293,7 +293,7 @@ describe('GET /api/traps', () => {
 
 describe('GET /api/starts', () => {
   it('reports an empty book without a base', async () => {
-    expect(await (await fetch(`http://${host}/api/starts`)).json()).toEqual({ count: 0, list: [] })
+    expect(await (await fetch(`http://${host}/api/starts`)).json()).toEqual({ count: 0, list: [], branches: [], groups: [] })
   })
 
   it('reports the loaded base and its list', async () => {
@@ -303,7 +303,7 @@ describe('GET /api/starts', () => {
     const other = await buildApp(services)
     try {
       const res = await other.inject({ method: 'GET', url: '/api/starts', headers: { host: '127.0.0.1:1' } })
-      expect(res.json()).toEqual({ count: 3, list: starts.list() })
+      expect(res.json()).toEqual({ count: 3, list: starts.list(), branches: starts.branches(), groups: starts.groups() })
     } finally {
       await other.close()
       await services.engine.stop()
