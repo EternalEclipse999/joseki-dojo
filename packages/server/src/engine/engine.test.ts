@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_KATAGO, fakeEngine, tempDir } from '../../test/helpers'
 import { KataGoEngine } from './engine'
 import { baseQuery } from './query'
@@ -13,6 +13,130 @@ const track = (e: KataGoEngine): KataGoEngine => {
 
 afterEach(async () => {
   await Promise.all(engines.splice(0).map((e) => e.stop()))
+})
+
+describe('analyzeStream', () => {
+  const query = { ...baseQuery([]), maxVisits: 100 }
+  const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+
+  it('delivers growing partial answers and then resolves with the final one', async () => {
+    const e = track(fakeEngine())
+    const visits: number[] = []
+    const stream = e.analyzeStream(query, (p) => visits.push(p.rootInfo.visits), 0.02)
+    const final = await stream.done
+    expect(visits).toEqual([25, 50, 75])
+    expect(final?.isDuringSearch).toBe(false)
+    expect(final?.rootInfo.visits).toBe(100)
+  })
+
+  it('stop() after a partial answer settles done with it and silences the stream', async () => {
+    const e = track(fakeEngine())
+    const visits: number[] = []
+    let stream!: ReturnType<typeof e.analyzeStream>
+    const first = new Promise<void>((resolve) => {
+      stream = e.analyzeStream(query, (p) => {
+        visits.push(p.rootInfo.visits)
+        resolve()
+      }, 0.02)
+    })
+    await first
+    stream.stop()
+    stream.stop()
+    expect((await stream.done)?.rootInfo.visits).toBe(25)
+    await sleep(200)
+    expect(visits).toEqual([25])
+    expect(e.pendingCount).toBe(0)
+  })
+
+  it('stop() makes KataGo terminate that very query', async () => {
+    const logs: string[] = []
+    const e = track(fakeEngine({}, logs))
+    await e.analyze({ ...baseQuery([]), maxVisits: 1 }) // q1
+    const stream = e.analyzeStream(query, () => {}, 5) // q2
+    stream.stop()
+    await vi.waitFor(() => expect(logs).toContain('terminate q2'))
+    expect(logs).not.toContain('terminate q1')
+    e.analyzeStream(query, () => {}, 5).done.catch(() => {}) // q3 is left running: no terminate for it
+    await sleep(100)
+    expect(logs.filter((l) => l.startsWith('terminate'))).toEqual(['terminate q2'])
+  })
+
+  it('stop() before any partial answer settles done with null', async () => {
+    const e = track(fakeEngine())
+    const stream = e.analyzeStream(query, () => {}, 0.5)
+    stream.stop()
+    expect(await stream.done).toBeNull()
+  })
+
+  it('rejects when KataGo rejects the query', async () => {
+    const e = track(fakeEngine())
+    const stream = e.analyzeStream({ ...query, rules: 'invalid' }, () => {}, 0.02)
+    await expect(stream.done).rejects.toMatchObject({ code: 'query_error' })
+  })
+
+  it('fails a running stream after a crash instead of resending it, but still answers a plain query', async () => {
+    const e = track(fakeEngine({ FAKE_KATAGO_CRASH_ONCE_FILE: join(tempDir(), 'crashed') }))
+    const stream = e.analyzeStream(query, () => {}, 0.02)
+    const plain = e.analyze(baseQuery([]))
+    await expect(stream.done).rejects.toMatchObject({ code: 'engine_failed' })
+    expect((await plain).moveInfos[0].move).toBe('D4')
+  })
+
+  it('settles done with null when KataGo ends the query with noResults and no partial answer came', async () => {
+    const e = track(fakeEngine())
+    const stream = e.analyzeStream({ ...query, maxVisits: 0 }, () => {}, 0.02)
+    expect(await stream.done).toBeNull()
+    expect(e.pendingCount).toBe(0)
+  })
+
+  it('rejects a stream with the right text: stopped, failed for good, restarted', async () => {
+    const e = track(fakeEngine({ FAKE_KATAGO_ALWAYS_CRASH: '1' }))
+    await expect(e.analyze(baseQuery([]))).rejects.toMatchObject({ code: 'engine_failed' })
+    await expect(e.analyzeStream(query, () => {}, 0.02).done).rejects.toMatchObject({
+      code: 'engine_failed',
+      message: expect.stringContaining('аварийно'),
+    })
+    const s = track(fakeEngine({ FAKE_KATAGO_CRASH_ONCE_FILE: join(tempDir(), 'crashed') }))
+    await expect(s.analyzeStream(query, () => {}, 0.02).done).rejects.toMatchObject({ message: 'KataGo перезапущен' })
+    await s.stop()
+    await expect(s.analyzeStream(query, () => {}, 0.02).done).rejects.toMatchObject({
+      code: 'engine_failed',
+      message: 'KataGo остановлен',
+    })
+    const t = track(fakeEngine())
+    const running = t.analyzeStream(query, () => {}, 5)
+    const rejected = expect(running.done).rejects.toMatchObject({ message: 'KataGo остановлен' })
+    await t.stop()
+    await rejected
+  })
+
+  it('rejects a running stream on restartWith instead of resending it', async () => {
+    const e = track(fakeEngine())
+    const stream = e.analyzeStream(query, () => {}, 5)
+    const restarted = e.restartWith({ command: process.execPath, args: [FAKE_KATAGO] })
+    await expect(stream.done).rejects.toMatchObject({ code: 'engine_failed', message: 'KataGo перезапущен' })
+    await restarted
+    expect(e.pendingCount).toBe(0)
+    expect(await e.version()).toBe('1.18.1')
+  })
+
+  it('keeps streaming when the onUpdate callback throws, and logs it', async () => {
+    const logs: string[] = []
+    const e = track(fakeEngine({}, logs))
+    const stream = e.analyzeStream(query, () => {
+      throw new Error('boom')
+    }, 0.02)
+    expect((await stream.done)?.rootInfo.visits).toBe(100)
+    expect(logs.filter((l) => l.includes('boom'))).toHaveLength(3)
+  })
+
+  it('does not trip the hang watchdog while partial answers keep arriving', async () => {
+    const logs: string[] = []
+    const e = track(fakeEngine({}, logs, { queryTimeoutMs: 300, watchdogIntervalMs: 50 }))
+    const stream = e.analyzeStream(query, () => {}, 0.1) // the whole search takes 400 ms, longer than the timeout
+    expect((await stream.done)?.rootInfo.visits).toBe(100)
+    expect(logs.some((l) => l.includes('не ответил'))).toBe(false)
+  })
 })
 
 describe('KataGoEngine', () => {

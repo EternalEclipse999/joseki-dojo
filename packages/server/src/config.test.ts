@@ -32,14 +32,14 @@ describe('loadConfig', () => {
     const file = configFile()
     const c = loadConfig(file)
     expect(c.port).toBe(5179)
-    expect(c.analysis).toEqual({ reviewVisits: 500, endVisits: 200 })
+    expect(c.analysis).toEqual({ reviewVisits: 500, endVisits: 200, variationVisits: 5000 })
     expect(c.dataDir).toBe(join(file, '..', 'data'))
     expect(c.katago.mainModel).toBe(join(file, '..', DEFAULT_CONFIG.katago.mainModel))
   })
 
   it('merges nested sections', () => {
     const c = loadConfig(configFile({ analysis: { reviewVisits: 900 }, thresholds: { punished: 0.5 } }))
-    expect(c.analysis).toEqual({ reviewVisits: 900, endVisits: 200 })
+    expect(c.analysis).toEqual({ reviewVisits: 900, endVisits: 200, variationVisits: 9000 })
     expect(c.thresholds).toEqual({ inaccuracy: 0.5, mistake: 2, blunder: 5, punished: 0.5 })
   })
 
@@ -62,7 +62,16 @@ describe('loadConfig', () => {
     expect(() => loadConfig(configFile({ bot: { defaultRank: '42k' } }))).toThrow(ConfigError)
   })
 
+  it('derives the variations limit as 10x the review visits when the file has none', () => {
+    expect(loadConfig(configFile({ analysis: { reviewVisits: 300 } })).analysis.variationVisits).toBe(3000)
+  })
+
+  it('keeps the variations limit the file sets', () => {
+    expect(loadConfig(configFile({ analysis: { reviewVisits: 300, variationVisits: 777 } })).analysis.variationVisits).toBe(777)
+  })
+
   it('rejects non-positive numbers', () => {
+    expect(() => loadConfig(configFile({ analysis: { variationVisits: 0 } }))).toThrow(ConfigError)
     expect(() => loadConfig(configFile({ analysis: { endVisits: 0 } }))).toThrow(ConfigError)
     expect(() => loadConfig(configFile({ maxSessionMoves: -1 }))).toThrow(ConfigError)
   })

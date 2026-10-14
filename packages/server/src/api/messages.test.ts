@@ -8,6 +8,29 @@ describe('parseClientMessage', () => {
     expect(parseClientMessage('{"type":"finish","sessionId":"s1"}')).toEqual({ type: 'finish', sessionId: 's1' })
   })
 
+  it('accepts the variation messages', () => {
+    expect(parseClientMessage('{"type":"analyzeVariation","sessionId":"s1","fromTurn":2,"moves":[[3,3],[15,15]]}')).toEqual({ type: 'analyzeVariation', sessionId: 's1', fromTurn: 2, moves: [[3, 3], [15, 15]] })
+    expect(parseClientMessage('{"type":"analyzeVariation","sessionId":"s1","fromTurn":0,"moves":[]}')).toEqual({ type: 'analyzeVariation', sessionId: 's1', fromTurn: 0, moves: [] })
+    expect(parseClientMessage('{"type":"stopVariation","sessionId":"s1"}')).toEqual({ type: 'stopVariation', sessionId: 's1' })
+  })
+
+  it('rejects malformed variation messages', () => {
+    const tooMany = JSON.stringify({ type: 'analyzeVariation', sessionId: 's1', fromTurn: 0, moves: Array.from({ length: 201 }, () => [3, 3]) })
+    for (const bad of [
+      '{"type":"analyzeVariation","fromTurn":0,"moves":[]}',
+      '{"type":"analyzeVariation","sessionId":"s1","moves":[]}',
+      '{"type":"analyzeVariation","sessionId":"s1","fromTurn":-1,"moves":[]}',
+      '{"type":"analyzeVariation","sessionId":"s1","fromTurn":1.5,"moves":[]}',
+      '{"type":"analyzeVariation","sessionId":"s1","fromTurn":0}',
+      '{"type":"analyzeVariation","sessionId":"s1","fromTurn":0,"moves":"D4"}',
+      '{"type":"analyzeVariation","sessionId":"s1","fromTurn":0,"moves":[[19,0]]}',
+      tooMany,
+      '{"type":"stopVariation"}',
+    ]) {
+      expect(() => parseClientMessage(bad)).toThrow(expect.objectContaining({ code: 'bad_request' }))
+    }
+  })
+
   it('rejects malformed messages', () => {
     const codeOf = (text: string): string | null => {
       try {

@@ -12,6 +12,8 @@ export interface KataGoQueryBody {
   priority?: number
   allowMoves?: { player: string; moves: string[]; untilDepth: number }[]
   overrideSettings?: Record<string, string | number | boolean>
+  /** Seconds between partial answers (`isDuringSearch: true`); without it only the final answer is sent. */
+  reportDuringSearchEvery?: number
 }
 
 export interface MoveInfo {
@@ -41,6 +43,8 @@ export interface AnalysisResponse {
   ownership?: number[]
   policy?: number[]
   humanPolicy?: number[]
+  /** Set when KataGo ended the query without a search (for example after a terminate). */
+  noResults?: boolean
 }
 
 export interface VersionResponse {

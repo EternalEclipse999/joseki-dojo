@@ -57,6 +57,7 @@ function ThemeSection() {
 
 const VISIT_FIELDS: { key: VisitsKey; label: string }[] = [
   { key: 'reviewVisits', label: 'Визиты на позицию в разборе' },
+  { key: 'variationVisits', label: 'Предел визитов в вариантах' },
   { key: 'endVisits', label: 'Визиты для кнопки «Тэнуки»' },
 ]
 

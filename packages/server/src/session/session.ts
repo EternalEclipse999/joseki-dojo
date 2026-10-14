@@ -2,7 +2,7 @@ import { inZone, nextColor, Position, type Actor, type Color, type Corner, type 
 import { movesBefore, type SessionRecord } from '../store/records'
 import { josekiStartedIn } from './joseki-start'
 
-export type SessionErrorCode = 'bad_request' | 'outside_zone' | 'not_your_turn' | 'session_not_found' | 'session_finished'
+export type SessionErrorCode = 'bad_request' | 'outside_zone' | 'not_your_turn' | 'session_not_found' | 'session_finished' | 'illegal_move'
 
 export class SessionError extends Error {
   constructor(message: string, readonly code: SessionErrorCode) {

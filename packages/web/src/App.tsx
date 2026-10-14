@@ -1,6 +1,6 @@
 import type { JSX } from 'preact'
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import type { ClientMessage, HealthResponse, InstallStatus, ReviewData, SessionView, TrapsInfo } from '@joseki-dojo/shared'
+import type { AnalysisSettings, ClientMessage, HealthResponse, InstallStatus, ReviewData, SessionSettings, SessionView, TrapsInfo } from '@joseki-dojo/shared'
 import { LoaderCircle, RefreshCw } from 'lucide-preact'
 import { DojoSocket, fetchHealth, fetchInstall, fetchReview, fetchSettings, fetchTraps, fetchUi, recheckHealth } from './api'
 import { AppHeader } from './components/AppHeader'
@@ -14,6 +14,7 @@ import { ReviewScreen } from './screens/ReviewScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { StartScreen } from './screens/StartScreen'
 import { applyTheme } from './theme'
+import type { VariationUpdate } from './variation'
 
 interface Progress {
   done: number
@@ -34,12 +35,17 @@ export function App() {
   const [defaultRank, setDefaultRank] = useState<string | undefined>(undefined)
   // True from sending startSession/replayFrom until the server answers (sessionState/error) or the link drops.
   const [starting, setStarting] = useState(false)
+  // The settings of the last startSession sent: «Следующая позиция» starts with the same ones (in memory only).
+  const [lastSettings, setLastSettings] = useState<SessionSettings | null>(null)
   const [install, setInstall] = useState<InstallStatus | null>(null)
   const [installChecked, setInstallChecked] = useState(false)
   // An engine update (from the banner) or a re-pick (Settings, engine screen) is on screen.
   const [engineUpdate, setEngineUpdate] = useState(false)
   const [repick, setRepick] = useState(false)
   const [traps, setTraps] = useState<TrapsInfo | null>(null)
+  // Variations spec 6.2: the latest analysis of a variation position; the review keeps the results.
+  const [variationUpdate, setVariationUpdate] = useState<VariationUpdate | null>(null)
+  const [analysisSettings, setAnalysisSettings] = useState<AnalysisSettings | null>(null)
 
   const socket = useMemo(
     () =>
@@ -56,6 +62,9 @@ export function App() {
             break
           case 'analysisProgress':
             setProgress({ done: msg.done, total: msg.total })
+            break
+          case 'variationAnalysis':
+            setVariationUpdate(msg)
             break
           case 'reviewReady':
             fetchReview(msg.sessionId)
@@ -80,6 +89,7 @@ export function App() {
 
   useEffect(() => {
     socket.sessionId = session?.id ?? null
+    setVariationUpdate(null)
   }, [socket, session?.id])
 
   // The saved colour theme; without the server the page keeps the system colours set by index.html.
@@ -131,6 +141,7 @@ export function App() {
       .then((s) => {
         setVersionWarning(s.versionWarning)
         setDefaultRank(s.defaultBotRank)
+        setAnalysisSettings(s.analysis)
       })
       .catch(() => undefined)
   }, [ready, healthTick])
@@ -175,6 +186,10 @@ export function App() {
   const sendStarting = (msg: ClientMessage): void => {
     setStarting(true)
     send(msg)
+  }
+  const startWith = (settings: SessionSettings): void => {
+    setLastSettings(settings)
+    sendStarting({ type: 'startSession', settings })
   }
   const resetToStart = (): void => {
     setSession(null)
@@ -250,7 +265,7 @@ export function App() {
         defaultRank={defaultRank}
         trapsCount={traps?.count ?? 0}
         busy={starting || !connected}
-        onStart={(settings) => sendStarting({ type: 'startSession', settings })}
+        onStart={startWith}
       />
     )
   } else if (session.status === 'playing') {
@@ -265,6 +280,15 @@ export function App() {
         busy={starting}
         onReplay={(turn) => sendStarting({ type: 'replayFrom', sessionId: session.id, turn })}
         onNew={resetToStart}
+        onNext={lastSettings ? () => startWith(lastSettings) : null}
+        variations={{
+          update: variationUpdate,
+          analyze: (fromTurn, moves) => send({ type: 'analyzeVariation', sessionId: session.id, fromTurn, moves }),
+          stop: () => send({ type: 'stopVariation', sessionId: session.id }),
+          connected,
+          errorSeq,
+          visits: analysisSettings,
+        }}
       />
     )
   }

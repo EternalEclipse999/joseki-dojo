@@ -21,6 +21,7 @@ import type { KataGoLock } from './engine/lock'
 import { toErrorMessage } from './errors'
 import { InstallerService } from './install/installer'
 import { ReviewService } from './review/service'
+import { VariationService } from './review/variation'
 import { SessionService } from './session/service'
 import { SettingsService } from './settings/service'
 import { openDb, type Db } from './store/db'
@@ -35,6 +36,7 @@ export interface AppServices {
   health: HealthMonitor
   sessions: SessionService
   reviews: ReviewService
+  variations: VariationService
   settings: SettingsService
   installer: InstallerService
   /** The loaded traps base; empty when there is none. */
@@ -72,6 +74,7 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
   const analysis = new AnalysisScheduler(engine, repo, config.analysis)
   const traps = options.traps ?? TrapBook.empty()
   const reviews = new ReviewService({ repo, analysis, config, publish, traps })
+  const variations = new VariationService({ repo, engine, config })
   const sessions = new SessionService({
     repo,
     analysis,
@@ -88,10 +91,10 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
   })
   const health = new HealthMonitor(config, engine)
   const { configFile, enginesDir, lock, commandFor, log, fetch } = options
-  const settings = new SettingsService({ config, engine, health, lock, configFile, modelsDir: join(enginesDir, 'models'), commandFor })
+  const settings = new SettingsService({ config, engine, health, lock, configFile, modelsDir: join(enginesDir, 'models'), commandFor, onSwitched: () => variations.clear() })
   const installer = new InstallerService({ config, lock, enginesDir, settings, commandFor, log, engine, health, fetch })
   const ui = new UiService(config, configFile)
-  return { config, db, engine, health, sessions, reviews, settings, installer, hub, traps, ui }
+  return { config, db, engine, health, sessions, reviews, variations, settings, installer, hub, traps, ui }
 }
 
 export async function buildApp(services: AppServices, webDist: string | null = null): Promise<FastifyInstance> {

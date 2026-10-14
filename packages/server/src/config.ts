@@ -29,13 +29,16 @@ export interface AppConfig {
   port: number
   dataDir: string
   katago: KataGoSettings
-  analysis: { reviewVisits: number; endVisits: number }
+  analysis: { reviewVisits: number; endVisits: number; variationVisits: number }
   thresholds: Thresholds
   bot: { defaultRank: string; temperature: number }
   maxSessionMoves: number
   setup?: SetupInfo
   ui: UiSettings
 }
+
+/** The visits limit for variations in the review: 10x the review visits. */
+export const variationVisitsFor = (reviewVisits: number): number => 10 * reviewVisits
 
 export const MAIN_MODEL_FILE = 'kata1-b18c384nbt-s9996604416-d4316597426.bin.gz'
 export const HUMAN_MODEL_FILE = 'b18c384nbt-humanv0.bin.gz'
@@ -49,7 +52,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     mainModel: `engines/models/${MAIN_MODEL_FILE}`,
     humanModel: `engines/models/${HUMAN_MODEL_FILE}`,
   },
-  analysis: { reviewVisits: 500, endVisits: 200 },
+  analysis: { reviewVisits: 500, endVisits: 200, variationVisits: 5000 },
   thresholds: { inaccuracy: 0.5, mistake: 2, blunder: 5, punished: 1 },
   bot: { defaultRank: '7k', temperature: 1 },
   maxSessionMoves: 60,
@@ -76,6 +79,8 @@ export function loadConfig(file: string): AppConfig {
     bot: { ...DEFAULT_CONFIG.bot, ...raw.bot },
     ui: { ...DEFAULT_CONFIG.ui, ...raw.ui },
   }
+  // A config written before the variations feature has no limit of its own: 10x the review visits.
+  if (raw.analysis?.variationVisits === undefined) merged.analysis.variationVisits = variationVisitsFor(merged.analysis.reviewVisits)
   validate(merged)
   const abs = (p: string): string => (isAbsolute(p) ? p : resolve(baseDir, p))
   const override = merged.katago.commandOverride?.map((part, i) => {
@@ -112,6 +117,7 @@ function validate(c: AppConfig): void {
   positive(c.port, 'port')
   positive(c.analysis.reviewVisits, 'analysis.reviewVisits')
   positive(c.analysis.endVisits, 'analysis.endVisits')
+  positive(c.analysis.variationVisits, 'analysis.variationVisits')
   positive(c.bot.temperature, 'bot.temperature')
   positive(c.maxSessionMoves, 'maxSessionMoves')
   for (const key of ['inaccuracy', 'mistake', 'blunder', 'punished'] as const) positive(c.thresholds[key], `thresholds.${key}`)

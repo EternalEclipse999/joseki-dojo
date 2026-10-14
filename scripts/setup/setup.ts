@@ -3,6 +3,7 @@ import { availableParallelism } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
+import { variationVisitsFor } from '../../packages/server/src/config'
 import { KataGoEngine } from '../../packages/server/src/engine/engine'
 import { compareVersions, MIN_KATAGO_VERSION } from '../../packages/server/src/engine/health'
 import { buildsFor, loadLock, versionWarning, type LockedBuild } from '../../packages/server/src/engine/lock'
@@ -119,7 +120,7 @@ async function main(): Promise<void> {
       ...existing,
       setup: setupRecord(kind),
       katago: { ...katagoRest, path: katagoPath, analysisConfig, mainModel, humanModel },
-      analysis: { ...((existing.analysis ?? {}) as Json), ...visits },
+      analysis: { ...((existing.analysis ?? {}) as Json), ...visits, variationVisits: variationVisitsFor(visits.reviewVisits) },
     }
     writeFileSync(configFile, `${JSON.stringify(config, null, 2)}\n`)
     console.log(`\nГотово: ${configFile}\nЗапуск: npm start`)

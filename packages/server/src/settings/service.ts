@@ -17,6 +17,8 @@ export interface SettingsServiceDeps {
   lock: KataGoLock
   /** Tests substitute the fake KataGo; production builds the real command line. */
   commandFor?: (config: AppConfig) => EngineCommand
+  /** Called after a change was kept: results computed with the previous network are stale. */
+  onSwitched?: () => void
 }
 
 const MODEL_FILE = /\.(bin|txt)\.gz$|\.bin$/
@@ -24,7 +26,7 @@ const MODEL_FILE = /\.(bin|txt)\.gz$|\.bin$/
 function validateUpdate(u: SettingsUpdate): string | null {
   const paths = u?.katago ? [u.katago.path, u.katago.analysisConfig, u.katago.mainModel, u.katago.humanModel] : []
   if (paths.length !== 4 || paths.some((p) => typeof p !== 'string' || p.trim() === '')) return 'Укажите все пути'
-  const visits = [u.analysis?.reviewVisits, u.analysis?.endVisits]
+  const visits = [u.analysis?.reviewVisits, u.analysis?.endVisits, u.analysis?.variationVisits]
   if (visits.some((v) => !Number.isInteger(v) || (v as number) < 1 || (v as number) > 100_000)) {
     return 'Число визитов должно быть целым от 1 до 100000'
   }
@@ -70,7 +72,7 @@ export class SettingsService {
     const cur = this.d.config.katago
     const keys = ['path', 'analysisConfig', 'mainModel', 'humanModel'] as const
     const changed = keys.some((k) => katago[k] !== resolve(cur[k]))
-    return this.switchTo(katago, { reviewVisits: update.analysis.reviewVisits, endVisits: update.analysis.endVisits }, changed ? null : undefined)
+    return this.switchTo(katago, { reviewVisits: update.analysis.reviewVisits, endVisits: update.analysis.endVisits, variationVisits: update.analysis.variationVisits }, changed ? null : undefined)
   }
 
   /**
@@ -114,7 +116,9 @@ export class SettingsService {
       else if (setup === null) delete this.d.config.setup
       await this.persist(katago, analysis, setup)
       await this.d.health.check()
-      return { ok: true, settings: await this.view() }
+      const settings = await this.view()
+      this.d.onSwitched?.()
+      return { ok: true, settings }
     } catch (e) {
       // A change is kept only if everything succeeds: put the previous engine and config back.
       this.d.config.katago = prevKatago

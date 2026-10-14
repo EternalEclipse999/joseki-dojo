@@ -7,7 +7,7 @@
     "mainModel": "engines/models/kata1-b18c384nbt-s9996604416-d4316597426.bin.gz",
     "humanModel": "engines/models/b18c384nbt-humanv0.bin.gz"
   },
-  "analysis": { "reviewVisits": 500, "endVisits": 200 },
+  "analysis": { "reviewVisits": 500, "endVisits": 200, "variationVisits": 5000 },
   "thresholds": { "inaccuracy": 0.5, "mistake": 2, "blunder": 5, "punished": 1 },
   "bot": { "defaultRank": "7k", "temperature": 1 },
   "maxSessionMoves": 60

@@ -29,17 +29,25 @@ export function moveLosses(leadsBlack: readonly number[], moves: readonly Played
   return moves.map((m, t) => Math.max(0, colorSign(m.color) * (leadsBlack[t] - leadsBlack[t + 1])))
 }
 
-/** Up to `limit` engine candidates; losses are measured inside the same search against order 0. */
-export function candidatesOf(a: StoredAnalysis, limit = 3): Candidate[] {
+/** Review-variations spec 8: at most this many candidates (A-F) are shown for a position. */
+export const CANDIDATE_LIMIT = 6
+/** Review-variations spec 8: besides the best move, only candidates losing at most this many points against it are shown. */
+export const CANDIDATE_MAX_LOSS = 1.5
+
+/** Up to `limit` engine candidates: the best always, the others within `CANDIDATE_MAX_LOSS`; losses are measured inside the same search against order 0. */
+export function candidatesOf(a: StoredAnalysis, limit = CANDIDATE_LIMIT): Candidate[] {
   const sorted = [...a.moveInfos].sort((x, y) => x.order - y.order)
   const best = sorted[0]
   if (!best) return []
   const sign = colorSign(a.rootInfo.currentPlayer)
-  return sorted.slice(0, limit).map((mi) => ({
-    vertex: gtpToVertex(mi.move),
-    loss: Math.max(0, sign * (best.scoreLead - mi.scoreLead)),
-    pv: mi.pv.map(gtpToVertex),
-  }))
+  return sorted
+    .slice(0, limit)
+    .map((mi) => ({
+      vertex: gtpToVertex(mi.move),
+      loss: Math.max(0, sign * (best.scoreLead - mi.scoreLead)),
+      pv: mi.pv.map(gtpToVertex),
+    }))
+    .filter((c, i) => i === 0 || c.loss <= CANDIDATE_MAX_LOSS)
 }
 
 /** Spec 9.5: every bot mistake followed by a user reply. */
@@ -96,6 +104,7 @@ export function buildReview(input: ReviewInput): ReviewData {
   const positions: PositionReview[] = analyses.map((a, turn) => ({
     turn,
     scoreLeadBlack: a.rootInfo.scoreLead,
+    visits: a.rootInfo.visits,
     candidates: candidatesOf(a),
     ownership: a.ownership,
   }))

@@ -6,7 +6,7 @@ import { gtpToVertex, vertexToIndex } from '@joseki-dojo/shared'
 import type { ServiceOptions } from '../src/app'
 import { DEFAULT_CONFIG, type AppConfig } from '../src/config'
 import { engineCommand } from '../src/engine/command'
-import { KataGoEngine, type AnalysisEngine, type EngineOptions } from '../src/engine/engine'
+import { KataGoEngine, type AnalysisStream, type EngineOptions, type StreamingEngine } from '../src/engine/engine'
 import { loadLock } from '../src/engine/lock'
 import type { AnalysisResponse, KataGoQueryBody } from '../src/engine/katago-types'
 
@@ -26,7 +26,7 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     ...DEFAULT_CONFIG,
     dataDir: tempDir(),
     katago: { ...DEFAULT_CONFIG.katago, commandOverride: [process.execPath, FAKE_KATAGO] },
-    analysis: { reviewVisits: 10, endVisits: 5 },
+    analysis: { reviewVisits: 10, endVisits: 5, variationVisits: 40 },
     ...overrides,
   }
 }
@@ -46,7 +46,7 @@ export const isHumanQuery = (q: KataGoQueryBody): boolean => q.overrideSettings?
 export const isTenukiQuery = (q: KataGoQueryBody): boolean => q.allowMoves !== undefined
 
 /** In-process engine with programmable answers (captures are not simulated). */
-export class StubEngine implements AnalysisEngine {
+export class StubEngine implements StreamingEngine {
   readonly queries: KataGoQueryBody[] = []
   best: (q: KataGoQueryBody) => string = (q) => q.allowMoves?.[0]?.moves[0] ?? 'D4'
   lead: (q: KataGoQueryBody) => number = () => 0
@@ -54,6 +54,11 @@ export class StubEngine implements AnalysisEngine {
   human: ((q: KataGoQueryBody) => number[]) | null = null
   fail: { when: (q: KataGoQueryBody) => boolean; error: Error } | null = null
   hold = false
+  /** Streams fail like this, in order, before any normal one starts. */
+  streamFailures: Error[] = []
+  failed = false
+  /** How many streams were stopped. */
+  stops = 0
   private readonly held: (() => void)[] = []
 
   async analyze(q: KataGoQueryBody): Promise<AnalysisResponse> {
@@ -65,6 +70,45 @@ export class StubEngine implements AnalysisEngine {
       throw error
     }
     return stubResponse(q, this.best(q), this.lead(q), this.human?.(q))
+  }
+
+  /** Streams `ceil(limit/4)` and `ceil(limit/2)` visits partials (each in its own timer tick), then the final answer. */
+  analyzeStream(q: KataGoQueryBody, onUpdate: (partial: AnalysisResponse) => void): AnalysisStream {
+    this.queries.push(q)
+    const failure = this.streamFailures.shift()
+    if (failure) return { done: Promise.reject(failure), stop: () => {} }
+    const limit = q.maxVisits ?? 1
+    const answer = (visits: number, during: boolean): AnalysisResponse => ({
+      ...stubResponse({ ...q, maxVisits: visits }, this.best(q), this.lead(q)),
+      isDuringSearch: during,
+    })
+    let stopped = false
+    let last: AnalysisResponse | null = null
+    let settle: (r: AnalysisResponse | null) => void = () => {}
+    const done = new Promise<AnalysisResponse | null>((resolve) => {
+      settle = resolve
+    })
+    const steps = [Math.ceil(limit / 4), Math.ceil(limit / 2)]
+    const tick = (i: number): void => {
+      if (stopped) return
+      if (i < steps.length) {
+        last = answer(steps[i], true)
+        onUpdate(last)
+        setTimeout(() => tick(i + 1), 0)
+      } else {
+        settle(answer(limit, false))
+      }
+    }
+    setTimeout(() => tick(0), 0)
+    return {
+      done,
+      stop: () => {
+        if (stopped) return
+        stopped = true
+        this.stops += 1
+        settle(last)
+      },
+    }
   }
 
   release(): void {

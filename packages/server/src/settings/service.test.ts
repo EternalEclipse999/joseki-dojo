@@ -64,7 +64,7 @@ async function setup() {
   const settings = new SettingsService({ config, configFile, modelsDir: inst.models, engine, health, lock: loadLock(REPO_LOCK), commandFor })
   const update = (mainModel: string, analysis: Partial<SettingsUpdate['analysis']> = {}): SettingsUpdate => ({
     katago: { path: inst.katago, analysisConfig: inst.cfg, mainModel, humanModel: inst.human },
-    analysis: { reviewVisits: 40, endVisits: 20, ...analysis },
+    analysis: { reviewVisits: 40, endVisits: 20, variationVisits: 400, ...analysis },
   })
   return { inst, config, engine, health, configFile, settings, update }
 }
@@ -77,7 +77,7 @@ describe('SettingsService', () => {
     expect(v.runningVersion).toBe('1.18.1')
     expect(v.versionWarning).toBeNull()
     expect(v.models).toEqual([inst.broken, inst.human, inst.main, inst.next].sort())
-    expect(v.analysis).toEqual({ reviewVisits: 10, endVisits: 5 })
+    expect(v.analysis).toEqual({ reviewVisits: 10, endVisits: 5, variationVisits: 40 })
     expect(v.defaultBotRank).toBe('7k')
   })
 
@@ -97,10 +97,10 @@ describe('SettingsService', () => {
     expect(r.settings.versionWarning).toContain('1.18.2')
     expect(config.katago.mainModel).toBe(inst.next)
     expect(config.katago.commandOverride).toBeUndefined()
-    expect(config.analysis).toEqual({ reviewVisits: 40, endVisits: 20 })
+    expect(config.analysis).toEqual({ reviewVisits: 40, endVisits: 20, variationVisits: 400 })
     const saved = JSON.parse(readFileSync(configFile, 'utf8'))
     expect(saved.katago.mainModel).toBe(inst.next)
-    expect(saved.analysis).toEqual({ reviewVisits: 40, endVisits: 20 })
+    expect(saved.analysis).toEqual({ reviewVisits: 40, endVisits: 20, variationVisits: 400 })
   })
 
   it('restores the previous engine when the new one fails its checks', async () => {
@@ -139,7 +139,7 @@ describe('SettingsService', () => {
     const order: string[] = []
     const first = settings.apply(update(inst.next)).then((r) => (order.push('apply'), r))
     const second = settings
-      .switchTo({ ...config.katago, path: inst.katago, analysisConfig: inst.cfg, mainModel: inst.main, humanModel: inst.human }, { reviewVisits: 33, endVisits: 11 })
+      .switchTo({ ...config.katago, path: inst.katago, analysisConfig: inst.cfg, mainModel: inst.main, humanModel: inst.human }, { reviewVisits: 33, endVisits: 11, variationVisits: 330 })
       .then((r) => (order.push('switchTo'), r))
     const [a, b] = await Promise.all([first, second])
     expect(a.ok).toBe(true)
@@ -171,12 +171,28 @@ describe('SettingsService', () => {
     expect(readdirSync(inst.dir).filter((f) => f.endsWith('.tmp'))).toEqual([])
   })
 
+  it('refuses a variations limit outside 1..100000', async () => {
+    const { settings, inst, update } = await setup()
+    const reason = 'Число визитов должно быть целым от 1 до 100000'
+    expect(await settings.apply(update(inst.main, { variationVisits: 0 }))).toEqual({ ok: false, reason })
+    expect(await settings.apply(update(inst.main, { variationVisits: 100001 }))).toEqual({ ok: false, reason })
+  })
+
+  it('saves a valid variations limit and shows it', async () => {
+    const { settings, inst, config, configFile, update } = await setup()
+    const r = await settings.apply(update(inst.main, { variationVisits: 1234 }))
+    expect(r.ok).toBe(true)
+    expect(config.analysis.variationVisits).toBe(1234)
+    expect((await settings.view()).analysis.variationVisits).toBe(1234)
+    expect(JSON.parse(readFileSync(configFile, 'utf8')).analysis.variationVisits).toBe(1234)
+  })
+
   it('resolves relative paths against the config file directory, not the working directory', async () => {
     const { settings, inst, config } = await setup()
     const rel = (p: string): string => relative(inst.dir, p)
     const r = await settings.apply({
       katago: { path: rel(inst.katago), analysisConfig: rel(inst.cfg), mainModel: rel(inst.next), humanModel: rel(inst.human) },
-      analysis: { reviewVisits: 40, endVisits: 20 },
+      analysis: { reviewVisits: 40, endVisits: 20, variationVisits: 400 },
     })
     expect(r.ok).toBe(true)
     expect(config.katago.mainModel).toBe(inst.next)
@@ -198,7 +214,7 @@ describe('SettingsService', () => {
     const before = config.katago.mainModel
     const r = await settings.apply({
       katago: { path: inst.katago, analysisConfig: inst.cfg, mainModel: inst.next, humanModel: inst.human },
-      analysis: { reviewVisits: 40, endVisits: 20 },
+      analysis: { reviewVisits: 40, endVisits: 20, variationVisits: 400 },
     })
     expect(r.ok).toBe(false)
     expect(config.katago.mainModel).toBe(before)
@@ -210,20 +226,30 @@ describe('SettingsService', () => {
 })
 
 describe('SettingsService.switchTo', () => {
+  it('tells its owner after a kept change, and only then', async () => {
+    const { inst, config, engine, health, configFile, update } = await setup()
+    let switched = 0
+    const settings = new SettingsService({ config, configFile, modelsDir: inst.models, engine, health, lock: loadLock(REPO_LOCK), commandFor, onSwitched: () => switched++ })
+    expect((await settings.apply(update(inst.broken))).ok).toBe(false)
+    expect(switched).toBe(0)
+    expect((await settings.apply(update(inst.next))).ok).toBe(true)
+    expect(switched).toBe(1)
+  })
+
   it('switches to an installed engine and records who set it up, keeping other config fields', async () => {
     const { settings, inst, config, configFile } = await setup()
     writeFileSync(configFile, JSON.stringify({ bot: { defaultRank: '5k' }, setup: { kind: 'cpu' } }))
     const katago = { path: inst.katago, analysisConfig: inst.cfg, mainModel: inst.main, humanModel: inst.human }
-    const r = await settings.switchTo(katago, { reviewVisits: 300, endVisits: 150 }, { kind: 'gpu', lockId: '1.18.1/aaaaaaaaaaaa/bbbbbbbbbbbb' })
+    const r = await settings.switchTo(katago, { reviewVisits: 300, endVisits: 150, variationVisits: 3000 }, { kind: 'gpu', lockId: '1.18.1/aaaaaaaaaaaa/bbbbbbbbbbbb' })
     expect(r.ok).toBe(true)
     expect(config.setup).toEqual({ kind: 'gpu', lockId: '1.18.1/aaaaaaaaaaaa/bbbbbbbbbbbb' })
-    expect(config.analysis).toEqual({ reviewVisits: 300, endVisits: 150 })
+    expect(config.analysis).toEqual({ reviewVisits: 300, endVisits: 150, variationVisits: 3000 })
     const saved = JSON.parse(readFileSync(configFile, 'utf8'))
     expect(saved).toEqual({
       bot: { defaultRank: '5k' },
       setup: { kind: 'gpu', lockId: '1.18.1/aaaaaaaaaaaa/bbbbbbbbbbbb' },
       katago,
-      analysis: { reviewVisits: 300, endVisits: 150 },
+      analysis: { reviewVisits: 300, endVisits: 150, variationVisits: 3000 },
     })
   })
 
@@ -232,7 +258,7 @@ describe('SettingsService.switchTo', () => {
     const configFile = join(inst.dir, 'profile', 'config.json')
     const settings = new SettingsService({ config, configFile, modelsDir: inst.models, engine, health, lock: loadLock(REPO_LOCK), commandFor })
     const katago = { path: inst.katago, analysisConfig: inst.cfg, mainModel: inst.main, humanModel: inst.human }
-    expect((await settings.switchTo(katago, { reviewVisits: 300, endVisits: 150 })).ok).toBe(true)
+    expect((await settings.switchTo(katago, { reviewVisits: 300, endVisits: 150, variationVisits: 3000 })).ok).toBe(true)
     expect(JSON.parse(readFileSync(configFile, 'utf8')).katago).toEqual(katago)
   })
 })

@@ -6,6 +6,9 @@ export const formatPoints = (n: number): string => {
   return text.replace(/^[-−]0,0$/, '0,0')
 }
 
+/** Visit counts with grouped thousands: «1 200». */
+export const formatCount = (n: number): string => Math.round(n).toLocaleString('ru-RU')
+
 export const moveLabel = (v: MoveVertex): string => (v === 'pass' ? 'пас' : vertexToGtp(v))
 
 export const rankLabel = (rank: string): string =>
