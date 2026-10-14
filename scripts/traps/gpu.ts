@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { localize } from '@joseki-dojo/shared'
 import { loadConfig } from '../../packages/server/src/config'
 import { engineCommand } from '../../packages/server/src/engine/command'
 import { EngineError, KataGoEngine } from '../../packages/server/src/engine/engine'
@@ -23,7 +24,7 @@ async function main(): Promise<void> {
   const engine = new KataGoEngine(engineCommand(config), (line) => log(`  [katago] ${line}`))
   try {
     const health = await checkEngine(config, engine)
-    if (health.state !== 'ready') throw new Error(`KataGo is not ready: ${health.reason}`)
+    if (health.state !== 'ready') throw new Error(`KataGo is not ready: ${health.reason ? localize('en', health.reason) : health.state}`)
     const engineInfo = `KataGo ${await engine.version()}; networks: ${basename(config.katago.mainModel)}, ${basename(config.katago.humanModel)}`
     log(engineInfo)
     await runGpu({ root, engine, opts, engineInfo, log })

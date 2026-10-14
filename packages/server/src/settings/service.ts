@@ -1,11 +1,12 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import type { AnalysisSettings, SettingsResponse, SettingsUpdate, SettingsView } from '@joseki-dojo/shared'
+import type { AnalysisSettings, LocalizedText, SettingsResponse, SettingsUpdate, SettingsView } from '@joseki-dojo/shared'
 import type { AppConfig, KataGoSettings, SetupInfo } from '../config'
 import { engineCommand } from '../engine/command'
 import type { EngineCommand, KataGoEngine } from '../engine/engine'
 import { checkEngine, missingFiles, type HealthMonitor } from '../engine/health'
 import { versionWarning, type KataGoLock } from '../engine/lock'
+import { textOf } from '../text-error'
 import { updateConfigFile } from './config-writer'
 
 export interface SettingsServiceDeps {
@@ -23,12 +24,12 @@ export interface SettingsServiceDeps {
 
 const MODEL_FILE = /\.(bin|txt)\.gz$|\.bin$/
 
-function validateUpdate(u: SettingsUpdate): string | null {
+function validateUpdate(u: SettingsUpdate): LocalizedText | null {
   const paths = u?.katago ? [u.katago.path, u.katago.analysisConfig, u.katago.mainModel, u.katago.humanModel] : []
-  if (paths.length !== 4 || paths.some((p) => typeof p !== 'string' || p.trim() === '')) return 'Укажите все пути'
+  if (paths.length !== 4 || paths.some((p) => typeof p !== 'string' || p.trim() === '')) return { key: 'settings.error.paths' }
   const visits = [u.analysis?.reviewVisits, u.analysis?.endVisits, u.analysis?.variationVisits]
   if (visits.some((v) => !Number.isInteger(v) || (v as number) < 1 || (v as number) > 100_000)) {
-    return 'Число визитов должно быть целым от 1 до 100000'
+    return { key: 'settings.error.visits', params: { max: 100_000 } }
   }
   return null
 }
@@ -92,13 +93,13 @@ export class SettingsService {
     if (missing) return { ok: false, reason: missing }
 
     const previous = this.commandFor(this.d.config)
-    let failure: string | null = null
+    let failure: LocalizedText | null = null
     try {
       await this.d.engine.restartWith(this.commandFor(candidate))
       const health = await checkEngine(candidate, this.d.engine)
-      if (health.state !== 'ready') failure = health.reason ?? 'KataGo не запустился'
+      if (health.state !== 'ready') failure = health.reason ?? { key: 'settings.error.notStarted' }
     } catch (e) {
-      failure = e instanceof Error ? e.message : String(e)
+      failure = textOf(e)
     }
     if (failure !== null) {
       await this.d.engine.restartWith(previous).catch(() => undefined)
@@ -127,7 +128,7 @@ export class SettingsService {
       else delete this.d.config.setup
       await this.d.engine.restartWith(previous).catch(() => undefined)
       await this.d.health.check().catch(() => undefined)
-      return { ok: false, reason: `Не удалось сохранить настройки: ${e instanceof Error ? e.message : String(e)}` }
+      return { ok: false, reason: { key: 'settings.error.saveFailed', params: { detail: e instanceof Error ? e.message : String(e) } } }
     }
   }
 

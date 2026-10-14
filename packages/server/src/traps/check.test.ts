@@ -175,14 +175,14 @@ describe('checkTraps', () => {
   it('leaves a trap whose query is rejected unchanged, goes on and does not mark the base as verified', async () => {
     const engine = leadEngine(TRAP2)
     // The first zone query belongs to trap 1.
-    engine.fail = { when: (q) => q.allowMoves !== undefined, error: new EngineError('boom', 'query_error') }
+    engine.fail = { when: (q) => q.allowMoves !== undefined, error: new EngineError({ key: 'error.engine.query', params: { detail: 'boom' } }, 'query_error') }
     const lines: string[] = []
     const out = await checkTraps(base(), engine, OPTS, (l) => lines.push(l))
     expect(out.dropped).toEqual([])
-    expect(out.failed).toEqual([{ id: ID1, reason: 'error: boom' }])
+    expect(out.failed).toEqual([{ id: ID1, reason: 'error: KataGo rejected the query: boom' }])
     expect(out.kept).toBe(1)
     expect(out.tree.verified).toBe(false)
-    expect(lines.some((l) => l.includes(ID1) && l.includes('error: boom'))).toBe(true)
+    expect(lines.some((l) => l.includes(ID1) && l.includes('error: KataGo rejected the query: boom'))).toBe(true)
     const b = decodeJdb(encodeJdb(out.tree))
     const unchanged = b.find(['Q16', 'O17', 'O18'].map(v))!
     expect(b.category(unchanged)).toBe('trap')
@@ -218,7 +218,7 @@ describe('checkTraps', () => {
 
   it('retries a query once when the engine fails, and judges the trap normally', async () => {
     const engine = leadEngine({ ...TRAP1, ...TRAP2 })
-    engine.fail = { when: (q) => q.allowMoves !== undefined && q.moves.length === 3, error: new EngineError('query hung', 'engine_failed') }
+    engine.fail = { when: (q) => q.allowMoves !== undefined && q.moves.length === 3, error: new EngineError({ key: 'error.engine.timeout', params: { seconds: 120 } }, 'engine_failed') }
     const out = await checkTraps(base(), engine, OPTS, () => {})
     expect(out.kept).toBe(2)
     expect(out.dropped).toEqual([])
@@ -229,7 +229,7 @@ describe('checkTraps', () => {
     const engine = leadEngine({ ...TRAP1, ...TRAP2 })
     const analyze = engine.analyze.bind(engine)
     engine.analyze = async (q) => {
-      if (q.allowMoves !== undefined && q.moves.length === 3) throw new EngineError('query hung', 'engine_failed')
+      if (q.allowMoves !== undefined && q.moves.length === 3) throw new EngineError({ key: 'error.engine.timeout', params: { seconds: 120 } }, 'engine_failed')
       return analyze(q)
     }
     await expect(checkTraps(base(), engine, OPTS, () => {})).rejects.toMatchObject({ code: 'engine_failed' })
@@ -240,7 +240,7 @@ describe('checkTraps', () => {
     // Trap 1 is judged first; the zone query of trap 2 (four moves) fails on the retry too.
     const analyze = engine.analyze.bind(engine)
     engine.analyze = async (q) => {
-      if (q.allowMoves !== undefined && q.moves.length === 4) throw new EngineError('KataGo stopped', 'engine_failed')
+      if (q.allowMoves !== undefined && q.moves.length === 4) throw new EngineError({ key: 'error.engine.stopped' }, 'engine_failed')
       return analyze(q)
     }
     await expect(checkTraps(base(), engine, OPTS, () => {})).rejects.toMatchObject({ code: 'engine_failed' })

@@ -39,7 +39,7 @@ export class ReviewService {
 
   private async run(sessionId: string): Promise<ReviewData> {
     const rec = this.d.repo.getSession(sessionId)
-    if (!rec) throw new SessionError('Тренировка не найдена', 'session_not_found')
+    if (!rec) throw new SessionError({ key: 'error.session.notFound' }, 'session_not_found')
     const total = rec.moves.length + 1
     let done = 0
     const progress = (): void => this.d.publish(sessionId, { type: 'analysisProgress', sessionId, done, total })

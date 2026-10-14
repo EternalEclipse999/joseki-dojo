@@ -1,3 +1,5 @@
+import type { Language, LocalizedText } from './i18n'
+
 export type Color = 'B' | 'W'
 /** Sabaki coordinates: x grows to the right, y grows downward, both 0..18. */
 export type Vertex = [x: number, y: number]
@@ -158,7 +160,7 @@ export type HealthState = 'starting' | 'ready' | 'failed'
 
 export interface HealthResponse {
   state: HealthState
-  reason: string | null
+  reason: LocalizedText | null
 }
 
 export const otherColor = (c: Color): Color => (c === 'B' ? 'W' : 'B')
@@ -179,6 +181,8 @@ export const THEMES: readonly Theme[] = ['system', 'light', 'dark']
 /** `GET/PUT /api/ui`: interface preferences saved in the config file. */
 export interface UiSettings {
   theme: Theme
+  /** Spec (languages) 3: absent until the player (or the installer) chooses; the interface is English meanwhile. */
+  language?: Language
 }
 
 /** What `GET /api/traps` reports about the loaded traps base. */

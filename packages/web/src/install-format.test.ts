@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { InstallFile } from '@joseki-dojo/shared'
 import { canStartInstall, installFinishedAtOnce, downloadSizeText, fileProgressText, INSTALL_STEP_TEXT, isInstalling } from './install-format'
 
-const file = (over: Partial<InstallFile>): InstallFile => ({ name: 'net.bin.gz', label: 'Основная сеть', received: 0, total: 0, done: false, ...over })
+const file = (over: Partial<InstallFile>): InstallFile => ({ name: 'net.bin.gz', label: { key: 'install.file.mainNet' }, received: 0, total: 0, done: false, ...over })
 
 describe('install screen texts', () => {
   it('warns that the GPU step is slow', () => {
@@ -50,7 +50,7 @@ describe('downloadSizeText', () => {
 describe('installFinishedAtOnce', () => {
   it('leaves the screen at once on a plain "done" and stays on it when there is a note to read', () => {
     expect(installFinishedAtOnce({ step: 'done', note: null })).toBe(true)
-    expect(installFinishedAtOnce({ step: 'done', note: 'Используется процессор: видеокарта не запустилась.' })).toBe(false)
+    expect(installFinishedAtOnce({ step: 'done', note: { key: 'install.note.cpuFallback' } })).toBe(false)
     expect(installFinishedAtOnce({ step: 'failed', note: null })).toBe(false)
   })
 })

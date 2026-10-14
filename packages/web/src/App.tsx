@@ -1,9 +1,10 @@
 import type { JSX } from 'preact'
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import type { AnalysisSettings, ClientMessage, HealthResponse, InstallStatus, ResolvedSettings, ReviewData, SessionSettings, SessionView, StartsInfo, TrapsInfo } from '@joseki-dojo/shared'
+import { localize, translator, type AnalysisSettings, type ClientMessage, type HealthResponse, type InstallStatus, type Language, type LocalizedText, type ResolvedSettings, type ReviewData, type SessionSettings, type SessionView, type StartsInfo, type TrapsInfo } from '@joseki-dojo/shared'
 import { LoaderCircle, RefreshCw } from 'lucide-preact'
 import { buildStartTree } from './start-tree'
-import { DojoSocket, fetchHealth, fetchInstall, fetchReview, fetchSettings, fetchStarts, fetchTraps, fetchUi, recheckHealth } from './api'
+import { DojoSocket, fetchHealth, fetchInstall, fetchReview, fetchSettings, fetchStarts, fetchTraps, fetchUi, recheckHealth, saveLanguage } from './api'
+import { I18nContext, pickLanguage, rememberLanguage, storedLanguage, type I18n } from './i18n'
 import { AppHeader } from './components/AppHeader'
 import { AppUpdateBanner } from './components/AppUpdateBanner'
 import { Bar } from './components/Bar'
@@ -30,11 +31,11 @@ export function App() {
   const [session, setSession] = useState<SessionView | null>(null)
   const [review, setReview] = useState<ReviewData | null>(null)
   const [progress, setProgress] = useState<Progress | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<LocalizedText | string | null>(null)
   const [errorSeq, setErrorSeq] = useState(0)
   const [connected, setConnected] = useState(true)
   const [showSettings, setShowSettings] = useState(false)
-  const [versionWarning, setVersionWarning] = useState<string | null>(null)
+  const [versionWarning, setVersionWarning] = useState<LocalizedText | null>(null)
   const [defaultRank, setDefaultRank] = useState<string | undefined>(undefined)
   // True from sending startSession/replayFrom until the server answers (sessionState/error) or the link drops.
   const [starting, setStarting] = useState(false)
@@ -51,6 +52,8 @@ export function App() {
   const [analysisSettings, setAnalysisSettings] = useState<AnalysisSettings | null>(null)
   const [starts, setStarts] = useState<StartsInfo | null>(null)
   const startTree = useMemo(() => buildStartTree(starts?.list ?? [], starts?.branches ?? [], starts?.groups ?? []), [starts])
+  const [language, setLanguageState] = useState<Language>(storedLanguage)
+  const [languageChosen, setLanguageChosen] = useState<boolean | null>(null)
 
   const follow = useMemo(() => new SessionFollow(), [])
   const socket = useMemo(
@@ -83,7 +86,7 @@ export function App() {
               })
             break
           case 'error':
-            setError(msg.message)
+            setError(msg.text)
             setStarting(false)
             setErrorSeq((n) => n + 1)
             break
@@ -100,12 +103,33 @@ export function App() {
     setVariationUpdate(null)
   }, [socket, session?.id])
 
-  // The saved colour theme; without the server the page keeps the system colours set by index.html.
+  // The saved colour theme and language; without the server the page keeps the system colours and the remembered language.
   useEffect(() => {
     fetchUi()
-      .then((u) => applyTheme(u.theme))
+      .then((u) => {
+        applyTheme(u.theme)
+        const picked = pickLanguage(u, storedLanguage())
+        setLanguageState(picked.language)
+        rememberLanguage(picked.language)
+        setLanguageChosen(picked.chosen)
+      })
       .catch(() => undefined)
   }, [])
+
+  const i18n = useMemo<I18n>(
+    () => ({
+      language,
+      t: translator(language),
+      chosen: languageChosen,
+      setLanguage: (lang) => {
+        setLanguageState(lang)
+        rememberLanguage(lang)
+        setLanguageChosen(true)
+        saveLanguage(lang).catch(() => undefined) // the next start asks again; the page already shows the choice
+      },
+    }),
+    [language, languageChosen],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -331,17 +355,17 @@ export function App() {
   const nav = !inGame && !engineUpdate ? { settings: showSettings, onGame: () => setShowSettings(false), onSettings: () => setShowSettings(true) } : undefined
 
   return (
-    <>
+    <I18nContext.Provider value={i18n}>
       <AppHeader crumb={crumb} nav={nav} />
       <AppUpdateBanner />
-      {bannerText && <ErrorBanner message={bannerText} onRetry={retry} />}
+      {bannerText && <ErrorBanner error={bannerText} onRetry={retry} />}
       {offerEngineUpdate && (
         <Bar icon={RefreshCw} action={{ label: 'Обновить движок', onClick: () => setEngineUpdate(true), primary: true }}>
           Доступна новая проверенная версия KataGo
         </Bar>
       )}
-      {versionWarning && !showSettings && <Bar tone="warning">{versionWarning}</Bar>}
+      {versionWarning && !showSettings && <Bar tone="warning">{localize(language, versionWarning)}</Bar>}
       {screen}
-    </>
+    </I18nContext.Provider>
   )
 }

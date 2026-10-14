@@ -221,7 +221,7 @@ describe('settings API', () => {
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.ok).toBe(false)
-    expect(typeof body.reason).toBe('string')
+    expect(body.reason).toMatchObject({ key: expect.stringMatching(/^health\.missing\./), params: { path: expect.any(String) } })
   })
 })
 
@@ -266,8 +266,20 @@ describe('/api/ui', () => {
     await put({ theme: 'light' })
     const res = await put({ theme: 'neon' })
     expect(res.status).toBe(400)
-    expect(typeof (await res.json()).error).toBe('string')
+    expect(await res.json()).toEqual({ error: { key: 'error.ui.theme' } })
     expect(await (await fetch(`http://${host}/api/ui`)).json()).toEqual({ theme: 'light' })
+  })
+
+  it('saves a language next to the theme, and refuses an unknown one without changing anything', async () => {
+    await put({ theme: 'dark' })
+    const res = await put({ language: 'ja' })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ theme: 'dark', language: 'ja' })
+    const bad = await put({ theme: 'light', language: 'fr' })
+    expect(bad.status).toBe(400)
+    expect(await bad.json()).toEqual({ error: { key: 'error.ui.language' } })
+    expect(await (await fetch(`http://${host}/api/ui`)).json()).toEqual({ theme: 'dark', language: 'ja' })
+    expect((await put({})).status).toBe(400)
   })
 })
 

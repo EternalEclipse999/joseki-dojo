@@ -42,7 +42,7 @@ describe('download', () => {
 
   it('rejects a wrong checksum and leaves nothing behind', async () => {
     const dest = join(temp(), 'net.bin.gz')
-    await expect(download(await serve(body), dest, sha(Buffer.from('other')))).rejects.toThrow(/SHA-256/)
+    await expect(download(await serve(body), dest, sha(Buffer.from('other')))).rejects.toMatchObject({ text: { key: 'install.error.sha' } })
     expect(existsSync(dest)).toBe(false)
     expect(existsSync(`${dest}.part`)).toBe(false)
   })
@@ -108,7 +108,7 @@ describe('download failures', () => {
     const url = `http://127.0.0.1:${port}/file.bin`
     const dest = join(temp(), 'net.bin.gz')
     const logs: string[] = []
-    await expect(download(url, dest, sha(body), { log: (l) => logs.push(l) })).rejects.toThrow('Нет подключения к интернету или сервер недоступен')
+    await expect(download(url, dest, sha(body), { log: (l) => logs.push(l) })).rejects.toMatchObject({ text: { key: 'install.error.offline' } })
     expect(logs.join(' | ')).toContain(url)
     expect(existsSync(`${dest}.part`)).toBe(false)
   })
@@ -119,7 +119,7 @@ describe('download failures', () => {
       res.write(body)
     })
     const dest = join(temp(), 'net.bin.gz')
-    await expect(download(url, dest, sha(body), { stallTimeoutMs: 300 })).rejects.toThrow(/завис/)
+    await expect(download(url, dest, sha(body), { stallTimeoutMs: 300 })).rejects.toMatchObject({ text: { key: 'install.error.stalled', params: { url } } })
     expect(existsSync(dest)).toBe(false)
     expect(existsSync(`${dest}.part`)).toBe(false)
   })
@@ -127,7 +127,7 @@ describe('download failures', () => {
   it('aborts when headers never arrive', async () => {
     const url = await serveRaw(() => undefined)
     const dest = join(temp(), 'net.bin.gz')
-    await expect(download(url, dest, sha(body), { stallTimeoutMs: 300 })).rejects.toThrow(/завис/)
+    await expect(download(url, dest, sha(body), { stallTimeoutMs: 300 })).rejects.toMatchObject({ text: { key: 'install.error.stalled', params: { url } } })
   })
 
   it('accepts an upper-case checksum', async () => {
@@ -174,7 +174,7 @@ describe('extractBuild', () => {
 
   it('rejects an archive without KataGo and leaves nothing behind', async () => {
     const dir = join(temp(), 'katago')
-    await expect(extractBuild(archive({ 'README.txt': 'r' }), dir)).rejects.toThrow(/нет исполняемого файла KataGo/)
+    await expect(extractBuild(archive({ 'README.txt': 'r' }), dir)).rejects.toMatchObject({ text: { key: 'install.error.noExecutable' } })
     expect(existsSync(dir)).toBe(false)
     expect(existsSync(`${dir}.part`)).toBe(false)
   })
@@ -201,9 +201,10 @@ describe('download: injected fetch and network errors', () => {
     }) as typeof fetch
     const logs: string[] = []
     const dest = join(temp(), 'net.bin.gz')
-    await expect(download('https://example.invalid/f.bin', dest, sha(body), { fetch: failing, log: (l) => logs.push(l) })).rejects.toThrow(
-      'Нет подключения к интернету или сервер недоступен',
-    )
+    await expect(download('https://example.invalid/f.bin', dest, sha(body), { fetch: failing, log: (l) => logs.push(l) })).rejects.toMatchObject({
+      text: { key: 'install.error.offline' },
+      cause: expect.any(TypeError),
+    })
     expect(logs.join('\n')).toContain('https://example.invalid/f.bin')
     expect(logs.join('\n')).toContain(code)
   })
@@ -213,9 +214,9 @@ describe('download: injected fetch and network errors', () => {
       const failing = (async () => {
         throw new TypeError(msg)
       }) as typeof fetch
-      await expect(download('https://example.invalid/f.bin', join(temp(), 'x.bin'), sha(body), { fetch: failing })).rejects.toThrow(
-        'Нет подключения к интернету или сервер недоступен',
-      )
+      await expect(download('https://example.invalid/f.bin', join(temp(), 'x.bin'), sha(body), { fetch: failing })).rejects.toMatchObject({
+        text: { key: 'install.error.offline' },
+      })
     }
   })
 })

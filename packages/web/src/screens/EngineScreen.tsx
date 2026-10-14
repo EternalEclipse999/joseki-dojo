@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks'
 import { CircleAlert, Gauge, LoaderCircle, RefreshCw, Settings } from 'lucide-preact'
-import type { HealthResponse } from '@joseki-dojo/shared'
+import { localize, type HealthResponse } from '@joseki-dojo/shared'
+import { useI18n } from '../i18n'
 
 export interface EngineScreenProps {
   health: HealthResponse
@@ -13,11 +14,12 @@ export interface EngineScreenProps {
 
 export function EngineScreen({ health, onRetry, onSettings, onRepick }: EngineScreenProps) {
   const [checking, setChecking] = useState(false)
+  const { language } = useI18n()
   if (health.state === 'starting') {
     return (
       <main class="loading">
         <LoaderCircle class="spin" aria-hidden="true" />
-        {health.reason ?? 'KataGo запускается…'}
+        {localize(language, health.reason ?? { key: 'health.starting' })}
       </main>
     )
   }
@@ -29,7 +31,7 @@ export function EngineScreen({ health, onRetry, onSettings, onRepick }: EngineSc
         </div>
         <p class="note error">
           <CircleAlert aria-hidden="true" />
-          <span>{health.reason}</span>
+          <span>{health.reason && localize(language, health.reason)}</span>
         </p>
         <div class="card section">
           {onRepick ? (

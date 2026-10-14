@@ -1,7 +1,7 @@
 import { BOARD_SIZE, type ClientMessage, type Vertex } from '@joseki-dojo/shared'
 import { SessionError } from '../session/session'
 
-const bad = (): SessionError => new SessionError('Некорректное сообщение', 'bad_request')
+const bad = (): SessionError => new SessionError({ key: 'error.message.bad' }, 'bad_request')
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 

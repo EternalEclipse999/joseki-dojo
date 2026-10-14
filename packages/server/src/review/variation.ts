@@ -36,9 +36,9 @@ export class VariationService {
 
   start(owner: object, req: VariationRequest, send: (msg: ServerMessage) => void): void {
     const rec = this.d.repo.getSession(req.sessionId)
-    if (!rec) throw new SessionError('Тренировка не найдена', 'session_not_found')
-    if (rec.status !== 'finished') throw new SessionError('Варианты доступны только в разборе', 'bad_request')
-    if (!Number.isInteger(req.fromTurn) || req.fromTurn < 0 || req.fromTurn > rec.moves.length) throw new SessionError('Нет такого хода', 'bad_request')
+    if (!rec) throw new SessionError({ key: 'error.session.notFound' }, 'session_not_found')
+    if (rec.status !== 'finished') throw new SessionError({ key: 'error.variation.reviewOnly' }, 'bad_request')
+    if (!Number.isInteger(req.fromTurn) || req.fromTurn < 0 || req.fromTurn > rec.moves.length) throw new SessionError({ key: 'error.turn.notFound' }, 'bad_request')
     const moves: Move[] = movesBefore(rec, req.fromTurn)
     let color = nextColor(moves)
     for (const vertex of req.moves) {
@@ -48,7 +48,7 @@ export class VariationService {
     try {
       Position.fromMoves(moves)
     } catch (err) {
-      if (err instanceof IllegalMoveError) throw new SessionError('Недопустимый ход в варианте', 'illegal_move')
+      if (err instanceof IllegalMoveError) throw new SessionError({ key: 'error.variation.illegal' }, 'illegal_move')
       throw err
     }
     // The request is valid: only now the owner's previous search is given up.

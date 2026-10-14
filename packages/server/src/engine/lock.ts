@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import type { LocalizedText } from '@joseki-dojo/shared'
 
 export interface LockedBuild {
   id: string
@@ -39,9 +40,9 @@ export function loadLock(file: string): KataGoLock {
 export const buildsFor = (lock: KataGoLock, platform: string): LockedBuild[] =>
   lock.katago.builds.filter((b) => b.platform === platform)
 
-export function versionWarning(lock: KataGoLock, running: string | null): string | null {
+export function versionWarning(lock: KataGoLock, running: string | null): LocalizedText | null {
   if (!running || running === lock.katago.version) return null
-  return `Запущена KataGo ${running}, а проверена ${lock.katago.version}. Работать будет, но эта версия не проверялась.`
+  return { key: 'settings.versionWarning', params: { running, locked: lock.katago.version } }
 }
 
 /** Spec 5.1: names the pinned KataGo version and networks: `<version>/<main sha256, 12>/<human sha256, 12>`. */

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { gtpToVertex, type HealthResponse, type InstallStatus, type Vertex } from '@joseki-dojo/shared'
+import { gtpToVertex, type HealthResponse, type InstallStatus, type Language, type Vertex } from '@joseki-dojo/shared'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_KATAGO, REPO_LOCK, tempDir } from '../test/helpers'
 import { createInstallFixture, fakeBuildCommand, type InstallFixture } from '../test/install-fixture'
@@ -63,6 +63,20 @@ describe('startServer', () => {
     expect(server.services.engine.pendingCount).toBe(0)
   })
 
+  it('writes initialLanguage into a config without a language, and keeps a saved one', async () => {
+    const root = tempDir()
+    const configFile = join(root, 'config.json')
+    const start = (initialLanguage: Language): Promise<RunningServer> =>
+      startServer({ configFile, dataDir: join(root, 'data'), enginesDir: join(root, 'engines'), lockFile: REPO_LOCK, webDist: null, port: 0, log: () => undefined, initialLanguage })
+    const first = await start('ko')
+    servers.push(first)
+    expect(first.services.config.ui.language).toBe('ko')
+    await first.close()
+    const second = await start('ja')
+    servers.push(second)
+    expect(second.services.config.ui.language).toBe('ko')
+  })
+
   it('installs KataGo through /api/install when it is missing', async () => {
     const fixture = await createInstallFixture()
     fixtures.push(fixture)
@@ -80,7 +94,7 @@ describe('startServer', () => {
     })
     servers.push(server)
 
-    expect((await health(server, 'failed')).reason).toMatch(/^KataGo не найден/)
+    expect((await health(server, 'failed')).reason).toMatchObject({ key: 'health.missing.katago' })
     expect(await getJson<InstallStatus>(`${server.url}/api/install`)).toMatchObject({ step: 'idle', installed: false })
 
     const started = (await (await fetch(`${server.url}/api/install`, { method: 'POST' })).json()) as InstallStatus
@@ -90,7 +104,7 @@ describe('startServer', () => {
     await vi.waitFor(
       async () => {
         const s = await getJson<InstallStatus>(`${server.url}/api/install`)
-        if (s.step !== 'done') throw new Error(`install is ${s.step}: ${s.error}`)
+        if (s.step !== 'done') throw new Error(`install is ${s.step}: ${JSON.stringify(s.error)}`)
       },
       { timeout: 10_000, interval: 50 },
     )

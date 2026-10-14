@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import type { AddressInfo } from 'node:net'
 import { resolve } from 'node:path'
 import type { FastifyInstance } from 'fastify'
+import { localize, type Language } from '@joseki-dojo/shared'
 import { buildApp, createServices, type AppServices } from './app'
 import { loadConfig, type AppConfig } from './config'
 import { engineCommand } from './engine/command'
@@ -37,6 +38,8 @@ export interface ServerOptions {
   startsFile?: string | null
   /** The named start list (packages/server/bases/starts-list.json); missing or unreadable turns «Из списка» off. */
   startsListFile?: string | null
+  /** Spec (languages) 8.1: the language chosen in the Windows installer; saved only into a config without one. */
+  initialLanguage?: Language
 }
 
 export interface RunningServer {
@@ -61,6 +64,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
   const services = createServices(config, engine, { configFile: options.configFile, enginesDir: options.enginesDir, lock, commandFor, log, fetch: options.fetch, traps, starts })
   let app: FastifyInstance | undefined
   try {
+    if (options.initialLanguage) await services.ui.applyInitialLanguage(options.initialLanguage)
     app = await buildApp(services, options.webDist)
     await app.listen({ port: options.port ?? config.port, host: '127.0.0.1' })
   } catch (err) {
@@ -75,7 +79,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
   void services.health
     .check()
     .then((h) => {
-      if (closing === null) log(h.state === 'ready' ? 'KataGo готов' : `KataGo не готов: ${h.reason}`)
+      if (closing === null) log(h.state === 'ready' ? 'KataGo готов' : `KataGo не готов: ${h.reason ? localize('en', h.reason) : h.state}`)
     })
     .catch((err) => log(`Проверка KataGo не удалась: ${err instanceof Error ? err.message : String(err)}`))
 

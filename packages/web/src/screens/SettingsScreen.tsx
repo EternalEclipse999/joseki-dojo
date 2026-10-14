@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'preact/hooks'
 import { Check, Gauge, LoaderCircle, TriangleAlert } from 'lucide-preact'
-import type { SettingsUpdate, SettingsView, Theme } from '@joseki-dojo/shared'
+import { localize, type LocalizedText, type SettingsUpdate, type SettingsView, type Theme } from '@joseki-dojo/shared'
 import { fetchSettings, fetchUi, saveSettings, saveTheme } from '../api'
+import { errorText } from '../error-text'
+import { useI18n } from '../i18n'
 import { applyTheme } from '../theme'
 
-type Status = { kind: 'idle' } | { kind: 'saving' } | { kind: 'saved' } | { kind: 'error'; text: string }
+type Status = { kind: 'idle' } | { kind: 'saving' } | { kind: 'saved' } | { kind: 'error'; text: LocalizedText | string }
 type PathKey = keyof SettingsUpdate['katago']
 type VisitsKey = keyof SettingsUpdate['analysis']
 
@@ -62,6 +64,7 @@ const VISIT_FIELDS: { key: VisitsKey; label: string }[] = [
 ]
 
 export function SettingsScreen({ onClose, onSaved, onRepick }: { onClose: () => void; onSaved: () => void; onRepick: () => void }) {
+  const { language } = useI18n()
   const [view, setView] = useState<SettingsView | null>(null)
   const [form, setForm] = useState<SettingsUpdate | null>(null)
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
@@ -80,7 +83,7 @@ export function SettingsScreen({ onClose, onSaved, onRepick }: { onClose: () => 
       <main>
         <div class="page wide">
           {status.kind === 'error' ? (
-            <p class="hint error">{status.text}</p>
+            <p class="hint error">{errorText(status.text, language)}</p>
           ) : (
             <p class="status-line">
               <LoaderCircle class="spin" aria-hidden="true" />
@@ -128,7 +131,7 @@ export function SettingsScreen({ onClose, onSaved, onRepick }: { onClose: () => 
         {view.versionWarning && (
           <p class="note warning">
             <TriangleAlert aria-hidden="true" />
-            <span>{view.versionWarning}</span>
+            <span>{localize(language, view.versionWarning)}</span>
           </p>
         )}
 
@@ -204,7 +207,7 @@ export function SettingsScreen({ onClose, onSaved, onRepick }: { onClose: () => 
             Сохранено, KataGo работает.
           </p>
         )}
-        {status.kind === 'error' && <p class="hint error">{status.text}</p>}
+        {status.kind === 'error' && <p class="hint error">{errorText(status.text, language)}</p>}
       </div>
     </main>
   )

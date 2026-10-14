@@ -1,4 +1,4 @@
-import type { ClientMessage, HealthResponse, InstallStatus, ReviewData, ServerMessage, SettingsResponse, SettingsUpdate, SettingsView, StartsInfo, Theme, TrapsInfo, UiSettings } from '@joseki-dojo/shared'
+import type { ClientMessage, HealthResponse, InstallStatus, Language, ReviewData, ServerMessage, SettingsResponse, SettingsUpdate, SettingsView, StartsInfo, Theme, TrapsInfo, UiSettings } from '@joseki-dojo/shared'
 
 export async function fetchHealth(): Promise<HealthResponse> {
   const res = await fetch('/api/health')
@@ -69,6 +69,12 @@ export async function fetchUi(): Promise<UiSettings> {
 export async function saveTheme(theme: Theme): Promise<UiSettings> {
   const res = await fetch('/api/ui', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ theme }) })
   if (!res.ok) throw new Error(`Не удалось сохранить оформление: HTTP ${res.status}`)
+  return (await res.json()) as UiSettings
+}
+
+export async function saveLanguage(language: Language): Promise<UiSettings> {
+  const res = await fetch('/api/ui', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ language }) })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return (await res.json()) as UiSettings
 }
 

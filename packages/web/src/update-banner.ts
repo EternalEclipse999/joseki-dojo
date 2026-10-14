@@ -1,7 +1,7 @@
-import type { AppUpdateState } from '@joseki-dojo/shared'
+import type { AppUpdateState, LocalizedText } from '@joseki-dojo/shared'
 
 export interface UpdateBannerView {
-  text: string
+  text: LocalizedText | string
   button: { label: string; action: 'download' | 'retry' } | null
   error: boolean
 }
@@ -18,6 +18,6 @@ export function updateBannerView(state: AppUpdateState): UpdateBannerView | null
     case 'installing':
       return { text: `Устанавливаю версию ${state.version}, приложение перезапустится…`, button: null, error: false }
     case 'error':
-      return { text: state.message, button: { label: 'Повторить', action: 'retry' }, error: true }
+      return { text: state.text, button: { label: 'Повторить', action: 'retry' }, error: true }
   }
 }

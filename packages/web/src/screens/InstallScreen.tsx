@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'preact/hooks'
 import { Check, CircleAlert, Download, LoaderCircle, RotateCcw } from 'lucide-preact'
-import type { InstallStatus } from '@joseki-dojo/shared'
+import { localize, type InstallStatus } from '@joseki-dojo/shared'
 import { fetchInstall, startInstall } from '../api'
+import { useI18n } from '../i18n'
 import { canStartInstall, downloadSizeText, fileProgressText, INSTALL_STEP_TEXT, installFinishedAtOnce, isInstalling } from '../install-format'
 
 export interface InstallScreenProps {
@@ -17,6 +18,7 @@ export interface InstallScreenProps {
 
 /** Spec 5: downloads and sets up KataGo with one button, polling the server once a second. */
 export function InstallScreen({ update, repick = false, onDone, onClose }: InstallScreenProps) {
+  const { language } = useI18n()
   const [status, setStatus] = useState<InstallStatus | null>(null)
   const [requestError, setRequestError] = useState<string | null>(null)
   // A first install watches from the start (an installation may already run). An update watches only after its
@@ -97,7 +99,7 @@ export function InstallScreen({ update, repick = false, onDone, onClose }: Insta
                 {status.files.map((f) => (
                   <li key={f.name}>
                     <div class="row">
-                      <span>{f.label}</span>
+                      <span>{localize(language, f.label)}</span>
                       <span class="meta">{fileProgressText(f)}</span>
                     </div>
                     <progress max={f.total || 1} value={f.done ? f.total || 1 : f.received} />
@@ -105,14 +107,14 @@ export function InstallScreen({ update, repick = false, onDone, onClose }: Insta
                 ))}
               </ul>
             )}
-            {step === 'done' && status?.note && <p class="hint">{status.note}</p>}
+            {step === 'done' && status?.note && <p class="hint">{localize(language, status.note)}</p>}
             {step === 'failed' && (
               <>
                 <p class="status-line error">
                   <CircleAlert aria-hidden="true" />
                   {INSTALL_STEP_TEXT.failed}
                 </p>
-                <p class="hint error">{status?.error}</p>
+                <p class="hint error">{status?.error && localize(language, status.error)}</p>
               </>
             )}
           </div>

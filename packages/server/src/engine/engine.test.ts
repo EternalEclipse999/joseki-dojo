@@ -71,7 +71,7 @@ describe('analyzeStream', () => {
   it('rejects when KataGo rejects the query', async () => {
     const e = track(fakeEngine())
     const stream = e.analyzeStream({ ...query, rules: 'invalid' }, () => {}, 0.02)
-    await expect(stream.done).rejects.toMatchObject({ code: 'query_error' })
+    await expect(stream.done).rejects.toMatchObject({ code: 'query_error', text: { key: 'error.engine.query', params: { detail: 'Could not parse rules' } } })
   })
 
   it('fails a running stream after a crash instead of resending it, but still answers a plain query', async () => {
@@ -94,18 +94,18 @@ describe('analyzeStream', () => {
     await expect(e.analyze(baseQuery([]))).rejects.toMatchObject({ code: 'engine_failed' })
     await expect(e.analyzeStream(query, () => {}, 0.02).done).rejects.toMatchObject({
       code: 'engine_failed',
-      message: expect.stringContaining('аварийно'),
+      text: { key: 'error.engine.crashed' },
     })
     const s = track(fakeEngine({ FAKE_KATAGO_CRASH_ONCE_FILE: join(tempDir(), 'crashed') }))
-    await expect(s.analyzeStream(query, () => {}, 0.02).done).rejects.toMatchObject({ message: 'KataGo перезапущен' })
+    await expect(s.analyzeStream(query, () => {}, 0.02).done).rejects.toMatchObject({ text: { key: 'error.engine.restarted' } })
     await s.stop()
     await expect(s.analyzeStream(query, () => {}, 0.02).done).rejects.toMatchObject({
       code: 'engine_failed',
-      message: 'KataGo остановлен',
+      text: { key: 'error.engine.stopped' },
     })
     const t = track(fakeEngine())
     const running = t.analyzeStream(query, () => {}, 5)
-    const rejected = expect(running.done).rejects.toMatchObject({ message: 'KataGo остановлен' })
+    const rejected = expect(running.done).rejects.toMatchObject({ text: { key: 'error.engine.stopped' } })
     await t.stop()
     await rejected
   })
@@ -114,7 +114,7 @@ describe('analyzeStream', () => {
     const e = track(fakeEngine())
     const stream = e.analyzeStream(query, () => {}, 5)
     const restarted = e.restartWith({ command: process.execPath, args: [FAKE_KATAGO] })
-    await expect(stream.done).rejects.toMatchObject({ code: 'engine_failed', message: 'KataGo перезапущен' })
+    await expect(stream.done).rejects.toMatchObject({ code: 'engine_failed', text: { key: 'error.engine.restarted' } })
     await restarted
     expect(e.pendingCount).toBe(0)
     expect(await e.version()).toBe('1.18.1')
@@ -135,7 +135,7 @@ describe('analyzeStream', () => {
     const e = track(fakeEngine({}, logs, { queryTimeoutMs: 300, watchdogIntervalMs: 50 }))
     const stream = e.analyzeStream(query, () => {}, 0.1) // the whole search takes 400 ms, longer than the timeout
     expect((await stream.done)?.rootInfo.visits).toBe(100)
-    expect(logs.some((l) => l.includes('не ответил'))).toBe(false)
+    expect(logs.some((l) => l.includes('did not answer'))).toBe(false)
   })
 })
 
@@ -158,7 +158,10 @@ describe('KataGoEngine', () => {
 
   it('rejects a query KataGo answers with an error', async () => {
     const e = track(fakeEngine())
-    await expect(e.analyze({ ...baseQuery([]), rules: 'invalid' })).rejects.toMatchObject({ code: 'query_error' })
+    await expect(e.analyze({ ...baseQuery([]), rules: 'invalid' })).rejects.toMatchObject({
+      code: 'query_error',
+      message: 'KataGo rejected the query: Could not parse rules',
+    })
   })
 
   it('restarts after a crash and resends the pending query', async () => {
@@ -174,7 +177,7 @@ describe('KataGoEngine', () => {
     const e = track(fakeEngine({ FAKE_KATAGO_ALWAYS_CRASH: '1' }))
     await expect(e.analyze(baseQuery([]))).rejects.toMatchObject({ code: 'engine_failed' })
     expect(e.failed).toBe(true)
-    expect(e.failure).toContain('аварийно')
+    expect(e.failure).toMatchObject({ key: 'error.engine.crashed' })
     await expect(e.version()).rejects.toMatchObject({ code: 'engine_failed' })
     e.reset()
     expect(e.failed).toBe(false)
@@ -205,7 +208,7 @@ describe('KataGoEngine', () => {
     await e.version()
     await expect(e.analyze(baseQuery([]))).rejects.toMatchObject({
       code: 'engine_failed',
-      message: expect.stringContaining('не ответил'),
+      text: { key: 'error.engine.timeout' },
     })
     expect(await e.version()).toBe('1.18.1')
   })
@@ -216,7 +219,7 @@ describe('KataGoEngine', () => {
     await e.version()
     const results = await Promise.all(Array.from({ length: 6 }, () => e.analyze(baseQuery([]))))
     expect(results).toHaveLength(6)
-    expect(logs.some((l) => l.includes('не ответил') || l.includes('crash'))).toBe(false)
+    expect(logs.some((l) => l.includes('did not answer') || l.includes('crash'))).toBe(false)
   })
 
   it('rejects a query when KataGo never answers after startup', async () => {

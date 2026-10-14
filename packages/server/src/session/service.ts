@@ -65,7 +65,7 @@ export function validateSettings(s: SessionSettings): void {
     isBotRank(s.botRank) &&
     (s.corner === 'random' || CORNERS.includes(s.corner)) &&
     (s.mode !== 'list' || (typeof s.startId === 'string' && s.startId !== ''))
-  if (!ok) throw new SessionError('Некорректные настройки тренировки', 'bad_request')
+  if (!ok) throw new SessionError({ key: 'error.settings.invalid' }, 'bad_request')
 }
 
 export class SessionService {
@@ -105,7 +105,7 @@ export class SessionService {
   }
 
   private startTrap(resolved: ResolvedSettings): SessionView {
-    const unavailable = new SessionError('Ловушки недоступны: нет базы ловушек', 'bad_request')
+    const unavailable = new SessionError({ key: 'error.traps.unavailable' }, 'bad_request')
     if (this.traps.count === 0) throw unavailable
     const shows = this.d.repo.trapShows()
     const id = this.traps.pick((t) => shows.get(t) ?? 0, this.rng)
@@ -118,18 +118,18 @@ export class SessionService {
 
   /** Spec (starts) 5.2–5.3: a start from the list or picked by shows, put in the corner; the bot moves first when it is its turn. */
   private startPosition(resolved: ResolvedSettings, startId: string | undefined): SessionView {
-    if (this.starts.count === 0) throw new SessionError('Стартовые позиции недоступны: нет базы', 'bad_request')
+    if (this.starts.count === 0) throw new SessionError({ key: 'error.starts.unavailable' }, 'bad_request')
     let id: string | null
     let named: ListStart | null = null
     if (resolved.mode === 'list') {
       named = startId === undefined ? null : this.starts.listStart(startId)
-      if (startId === undefined || !named) throw new SessionError('Такой позиции нет в списке', 'bad_request')
+      if (startId === undefined || !named) throw new SessionError({ key: 'error.starts.notOnList' }, 'bad_request')
       id = startId
     } else {
       const shows = this.d.repo.startShows()
       id = this.starts.pick((s) => shows.get(s) ?? 0, this.rng)
     }
-    if (id === null) throw new SessionError('Стартовые позиции недоступны: нет базы', 'bad_request')
+    if (id === null) throw new SessionError({ key: 'error.starts.unavailable' }, 'bad_request')
     const mirror = this.rng() < 0.5
     const dubious = this.starts.isDubious(id)
     // Spec (starts) 5.2: after a dubious move the user answers at once — swap the colours when the user chose the side that played it.
@@ -143,7 +143,7 @@ export class SessionService {
 
   replayFrom(sessionId: string, turn: number): SessionView {
     const parent = this.load(sessionId)
-    if (!Number.isInteger(turn) || turn < 0 || turn > parent.turn) throw new SessionError('Нет такого хода', 'bad_request')
+    if (!Number.isInteger(turn) || turn < 0 || turn > parent.turn) throw new SessionError({ key: 'error.turn.notFound' }, 'bad_request')
     return this.create(parent.record.settings, movesBefore(parent.record, turn), parent.id)
   }
 
@@ -154,7 +154,7 @@ export class SessionService {
   playUserMove(sessionId: string, vertex: Vertex): void {
     const s = this.load(sessionId)
     this.requireUserTurn(s)
-    if (!inZone(s.corner, vertex)) throw new SessionError('Ходить можно только в зоне угла', 'outside_zone')
+    if (!inZone(s.corner, vertex)) throw new SessionError({ key: 'error.move.outsideZone' }, 'outside_zone')
     this.commit(s, vertex, 'user')
   }
 
@@ -316,15 +316,15 @@ export class SessionService {
     const cached = this.active.get(sessionId)
     if (cached) return cached
     const rec = this.d.repo.getSession(sessionId)
-    if (!rec) throw new SessionError('Тренировка не найдена', 'session_not_found')
+    if (!rec) throw new SessionError({ key: 'error.session.notFound' }, 'session_not_found')
     const s = new Session(rec)
     this.active.set(sessionId, s)
     return s
   }
 
   private requireUserTurn(s: Session): void {
-    if (!s.isPlaying) throw new SessionError('Тренировка уже закончена', 'session_finished')
-    if (!s.isUserTurn || s.botThinking) throw new SessionError('Сейчас ход бота', 'not_your_turn')
+    if (!s.isPlaying) throw new SessionError({ key: 'error.session.finished' }, 'session_finished')
+    if (!s.isUserTurn || s.botThinking) throw new SessionError({ key: 'error.move.notYourTurn' }, 'not_your_turn')
   }
 
   private publishState(s: Session): void {

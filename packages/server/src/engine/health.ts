@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
-import type { HealthResponse } from '@joseki-dojo/shared'
+import type { HealthResponse, LocalizedText, MessageKey } from '@joseki-dojo/shared'
 import type { AppConfig } from '../config'
+import { textOf } from '../text-error'
 import type { KataGoEngine } from './engine'
 import { baseQuery } from './query'
 
@@ -16,16 +17,16 @@ export function compareVersions(a: string, b: string): -1 | 0 | 1 {
   return 0
 }
 
-export function missingFiles(config: AppConfig): string | null {
+export function missingFiles(config: AppConfig): LocalizedText | null {
   if (config.katago.commandOverride && config.katago.commandOverride.length > 0) return null
   const k = config.katago
-  const checks: [string, string][] = [
-    [k.path, 'KataGo не найден'],
-    [k.analysisConfig, 'Нет конфига анализа KataGo'],
-    [k.mainModel, 'Нет основной сети KataGo'],
-    [k.humanModel, 'Нет human-сети KataGo'],
+  const checks: [string, MessageKey][] = [
+    [k.path, 'health.missing.katago'],
+    [k.analysisConfig, 'health.missing.analysisConfig'],
+    [k.mainModel, 'health.missing.mainModel'],
+    [k.humanModel, 'health.missing.humanModel'],
   ]
-  for (const [file, label] of checks) if (!existsSync(file)) return `${label}: ${file}`
+  for (const [file, key] of checks) if (!existsSync(file)) return { key, params: { path: file } }
   return null
 }
 
@@ -37,7 +38,7 @@ export async function checkEngine(config: AppConfig, engine: KataGoEngine): Prom
     engine.start()
     const version = await engine.version()
     if (compareVersions(version, MIN_KATAGO_VERSION) < 0) {
-      return { state: 'failed', reason: `Версия KataGo ${version} старше ${MIN_KATAGO_VERSION}` }
+      return { state: 'failed', reason: { key: 'health.versionTooOld', params: { version, min: MIN_KATAGO_VERSION } } }
     }
     const probe = await engine.analyze({
       ...baseQuery([]),
@@ -45,15 +46,15 @@ export async function checkEngine(config: AppConfig, engine: KataGoEngine): Prom
       includePolicy: true,
       overrideSettings: { humanSLProfile: 'rank_7k' },
     })
-    if (!probe.humanPolicy) return { state: 'failed', reason: 'KataGo запущен без human-сети (нет humanPolicy в ответе)' }
+    if (!probe.humanPolicy) return { state: 'failed', reason: { key: 'health.noHumanNet' } }
     return { state: 'ready', reason: null }
   } catch (err) {
-    return { state: 'failed', reason: err instanceof Error ? err.message : String(err) }
+    return { state: 'failed', reason: textOf(err) }
   }
 }
 
 export class HealthMonitor {
-  private current: HealthResponse = { state: 'starting', reason: 'KataGo запускается…' }
+  private current: HealthResponse = { state: 'starting', reason: { key: 'health.starting' } }
   private running: Promise<HealthResponse> | null = null
 
   constructor(private readonly config: AppConfig, private readonly engine: KataGoEngine) {}
@@ -76,7 +77,7 @@ export class HealthMonitor {
   /** Restarts a failed engine and checks again. */
   recover(): Promise<HealthResponse> {
     if (this.engine.failed) this.engine.reset()
-    this.current = { state: 'starting', reason: 'KataGo перезапускается…' }
+    this.current = { state: 'starting', reason: { key: 'health.restarting' } }
     return this.check()
   }
 }

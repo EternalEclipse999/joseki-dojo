@@ -1,5 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
+import { localize, type LocalizedText } from '@joseki-dojo/shared'
+import { TextError } from '../text-error'
 import type { AnalysisResponse, KataGoQueryBody, VersionResponse } from './katago-types'
 
 export interface EngineCommand {
@@ -10,9 +12,12 @@ export interface EngineCommand {
 
 export type EngineErrorCode = 'engine_failed' | 'query_error'
 
-export class EngineError extends Error {
-  constructor(message: string, readonly code: EngineErrorCode) {
-    super(message)
+export class EngineError extends TextError {
+  constructor(
+    text: LocalizedText,
+    readonly code: EngineErrorCode,
+  ) {
+    super(text)
     this.name = 'EngineError'
   }
 }
@@ -68,7 +73,7 @@ export class KataGoEngine implements StreamingEngine {
   private crashes = 0
   /** Set by `stop()`; queries are refused until `start()`/`reset()` is called explicitly. */
   private stopped = false
-  private failedReason: string | null = null
+  private failedReason: LocalizedText | null = null
   private replied = false
   /** Last output from the current process, or the moment pending went from empty to non-empty. */
   private lastProgressAt = 0
@@ -89,7 +94,7 @@ export class KataGoEngine implements StreamingEngine {
     this.watchdogIntervalMs = options.watchdogIntervalMs ?? 1_000
   }
 
-  get failure(): string | null {
+  get failure(): LocalizedText | null {
     return this.failedReason
   }
 
@@ -209,7 +214,7 @@ export class KataGoEngine implements StreamingEngine {
   async stop(): Promise<void> {
     this.stopped = true
     this.stopWatchdog()
-    for (const p of this.pending.values()) p.reject(new EngineError('KataGo остановлен', 'engine_failed'))
+    for (const p of this.pending.values()) p.reject(new EngineError({ key: 'error.engine.stopped' }, 'engine_failed'))
     this.pending.clear()
     const proc = this.proc
     this.proc = null // so the coming exit is not mistaken for a crash
@@ -249,7 +254,7 @@ export class KataGoEngine implements StreamingEngine {
       if (now - this.lastProgressAt <= this.startupTimeoutMs) return
       limit = this.startupTimeoutMs
     }
-    const err = `KataGo не ответил за ${Math.round(limit / 1000)} с`
+    const err: LocalizedText = { key: 'error.engine.timeout', params: { seconds: Math.round(limit / 1000) } }
     // Startup hang: nothing was answered, fail everything. Later hang: only the oldest query
     // (the one KataGo is stuck on); the rest are resent after the restart.
     const hung = this.replied ? [...this.pending].slice(0, 1) : [...this.pending]
@@ -257,7 +262,7 @@ export class KataGoEngine implements StreamingEngine {
       this.pending.delete(id)
       p.reject(new EngineError(err, 'engine_failed'))
     }
-    this.log(`${err}; процесс будет перезапущен`)
+    this.log(`${localize('en', err)}; the process will be restarted`)
     // Until the exit event arrives, another tick would shed the next queued query as well.
     this.stopWatchdog()
     proc.kill() // the exit is handled as a crash: restart and resend what is still pending
@@ -270,7 +275,7 @@ export class KataGoEngine implements StreamingEngine {
   private sendWithId<T>(body: object, stream?: (msg: unknown) => void): { id: string; promise: Promise<T> } {
     const id = `q${this.nextId++}`
     if (this.failedReason) return { id, promise: Promise.reject(new EngineError(this.failedReason, 'engine_failed')) }
-    if (this.stopped) return { id, promise: Promise.reject(new EngineError('KataGo остановлен', 'engine_failed')) }
+    if (this.stopped) return { id, promise: Promise.reject(new EngineError({ key: 'error.engine.stopped' }, 'engine_failed')) }
     const line = `${JSON.stringify({ id, ...body })}\n`
     const promise = new Promise<T>((resolve, reject) => {
       if (this.pending.size === 0) this.lastProgressAt = Date.now()
@@ -286,7 +291,7 @@ export class KataGoEngine implements StreamingEngine {
     for (const [id, p] of [...this.pending]) {
       if (!p.stream) continue
       this.pending.delete(id)
-      p.reject(new EngineError('KataGo перезапущен', 'engine_failed'))
+      p.reject(new EngineError({ key: 'error.engine.restarted' }, 'engine_failed'))
     }
   }
 
@@ -311,7 +316,7 @@ export class KataGoEngine implements StreamingEngine {
     if (msg.error !== undefined) {
       if (id && p) {
         this.pending.delete(id)
-        p.reject(new EngineError(`KataGo: ${String(msg.error)}`, 'query_error'))
+        p.reject(new EngineError({ key: 'error.engine.query', params: { detail: String(msg.error) } }, 'query_error'))
       } else {
         this.log(`KataGo error: ${String(msg.error)}`)
       }
@@ -340,7 +345,7 @@ export class KataGoEngine implements StreamingEngine {
     this.crashes++
     this.log(`KataGo exited (${why}), crash #${this.crashes}`)
     if (this.crashes > this.maxRestarts) {
-      this.failedReason = `KataGo аварийно завершился ${this.crashes} раза подряд (${why})`
+      this.failedReason = { key: 'error.engine.crashed', params: { count: this.crashes, detail: why } }
       for (const p of this.pending.values()) p.reject(new EngineError(this.failedReason, 'engine_failed'))
       this.pending.clear()
       return

@@ -194,7 +194,7 @@ describe('traps sessions', () => {
 
   it('is unavailable without a base, while free mode still works', () => {
     const { service } = setup(TrapBook.empty())
-    expect(() => service.start(settings())).toThrowError(expect.objectContaining({ code: 'bad_request', message: 'Ловушки недоступны: нет базы ловушек' }))
+    expect(() => service.start(settings())).toThrowError(expect.objectContaining({ code: 'bad_request', text: { key: 'error.traps.unavailable' } }))
     expect(service.start(settings({ mode: 'free' })).settings.mode).toBe('free')
   })
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { LocalizedText } from '@joseki-dojo/shared'
 import { updateBannerView } from './update-banner'
 
 describe('updateBannerView', () => {
@@ -23,8 +24,9 @@ describe('updateBannerView', () => {
   })
 
   it('shows an error with a retry button', () => {
-    expect(updateBannerView({ status: 'error', message: 'Не удалось скачать обновление: offline' })).toEqual({
-      text: 'Не удалось скачать обновление: offline',
+    const text: LocalizedText = { key: 'update.error.download', params: { detail: 'offline' } }
+    expect(updateBannerView({ status: 'error', text })).toEqual({
+      text,
       button: { label: 'Повторить', action: 'retry' },
       error: true,
     })

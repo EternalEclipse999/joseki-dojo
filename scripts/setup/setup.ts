@@ -3,6 +3,7 @@ import { availableParallelism } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
+import { localize } from '@joseki-dojo/shared'
 import { variationVisitsFor } from '../../packages/server/src/config'
 import { KataGoEngine } from '../../packages/server/src/engine/engine'
 import { compareVersions, MIN_KATAGO_VERSION } from '../../packages/server/src/engine/health'
@@ -111,7 +112,7 @@ async function main(): Promise<void> {
     const version = await engine.version()
     if (compareVersions(version, MIN_KATAGO_VERSION) < 0) throw new Error(`Нужна KataGo ${MIN_KATAGO_VERSION} или новее, установлена ${version}`)
     const warning = versionWarning(lock, version)
-    if (warning) console.log(`\nВнимание: ${warning}`)
+    if (warning) console.log(`\nВнимание: ${localize('ru', warning)}`)
     const vps = await measureVisitsPerSecond(engine)
     const visits = visitsForBudget(vps)
     console.log(`Скорость ≈ ${Math.round(vps)} визитов/с → разбор: ${visits.reviewVisits}, кнопка «Тэнуки»: ${visits.endVisits} визитов`)

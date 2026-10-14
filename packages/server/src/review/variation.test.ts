@@ -85,7 +85,7 @@ describe('VariationService', () => {
   it('rejects an illegal variation, an unknown session and a bad fromTurn', () => {
     const { service, inbox } = setup()
     const { send } = inbox()
-    expect(() => service.start({}, { sessionId: 's1', fromTurn: 0, moves: [[3, 3], [3, 3]] }, send)).toThrow('Недопустимый ход в варианте')
+    expect(() => service.start({}, { sessionId: 's1', fromTurn: 0, moves: [[3, 3], [3, 3]] }, send)).toThrow(expect.objectContaining({ text: { key: 'error.variation.illegal' } }))
     expect(() => service.start({}, { sessionId: 'nope', fromTurn: 0, moves: [] }, send)).toThrow(SessionError)
     expect(() => service.start({}, { sessionId: 's1', fromTurn: 4, moves: [] }, send)).toThrow(SessionError)
     expect(() => service.start({}, { sessionId: 's1', fromTurn: -1, moves: [] }, send)).toThrow(SessionError)
@@ -94,7 +94,7 @@ describe('VariationService', () => {
   it('refuses a session that is not finished', () => {
     const { service, inbox, repo } = setup()
     repo.insertSession({ ...repo.getSession('s1')!, id: 's2', status: 'playing', finishedAt: null })
-    expect(() => service.start({}, { sessionId: 's2', fromTurn: 0, moves: [] }, inbox().send)).toThrow('Варианты доступны только в разборе')
+    expect(() => service.start({}, { sessionId: 's2', fromTurn: 0, moves: [] }, inbox().send)).toThrow(expect.objectContaining({ text: { key: 'error.variation.reviewOnly' } }))
   })
 
   it('a malformed request leaves the previous stream of the owner running', async () => {
@@ -167,7 +167,7 @@ describe('VariationService', () => {
 
   it('asks again once by itself after a restart, without an error for the client', async () => {
     const { service, inbox, engine } = setup()
-    engine.streamFailures.push(new EngineError('KataGo перезапущен', 'engine_failed'))
+    engine.streamFailures.push(new EngineError({ key: 'error.engine.restarted' }, 'engine_failed'))
     const { msgs, send } = inbox()
     service.start({}, REQ, send)
     await vi.waitFor(() => expect(finished(msgs)).toBe(true))
@@ -178,7 +178,7 @@ describe('VariationService', () => {
 
   it('sends the error when the second ask fails too, or when the engine has failed for good', async () => {
     const { service, inbox, engine } = setup()
-    engine.streamFailures.push(new EngineError('KataGo перезапущен', 'engine_failed'), new EngineError('KataGo перезапущен', 'engine_failed'))
+    engine.streamFailures.push(new EngineError({ key: 'error.engine.restarted' }, 'engine_failed'), new EngineError({ key: 'error.engine.restarted' }, 'engine_failed'))
     const twice = inbox()
     service.start({}, REQ, twice.send)
     await vi.waitFor(() => expect(twice.msgs).toHaveLength(1))
@@ -186,7 +186,7 @@ describe('VariationService', () => {
     expect(engine.queries).toHaveLength(2)
 
     engine.failed = true
-    engine.streamFailures.push(new EngineError('KataGo аварийно завершился', 'engine_failed'))
+    engine.streamFailures.push(new EngineError({ key: 'error.engine.crashed', params: { count: 4, detail: 'exit code 1' } }, 'engine_failed'))
     const forGood = inbox()
     service.start({}, { ...REQ, moves: [[9, 9]] }, forGood.send)
     await vi.waitFor(() => expect(forGood.msgs).toHaveLength(1))
@@ -196,7 +196,7 @@ describe('VariationService', () => {
 
   it('does not ask again after a query error', async () => {
     const { service, inbox, engine } = setup()
-    engine.streamFailures.push(new EngineError('KataGo: bad', 'query_error'))
+    engine.streamFailures.push(new EngineError({ key: 'error.engine.query', params: { detail: 'bad' } }, 'query_error'))
     const { msgs, send } = inbox()
     service.start({}, REQ, send)
     await vi.waitFor(() => expect(msgs).toHaveLength(1))

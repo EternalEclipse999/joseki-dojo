@@ -32,7 +32,7 @@ describe('katago.lock.json', () => {
     const lock = loadLock(REPO_LOCK)
     expect(versionWarning(lock, null)).toBeNull()
     expect(versionWarning(lock, '1.18.1')).toBeNull()
-    expect(versionWarning(lock, '1.17.2')).toBe('Запущена KataGo 1.17.2, а проверена 1.18.1. Работать будет, но эта версия не проверялась.')
+    expect(versionWarning(lock, '1.17.2')).toEqual({ key: 'settings.versionWarning', params: { running: '1.17.2', locked: '1.18.1' } })
   })
 })
 

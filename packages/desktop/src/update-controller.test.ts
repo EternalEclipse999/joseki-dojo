@@ -56,7 +56,7 @@ describe('UpdateController', () => {
       },
     })
     await controller.check()
-    expect(controller.current).toEqual({ status: 'error', message: 'Не удалось проверить обновления: net::ERR_INTERNET_DISCONNECTED' })
+    expect(controller.current).toEqual({ status: 'error', text: { key: 'update.error.check', params: { detail: 'net::ERR_INTERNET_DISCONNECTED' } } })
     online = true
     await controller.retry()
     controller.onNotAvailable()
@@ -77,7 +77,7 @@ describe('UpdateController', () => {
     })
     controller.onAvailable('0.2.0')
     await controller.download()
-    expect(controller.current).toEqual({ status: 'error', message: 'Не удалось скачать обновление: socket hang up' })
+    expect(controller.current).toEqual({ status: 'error', text: { key: 'update.error.download', params: { detail: 'socket hang up' } } })
     expect(states.filter((s) => s.status === 'error')).toHaveLength(1)
     fails = false
     await controller.retry()
@@ -111,7 +111,7 @@ describe('UpdateController', () => {
     controller.onAvailable('0.2.0')
     await controller.download()
     await controller.onDownloaded('0.2.0')
-    expect(controller.current).toEqual({ status: 'error', message: 'Не удалось установить обновление: installer missing' })
+    expect(controller.current).toEqual({ status: 'error', text: { key: 'update.error.install', params: { detail: 'installer missing' } } })
   })
 
   it('keeps a download error and its retry when a periodic check finds nothing new', async () => {
@@ -170,7 +170,7 @@ describe('UpdateController', () => {
     controller.onAvailable('0.2.0')
     await controller.download()
     await controller.onDownloaded('0.2.0')
-    expect(controller.current).toMatchObject({ status: 'error', message: expect.stringContaining('установить') })
+    expect(controller.current).toMatchObject({ status: 'error', text: { key: 'update.error.install' } })
     fails = false
     await controller.retry()
     expect(controller.current).toEqual({ status: 'downloading', version: '0.2.0', percent: 0 })

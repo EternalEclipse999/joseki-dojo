@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'preact/hooks'
 import type { AppUpdateState } from '@joseki-dojo/shared'
 import { Download } from 'lucide-preact'
+import { errorText } from '../error-text'
+import { useI18n } from '../i18n'
 import { updateBannerView } from '../update-banner'
 import { Bar } from './Bar'
 
@@ -8,6 +10,7 @@ import { Bar } from './Bar'
 export function AppUpdateBanner() {
   const desktop = window.dojoDesktop
   const [state, setState] = useState<AppUpdateState>({ status: 'idle' })
+  const { language } = useI18n()
 
   useEffect(() => {
     if (!desktop) return
@@ -40,7 +43,7 @@ export function AppUpdateBanner() {
       icon={view.error ? undefined : Download}
       action={view.button ? { label: view.button.label, onClick: act, primary: true } : undefined}
     >
-      {view.text}
+      {errorText(view.text, language)}
     </Bar>
   )
 }
