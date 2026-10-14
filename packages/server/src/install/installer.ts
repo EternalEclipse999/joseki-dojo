@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
 import { basename, join } from 'node:path'
 import type { InstallFile, InstallStatus, InstallStep } from '@joseki-dojo/shared'
-import type { AppConfig } from '../config'
+import { variationVisitsFor, type AppConfig } from '../config'
 import { KataGoEngine, type EngineCommand } from '../engine/engine'
 import { compareVersions, missingFiles, MIN_KATAGO_VERSION, type HealthMonitor } from '../engine/health'
 import { buildsFor, lockId, type KataGoLock, type LockedBuild } from '../engine/lock'
@@ -218,7 +218,8 @@ export class InstallerService {
       this.alive()
       this.step = 'finishing'
       const katago = { path: binaries.get(kind)!, analysisConfig: this.analysisConfig(kind), mainModel: plan.mainModel, humanModel: plan.humanModel }
-      const r = await this.d.settings.switchTo(katago, visitsForBudget(vps), { kind, lockId: lockId(this.d.lock) })
+      const visits = visitsForBudget(vps)
+      const r = await this.d.settings.switchTo(katago, { ...visits, variationVisits: variationVisitsFor(visits.reviewVisits) }, { kind, lockId: lockId(this.d.lock) })
       if (!r.ok) throw new Error(r.reason)
       this.kind = kind
       if (binaries.has('gpu') && !speeds.has('gpu')) this.note = 'Используется процессор: видеокарта не запустилась.'

@@ -69,9 +69,12 @@
 .move-line b { font-weight: 600; }
 .move-line .cat { margin-left: auto; }
 .candidates { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--border); }
-.candidates li { display: flex; align-items: center; gap: 12px; padding: 7px 8px; border-bottom: 1px solid var(--border); font-size: 13px; font-variant-numeric: tabular-nums; cursor: default; }
+.candidates li { display: flex; align-items: center; gap: 12px; min-height: 34px; padding: 5px 8px; border-bottom: 1px solid var(--border); font-size: 13px; font-variant-numeric: tabular-nums; cursor: pointer; }
 .candidates li:hover,
 .candidates li.hot { background: var(--surface); }
+.candidates li.selected { box-shadow: inset 2px 0 0 var(--accent); }
+.candidates li:focus-visible { outline-offset: -2px; }
+.candidates .play { height: 24px; padding: 0 8px; font-size: 12px; }
 .candidates .letter { width: 14px; font-weight: 600; color: var(--accent); }
 .candidates li:not(:first-child) .letter { color: color-mix(in srgb, var(--accent) 65%, var(--text-2)); }
 .candidates .loss { margin-left: auto; color: var(--text-2); }
@@ -81,6 +84,22 @@
 .trap-line > svg { width: 16px; height: 16px; color: var(--text-2); }
 .branch { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .branch .where { font-size: 13px; padding: 0 4px; font-variant-numeric: tabular-nums; }
+
+/* Variations (variations spec 3–5): the bar in place of the move navigator, KataGo's progress, the move's loss. */
+.variation-bar { display: grid; gap: 6px; padding: 3px 3px 6px; border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); border-radius: var(--radius); background: color-mix(in srgb, var(--accent-bg) 45%, transparent); }
+.variation-bar .nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.variation-bar .line { min-width: 0; font-size: 13px; text-align: center; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.variation-bar .line b { font-weight: 600; color: var(--accent-text); }
+.variation-bar .line .tail { color: var(--text-3); }
+.variation-bar .tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding-left: 8px; font-size: 13px; }
+.variation-bar .status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 28px; padding-left: 8px; font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.variation-bar .status > svg { width: 14px; height: 14px; flex: none; }
+.variation-bar .status button { margin-left: auto; }
+.switch { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+.switch input { margin: 0; accent-color: var(--accent); cursor: pointer; }
+.pending-line { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text-2); }
+.pending-line > svg { width: 14px; height: 14px; }
+.move-line .loss { margin-left: auto; color: var(--text-2); font-size: 13px; font-variant-numeric: tabular-nums; }
 
 /* Settings, install, engine (spec 8). */
 .section { display: grid; gap: 14px; }

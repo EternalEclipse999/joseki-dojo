@@ -76,6 +76,8 @@ export interface Candidate {
 export interface PositionReview {
   turn: number
   scoreLeadBlack: number
+  /** The visits the analysis rests on. */
+  visits: number
   candidates: Candidate[]
   /** 361 values, row-major from the top-left, Black's point of view (-1..1). */
   ownership: number[] | null

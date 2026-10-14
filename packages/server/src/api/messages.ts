@@ -29,6 +29,13 @@ export function parseClientMessage(text: string): ClientMessage {
     case 'replayFrom':
       if (!sessionId || !Number.isInteger(msg.turn)) throw bad()
       return { type: 'replayFrom', sessionId, turn: msg.turn as number }
+    case 'analyzeVariation':
+      if (!sessionId || !Number.isInteger(msg.fromTurn) || (msg.fromTurn as number) < 0) throw bad()
+      if (!Array.isArray(msg.moves) || msg.moves.length > 200 || !msg.moves.every(isVertex)) throw bad()
+      return { type: 'analyzeVariation', sessionId, fromTurn: msg.fromTurn as number, moves: msg.moves }
+    case 'stopVariation':
+      if (!sessionId) throw bad()
+      return { type: 'stopVariation', sessionId }
     case 'tenuki':
     case 'finish':
     case 'continuePlaying':

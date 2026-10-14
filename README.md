@@ -35,9 +35,13 @@ Uninstalling keeps your data (KataGo, settings, training history). To remove it 
 - Windows: `%APPDATA%\Joseki Dojo` (paste this into the File Explorer address bar)
 - Linux: `~/.config/Joseki Dojo`
 
+## Variations in the review
+
+In the review you can try your own moves instead of the game. Click a point on the board, or press **«Сыграть»** (Play) next to one of KataGo's suggestions: this starts a variation from that position. With **«Отвечает KataGo»** (KataGo replies) on, KataGo answers your move; the answer comes once its analysis reaches the review's visits, or at once when you press **«Ответить сейчас»** (Reply now). The positions of the variation keep being analysed deeper while you look at them, and **«Глубже»** (Deeper) does the same for a move of the game. Use the arrows to step through the variation and **«Вернуться к партии»** (Back to the game) to leave it.
+
 ## Troubleshooting
 
-- **The analysis after a game is slow.** Open **«Настройки»** (Settings) and lower **«Визиты на позицию в разборе»** (visits per position in the review), for example to 100: the analysis gets faster and a little less precise. To use your graphics card, press **«Подобрать движок заново»** (Pick the engine again): the app measures the processor and the graphics card once more and keeps the faster one. If your graphics card could not run KataGo (often an old graphics driver without OpenCL), the processor is used.
+- **The analysis after a game is slow.** Open **«Настройки»** (Settings) and lower **«Визиты на позицию в разборе»** (visits per position in the review), for example to 100: the analysis gets faster and a little less precise. If variations in the review are slow, lower **«Предел визитов в вариантах»** (visits limit for variations) or press **«Ответить сейчас»** (Reply now) instead of waiting for KataGo. To use your graphics card, press **«Подобрать движок заново»** (Pick the engine again): the app measures the processor and the graphics card once more and keeps the faster one. If your graphics card could not run KataGo (often an old graphics driver without OpenCL), the processor is used.
 - **"Install" fails.** The screen says why. Most often it is the internet connection: check it and click **«Попробовать снова»** (Try again). Files that were already downloaded and checked are not downloaded again.
 - **The AppImage does not start on Linux.** Some distributions need FUSE 2 for AppImages, e.g. on Ubuntu: `sudo apt install libfuse2t64` (Ubuntu 24.04) or `sudo apt install libfuse2` (22.04).
 - **Double-clicking the AppImage does nothing (Ubuntu 24.04 or newer).** If it does not start, open a terminal in the folder with the file and run `./Joseki-Dojo-X.Y.Z.AppImage --no-sandbox`. Newer Ubuntu releases restrict the sandbox that Electron apps use; this option turns it off for this app.
@@ -65,6 +69,7 @@ Other settings live in `config.local.json` (defaults: `config.example.json`):
 | Field | Meaning |
 |---|---|
 | `analysis.reviewVisits` / `endVisits` | analysis depth for the review / for the Tenuki button |
+| `analysis.variationVisits` | visits limit of one variation position in the review (default: 10 × `reviewVisits`) |
 | `thresholds` | inaccuracy / mistake / blunder limits and the "punished" limit, in points |
 | `bot.defaultRank`, `bot.temperature` | the bot's default rank and the spread of its moves |
 | `maxSessionMoves` | safety limit: after this many moves the game goes to the review |

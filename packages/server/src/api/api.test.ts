@@ -69,6 +69,13 @@ const startSession = async (c: Client): Promise<string> => {
   return m.session.id
 }
 
+const finishSession = async (c: Client, id: string): Promise<void> => {
+  c.send({ type: 'playMove', sessionId: id, vertex: [15, 3] })
+  await c.next((m) => m.type === 'sessionState' && m.session.moves.length === 2)
+  c.send({ type: 'finish', sessionId: id })
+  await c.next((m) => m.type === 'reviewReady')
+}
+
 beforeEach(async () => {
   const config = testConfig()
   services = createServices(config, fakeEngine(), serviceOptions(config))
@@ -89,6 +96,40 @@ describe('API', () => {
   it('reports health', async () => {
     const res = await fetch(`http://${host}/api/health`)
     expect(await res.json()).toEqual({ state: 'ready', reason: null })
+  })
+
+  it('analyses a variation over the socket and stops the stream when the socket closes', async () => {
+    const c = await connect()
+    const id = await startSession(c)
+    c.send({ type: 'analyzeVariation', sessionId: id, fromTurn: 0, moves: [[3, 3]] })
+    await c.next((m) => m.type === 'error' && m.code === 'bad_request')
+    await finishSession(c, id)
+    c.send({ type: 'analyzeVariation', sessionId: id, fromTurn: 0, moves: [[3, 3]] })
+    const done = await c.next((m) => m.type === 'variationAnalysis' && m.done)
+    expect(done).toMatchObject({ sessionId: id, fromTurn: 0, moves: [[3, 3]], visits: services.config.analysis.variationVisits })
+    expect(c.messages.filter((m) => m.type === 'variationAnalysis').length).toBeGreaterThan(1)
+    c.send({ type: 'analyzeVariation', sessionId: 'nope', fromTurn: 0, moves: [] })
+    await c.next((m) => m.type === 'error' && m.code === 'session_not_found')
+
+    const stop = vi.spyOn(services.variations, 'stop')
+    c.close()
+    await vi.waitFor(() => expect(stop).toHaveBeenCalledTimes(1))
+  })
+
+  it('stops a running variation on stopVariation', async () => {
+    const c = await connect()
+    const id = await startSession(c)
+    await finishSession(c, id)
+    const count = (): number => c.messages.filter((m) => m.type === 'variationAnalysis').length
+    c.send({ type: 'analyzeVariation', sessionId: id, fromTurn: 0, moves: [[9, 9]] })
+    await c.next((m) => m.type === 'variationAnalysis')
+    c.send({ type: 'stopVariation', sessionId: id })
+    await vi.waitFor(() => expect(services.engine.pendingCount).toBe(0))
+    const settled = count()
+    // The server's cadence is 0.5 s: a search that kept running would have sent more by now.
+    await new Promise((r) => setTimeout(r, 1300))
+    expect(count()).toBe(settled)
+    expect(c.messages.some((m) => m.type === 'variationAnalysis' && m.done)).toBe(false)
   })
 
   it('plays, finishes and serves the review', async () => {

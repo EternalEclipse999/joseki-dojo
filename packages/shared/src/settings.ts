@@ -8,6 +8,7 @@ export interface EngineSettings {
 export interface AnalysisSettings {
   reviewVisits: number
   endVisits: number
+  variationVisits: number
 }
 
 export interface SettingsView {

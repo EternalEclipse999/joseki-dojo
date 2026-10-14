@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInstallFixture, fakeBuildCommand, type InstallFixture } from '../../test/install-fixture'
 import { tempDir } from '../../test/helpers'
-import { loadConfig } from '../config'
+import { loadConfig, variationVisitsFor } from '../config'
 import { KataGoEngine } from '../engine/engine'
 import { HealthMonitor } from '../engine/health'
 import { lockId } from '../engine/lock'
@@ -67,6 +67,7 @@ describe('InstallerService', () => {
       humanModel: join(enginesDir, 'models', 'human.bin.gz'),
     })
     expect(saved.analysis.reviewVisits).toBeGreaterThanOrEqual(100)
+    expect(saved.analysis.variationVisits).toBe(variationVisitsFor(saved.analysis.reviewVisits))
     expect(config.katago.path).toBe(gpuBinary)
     expect(config.analysis).toEqual(saved.analysis)
     expect(readFileSync(join(enginesDir, 'analysis-gpu.cfg'), 'utf8')).toContain('numSearchThreadsPerAnalysisThread = 8')

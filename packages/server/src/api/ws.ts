@@ -5,7 +5,7 @@ import { EngineError } from '../engine/engine'
 import { toErrorMessage } from '../errors'
 import { parseClientMessage } from './messages'
 
-type SocketDeps = Pick<AppServices, 'sessions' | 'hub' | 'health'>
+type SocketDeps = Pick<AppServices, 'sessions' | 'hub' | 'health' | 'variations'>
 
 export function handleSocket(socket: WebSocket, deps: SocketDeps): void {
   const send = (msg: ServerMessage): void => {
@@ -35,6 +35,12 @@ export function handleSocket(socket: WebSocket, deps: SocketDeps): void {
         send({ type: 'sessionState', session: deps.sessions.resync(msg.sessionId) })
         return
       }
+      case 'analyzeVariation':
+        deps.variations.start(socket, msg, send)
+        return
+      case 'stopVariation':
+        deps.variations.stop(socket)
+        return
       case 'playMove':
         deps.sessions.playUserMove(msg.sessionId, msg.vertex)
         return
@@ -53,7 +59,10 @@ export function handleSocket(socket: WebSocket, deps: SocketDeps): void {
   socket.on('message', (data) => {
     handle(String(data)).catch((err: unknown) => send(toErrorMessage(err)))
   })
-  socket.on('close', () => deps.hub.drop(socket))
+  socket.on('close', () => {
+    deps.hub.drop(socket)
+    deps.variations.stop(socket)
+  })
 }
 
 function requireReady(deps: SocketDeps): void {

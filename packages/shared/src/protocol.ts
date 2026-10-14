@@ -1,4 +1,4 @@
-import type { SessionSettings, SessionView, Vertex } from './types'
+import type { PositionReview, SessionSettings, SessionView, Vertex } from './types'
 
 export type ClientMessage =
   | { type: 'startSession'; settings: SessionSettings }
@@ -8,6 +8,8 @@ export type ClientMessage =
   | { type: 'continuePlaying'; sessionId: string }
   | { type: 'replayFrom'; sessionId: string; turn: number }
   | { type: 'resync'; sessionId: string }
+  | { type: 'analyzeVariation'; sessionId: string; fromTurn: number; moves: Vertex[] }
+  | { type: 'stopVariation'; sessionId: string }
 
 export type ErrorCode =
   | 'bad_request'
@@ -24,4 +26,6 @@ export type ServerMessage =
   | { type: 'sessionState'; session: SessionView }
   | { type: 'analysisProgress'; sessionId: string; done: number; total: number }
   | { type: 'reviewReady'; sessionId: string }
+  /** Variations spec 6.2: the analysis of a variation position (or of a game position for «Глубже», with no moves). */
+  | { type: 'variationAnalysis'; sessionId: string; fromTurn: number; moves: Vertex[]; visits: number; done: boolean; position: PositionReview }
   | { type: 'error'; code: ErrorCode; message: string }

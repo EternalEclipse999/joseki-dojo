@@ -1,6 +1,13 @@
 // Stand-in for `katago analysis` used by tests and e2e. Reads JSON queries from stdin and answers
 // deterministically: the best move is the first free point of D4, Q4, D16, Q16 (or the first
 // allowed move), every score is 0, and the human policy is uniform over free points.
+// Streaming: a query with `reportDuringSearchEvery` (seconds) gets three partial answers (isDuringSearch: true,
+// visits ceil(maxVisits * k / 4) for k = 1..3), each that many seconds after the previous one, then the final answer
+// (visits = maxVisits). Streaming queries have their own timing and ignore FAKE_KATAGO_DELAY_MS.
+// A streaming query with `maxVisits: 0` is answered at once with a single final `{ id, isDuringSearch: false, noResults: true }`
+// (KataGo's answer to a search that did not run).
+// `{ id, action: 'terminate', terminateId }` stops that query's remaining answers (no final answer is sent) and is
+// acknowledged with `{ id, action: 'terminate' }`; a line `terminate <terminateId>` goes to stderr.
 // Switches (environment variables):
 //   FAKE_KATAGO_CRASH_ONCE_FILE=<path>  exit on the first analysis query if <path> is missing (creates it)
 //   FAKE_KATAGO_ALWAYS_CRASH=1          exit on every analysis query
@@ -18,7 +25,7 @@ const BEST_MOVE_PREFERENCE = ['D4', 'Q4', 'D16', 'Q16']
 
 const toIndex = (gtp) => (19 - Number(gtp.slice(1))) * 19 + LETTERS.indexOf(gtp[0].toUpperCase())
 
-function answer(query) {
+function answer(query, partial = 0) {
   if (query.action === 'query_version') {
     return { id: query.id, action: 'query_version', version: process.env.FAKE_KATAGO_VERSION ?? '1.18.1', git_hash: 'fake' }
   }
@@ -30,10 +37,11 @@ function answer(query) {
   const allowed = (query.allowMoves ?? []).find((a) => a.player === toMove)
   const options = (allowed ? allowed.moves : BEST_MOVE_PREFERENCE).filter((m) => !taken.has(toIndex(m)))
   const best = options[0] ?? 'pass'
-  const visits = query.maxVisits ?? 1
+  const maxVisits = query.maxVisits ?? 1
+  const visits = partial ? Math.ceil((maxVisits * partial) / 4) : maxVisits
   const res = {
     id: query.id,
-    isDuringSearch: false,
+    isDuringSearch: partial > 0,
     turnNumber: moves.length,
     rootInfo: { currentPlayer: toMove, scoreLead: 0, winrate: 0.5, visits },
     moveInfos: [{ move: best, order: 0, visits, scoreLead: 0, winrate: 0.5, pv: [best] }],
@@ -47,6 +55,9 @@ function answer(query) {
   }
   return res
 }
+
+/** Pending timers of running streaming queries by query id. */
+const streams = new Map()
 
 let chain = Promise.resolve()
 function enqueue(fn, delay) {
@@ -64,6 +75,32 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   if (isAnalysis && marker && !existsSync(marker)) {
     writeFileSync(marker, 'crashed')
     process.exit(3)
+  }
+  if (query.action === 'terminate') {
+    for (const t of streams.get(query.terminateId) ?? []) clearTimeout(t)
+    streams.delete(query.terminateId)
+    process.stderr.write(`terminate ${query.terminateId}\n`) // lets tests prove that a stop reached KataGo
+    process.stdout.write(`${JSON.stringify({ id: query.id, action: 'terminate' })}\n`)
+    return
+  }
+  const every = query.reportDuringSearchEvery
+  if (isAnalysis && every > 0 && query.rules !== 'invalid' && query.maxVisits === 0) {
+    process.stdout.write(`${JSON.stringify({ id: query.id, isDuringSearch: false, noResults: true, turnNumber: (query.moves ?? []).length })}
+`)
+    return
+  }
+  if (isAnalysis && every > 0 && query.rules !== 'invalid') {
+    const timers = []
+    streams.set(query.id, timers)
+    for (let k = 1; k <= 4; k++) {
+      timers.push(
+        setTimeout(() => {
+          process.stdout.write(`${JSON.stringify(answer(query, k < 4 ? k : 0))}\n`)
+          if (k === 4) streams.delete(query.id)
+        }, every * 1000 * k),
+      )
+    }
+    return
   }
   const reply = () => process.stdout.write(`${JSON.stringify(answer(query))}\n`)
   const delay = Number(process.env.FAKE_KATAGO_DELAY_MS ?? 0)

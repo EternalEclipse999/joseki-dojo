@@ -22,6 +22,21 @@ export interface AnalysisEngine {
   analyze(query: KataGoQueryBody): Promise<AnalysisResponse>
 }
 
+/** A running streaming query: partial answers go to the callback; `done` settles with the last answer. */
+export interface AnalysisStream {
+  /** The final answer; after `stop()` the last partial one; null if no answer came (stopped early, or KataGo ended it with `noResults`). */
+  done: Promise<AnalysisResponse | null>
+  /** Ends the search early: KataGo is asked to terminate the query, and `done` settles at once. */
+  stop(): void
+}
+
+/** An engine that can also stream one query's partial answers (spec: variations, 6.1). */
+export interface StreamingEngine extends AnalysisEngine {
+  /** True once KataGo has failed for good (not merely restarted). */
+  readonly failed: boolean
+  analyzeStream(query: KataGoQueryBody, onUpdate: (partial: AnalysisResponse) => void, everySec?: number): AnalysisStream
+}
+
 export interface EngineOptions {
   /** Consecutive crashes tolerated before the engine is marked failed. */
   maxRestarts?: number
@@ -36,6 +51,8 @@ interface Pending {
   line: string
   resolve: (msg: unknown) => void
   reject: (err: Error) => void
+  /** Receives the partial answers (`isDuringSearch`) of a streaming query; others ignore them. */
+  stream?: (msg: unknown) => void
 }
 
 /**
@@ -44,7 +61,7 @@ interface Pending {
  * and pending queries are resent. More than `maxRestarts` consecutive crashes without a successful
  * reply mark the engine as failed until `reset()`.
  */
-export class KataGoEngine implements AnalysisEngine {
+export class KataGoEngine implements StreamingEngine {
   private proc: ChildProcessWithoutNullStreams | null = null
   private readonly pending = new Map<string, Pending>()
   private nextId = 1
@@ -128,13 +145,14 @@ export class KataGoEngine implements AnalysisEngine {
 
   /**
    * Switches to another command (new paths). The old process is terminated without counting as a crash
-   * (it is no longer the current process); pending queries are resent to the new one. Clears a failure.
+   * (it is no longer the current process); pending plain queries are resent to the new one (streaming ones are rejected). Clears a failure.
    */
   async restartWith(cmd: EngineCommand): Promise<void> {
     this.cmd = cmd
     this.failedReason = null
     this.crashes = 0
     this.stopWatchdog()
+    this.rejectStreams() // streaming queries are not resent
     const old = this.proc
     this.proc = null
     if (old) await this.terminate(old)
@@ -147,6 +165,45 @@ export class KataGoEngine implements AnalysisEngine {
 
   analyze(query: KataGoQueryBody): Promise<AnalysisResponse> {
     return this.send<AnalysisResponse>(query)
+  }
+
+  analyzeStream(query: KataGoQueryBody, onUpdate: (partial: AnalysisResponse) => void, everySec = 0.5): AnalysisStream {
+    let last: AnalysisResponse | null = null
+    let settled = false
+    let settle: (r: AnalysisResponse | null) => void = () => {}
+    let fail: (err: Error) => void = () => {}
+    const done = new Promise<AnalysisResponse | null>((resolve, reject) => {
+      settle = (r) => {
+        settled = true
+        resolve(r)
+      }
+      fail = (err) => {
+        settled = true
+        reject(err)
+      }
+    })
+    const { id, promise } = this.sendWithId<AnalysisResponse>({ ...query, reportDuringSearchEvery: everySec }, (msg) => {
+      last = msg as AnalysisResponse
+      try {
+        onUpdate(last)
+      } catch (err) {
+        this.log(`onUpdate: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    })
+    promise.then(
+      // A query that ended without a search keeps the last partial answer as its result.
+      (final) => settle(final.noResults ? last : final),
+      (err: Error) => fail(err),
+    )
+    return {
+      done,
+      stop: () => {
+        if (settled || !this.pending.delete(id)) return
+        // No longer pending: its late lines are ignored and it is not resent after a crash.
+        this.proc?.stdin.write(`${JSON.stringify({ id: `t${this.nextId++}`, action: 'terminate', terminateId: id })}\n`)
+        settle(last)
+      },
+    }
   }
 
   async stop(): Promise<void> {
@@ -207,16 +264,30 @@ export class KataGoEngine implements AnalysisEngine {
   }
 
   private send<T>(body: object): Promise<T> {
-    if (this.failedReason) return Promise.reject(new EngineError(this.failedReason, 'engine_failed'))
-    if (this.stopped) return Promise.reject(new EngineError('KataGo остановлен', 'engine_failed'))
+    return this.sendWithId<T>(body).promise
+  }
+
+  private sendWithId<T>(body: object, stream?: (msg: unknown) => void): { id: string; promise: Promise<T> } {
     const id = `q${this.nextId++}`
+    if (this.failedReason) return { id, promise: Promise.reject(new EngineError(this.failedReason, 'engine_failed')) }
+    if (this.stopped) return { id, promise: Promise.reject(new EngineError('KataGo остановлен', 'engine_failed')) }
     const line = `${JSON.stringify({ id, ...body })}\n`
-    return new Promise<T>((resolve, reject) => {
+    const promise = new Promise<T>((resolve, reject) => {
       if (this.pending.size === 0) this.lastProgressAt = Date.now()
-      this.pending.set(id, { line, resolve: resolve as (msg: unknown) => void, reject })
+      this.pending.set(id, { line, resolve: resolve as (msg: unknown) => void, reject, stream })
       if (this.proc) this.proc.stdin.write(line)
       else this.start() // start() writes every pending line, including this one
     })
+    return { id, promise }
+  }
+
+  /** A streaming query is not resent after a restart (its caller decides what is still worth asking), so it fails. */
+  private rejectStreams(): void {
+    for (const [id, p] of [...this.pending]) {
+      if (!p.stream) continue
+      this.pending.delete(id)
+      p.reject(new EngineError('KataGo перезапущен', 'engine_failed'))
+    }
   }
 
   private handleLine(proc: ChildProcessWithoutNullStreams, line: string): void {
@@ -246,7 +317,11 @@ export class KataGoEngine implements AnalysisEngine {
       }
       return
     }
-    if (!id || !p || msg.isDuringSearch === true) return
+    if (id && p && msg.isDuringSearch === true) {
+      p.stream?.(msg)
+      return
+    }
+    if (!id || !p) return
     this.pending.delete(id)
     this.crashes = 0
     p.resolve(msg)
@@ -261,6 +336,7 @@ export class KataGoEngine implements AnalysisEngine {
   /** Counts a crash of the current process (or a failed spawn): restart, or fail for good past `maxRestarts`. */
   private onCrash(why: string): void {
     this.stopWatchdog()
+    this.rejectStreams()
     this.crashes++
     this.log(`KataGo exited (${why}), crash #${this.crashes}`)
     if (this.crashes > this.maxRestarts) {

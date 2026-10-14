@@ -1,6 +1,6 @@
 import type { JSX } from 'preact'
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import type { ClientMessage, HealthResponse, InstallStatus, ReviewData, SessionView, TrapsInfo } from '@joseki-dojo/shared'
+import type { AnalysisSettings, ClientMessage, HealthResponse, InstallStatus, ReviewData, SessionView, TrapsInfo } from '@joseki-dojo/shared'
 import { LoaderCircle, RefreshCw } from 'lucide-preact'
 import { DojoSocket, fetchHealth, fetchInstall, fetchReview, fetchSettings, fetchTraps, fetchUi, recheckHealth } from './api'
 import { AppHeader } from './components/AppHeader'
@@ -14,6 +14,7 @@ import { ReviewScreen } from './screens/ReviewScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { StartScreen } from './screens/StartScreen'
 import { applyTheme } from './theme'
+import type { VariationUpdate } from './variation'
 
 interface Progress {
   done: number
@@ -40,6 +41,9 @@ export function App() {
   const [engineUpdate, setEngineUpdate] = useState(false)
   const [repick, setRepick] = useState(false)
   const [traps, setTraps] = useState<TrapsInfo | null>(null)
+  // Variations spec 6.2: the latest analysis of a variation position; the review keeps the results.
+  const [variationUpdate, setVariationUpdate] = useState<VariationUpdate | null>(null)
+  const [analysisSettings, setAnalysisSettings] = useState<AnalysisSettings | null>(null)
 
   const socket = useMemo(
     () =>
@@ -56,6 +60,9 @@ export function App() {
             break
           case 'analysisProgress':
             setProgress({ done: msg.done, total: msg.total })
+            break
+          case 'variationAnalysis':
+            setVariationUpdate(msg)
             break
           case 'reviewReady':
             fetchReview(msg.sessionId)
@@ -80,6 +87,7 @@ export function App() {
 
   useEffect(() => {
     socket.sessionId = session?.id ?? null
+    setVariationUpdate(null)
   }, [socket, session?.id])
 
   // The saved colour theme; without the server the page keeps the system colours set by index.html.
@@ -131,6 +139,7 @@ export function App() {
       .then((s) => {
         setVersionWarning(s.versionWarning)
         setDefaultRank(s.defaultBotRank)
+        setAnalysisSettings(s.analysis)
       })
       .catch(() => undefined)
   }, [ready, healthTick])
@@ -265,6 +274,14 @@ export function App() {
         busy={starting}
         onReplay={(turn) => sendStarting({ type: 'replayFrom', sessionId: session.id, turn })}
         onNew={resetToStart}
+        variations={{
+          update: variationUpdate,
+          analyze: (fromTurn, moves) => send({ type: 'analyzeVariation', sessionId: session.id, fromTurn, moves }),
+          stop: () => send({ type: 'stopVariation', sessionId: session.id }),
+          connected,
+          errorSeq,
+          visits: analysisSettings,
+        }}
       />
     )
   }

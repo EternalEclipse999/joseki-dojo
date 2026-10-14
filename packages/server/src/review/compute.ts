@@ -96,6 +96,7 @@ export function buildReview(input: ReviewInput): ReviewData {
   const positions: PositionReview[] = analyses.map((a, turn) => ({
     turn,
     scoreLeadBlack: a.rootInfo.scoreLead,
+    visits: a.rootInfo.visits,
     candidates: candidatesOf(a),
     ownership: a.ownership,
   }))
