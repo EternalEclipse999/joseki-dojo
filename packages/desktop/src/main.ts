@@ -195,6 +195,7 @@ async function boot(): Promise<void> {
     trapsFile: app.isPackaged ? join(resourcesDir, 'bases', 'traps.jdb') : join(resourcesDir, 'packages', 'server', 'bases', 'traps.jdb'),
     startsFile: app.isPackaged ? join(resourcesDir, 'bases', 'starts.jdb') : join(resourcesDir, 'packages', 'server', 'bases', 'starts.jdb'),
     startsListFile: app.isPackaged ? join(resourcesDir, 'bases', 'starts-list.json') : join(resourcesDir, 'packages', 'server', 'bases', 'starts-list.json'),
+    startsNamesFile: app.isPackaged ? join(resourcesDir, 'bases', 'starts-i18n.json') : join(resourcesDir, 'packages', 'server', 'bases', 'starts-i18n.json'),
     webDist,
     port: 0,
     log,

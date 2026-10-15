@@ -44,7 +44,10 @@ export interface TrapRef {
 /** The start position of a 'random' or 'list' session and how its canonical form was put on the board. */
 export interface StartRef {
   id: string
-  /** The name on the list: a position's full name, a branch's name, or the group for its corner stone; null for a position that is not on it. */
+  /**
+   * The name on the list, in Russian: a position's full name, a branch's name, or the group for its corner stone; null for
+   * a position that is not on it. The crumbs show it only when the position has left the list (languages spec 7).
+   */
   name: string | null
   /**
    * The group on the list; the same name can stand in two groups (starts spec 5.4). None for a group's corner stone,
@@ -196,14 +199,17 @@ export const START_GROUPS = ['4-4', '3-4', '3-3', '5-4', '5-3'] as const
 export type StartGroup = (typeof START_GROUPS)[number]
 export const isStartGroup = (value: unknown): value is StartGroup => (START_GROUPS as readonly unknown[]).includes(value)
 
+/** Spec (languages) 7: a name of the start list in every interface language. */
+export type LocalizedName = Record<Language, string>
+
 /** One position of the named list; `moves` are canonical (top-right corner, Black first) in GTP. */
 export interface StartListEntry {
   id: string
   group: StartGroup
   /** The full name: crumbs of the game and the review. */
-  name: string
+  name: LocalizedName
   /** The caption in the tree (starts spec 5.1); the full name when the list file has none. */
-  short: string
+  short: LocalizedName
   /** Played by pros fewer than 10 times since 2016 (starts spec 3.3): shown muted with «редко». */
   rare: boolean
   moves: string[]
@@ -214,7 +220,7 @@ export interface StartBranch {
   /** A training can start from a branch (starts spec 5.1): the start id of its moves. */
   id: string
   moves: string[]
-  name: string
+  name: LocalizedName
 }
 
 /** The corner stone of a group whose positions all begin with it; a training can start from it (starts spec 5.1). */

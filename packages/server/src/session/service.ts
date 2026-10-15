@@ -136,7 +136,7 @@ export class SessionService {
     const swapColors = dubious && this.starts.lastColor(id) === resolved.userColor
     const initialMoves = this.starts.place(id, resolved.corner, mirror, swapColors)
     // «Случайно» names a start only by the list positions: a branch can share the moves of an unnamed start of the base.
-    named ??= this.starts.entryOf(id)
+    if (!named && this.starts.isListed(id)) named = this.starts.listStart(id)
     const start: StartRef = { id, name: named?.name ?? null, ...(named?.group ? { group: named.group } : {}), mirror, ...(dubious ? { dubious: true, swapColors } : {}) }
     return this.create({ ...resolved, start }, initialMoves, null)
   }

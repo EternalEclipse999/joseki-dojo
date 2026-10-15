@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import type { AddressInfo } from 'node:net'
-import { resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { localize, type Language } from '@joseki-dojo/shared'
 import { buildApp, createServices, type AppServices } from './app'
@@ -9,6 +9,7 @@ import { engineCommand } from './engine/command'
 import { KataGoEngine, type EngineCommand } from './engine/engine'
 import { loadLock, type KataGoLock } from './engine/lock'
 import { StartBook } from './starts/book'
+import { loadNames, type StartNames } from './starts/names'
 import { TrapBook } from './traps/book'
 
 export interface ServerOptions {
@@ -38,6 +39,11 @@ export interface ServerOptions {
   startsFile?: string | null
   /** The named start list (packages/server/bases/starts-list.json); missing or unreadable turns «Из списка» off. */
   startsListFile?: string | null
+  /**
+   * Spec (languages) 7: the names of the list in the other languages (packages/server/bases/starts-i18n.json); by default
+   * starts-i18n.json next to the list. Missing, null or broken leaves the names Russian.
+   */
+  startsNamesFile?: string | null
   /** Spec (languages) 8.1: the language chosen in the Windows installer; saved only into a config without one. */
   initialLanguage?: Language
 }
@@ -60,7 +66,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
   const commandFor = options.commandFor ?? engineCommand
   const engine = new KataGoEngine(commandFor(config), (line) => log(`[katago] ${line}`))
   const traps = loadTraps(options.trapsFile, log)
-  const starts = loadStarts(options.startsFile, options.startsListFile, log)
+  const starts = loadStarts(options.startsFile, options.startsListFile, log, options.startsNamesFile)
   const services = createServices(config, engine, { configFile: options.configFile, enginesDir: options.enginesDir, lock, commandFor, log, fetch: options.fetch, traps, starts })
   let app: FastifyInstance | undefined
   try {
@@ -105,8 +111,11 @@ export function loadTraps(file: string | null | undefined, log: (line: string) =
   }
 }
 
-/** Spec (starts) 4.3: the starts base and its list; a missing or broken base turns both start modes off, a broken list only «Из списка». */
-export function loadStarts(baseFile: string | null | undefined, listFile: string | null | undefined, log: (line: string) => void): StartBook {
+/**
+ * Spec (starts) 4.3: the starts base and its list; a missing or broken base turns both start modes off, a broken list only
+ * «Из списка». The names file (languages spec 7) defaults to starts-i18n.json next to the list.
+ */
+export function loadStarts(baseFile: string | null | undefined, listFile: string | null | undefined, log: (line: string) => void, namesFile?: string | null): StartBook {
   if (!baseFile) return StartBook.empty()
   let book: StartBook
   try {
@@ -117,10 +126,29 @@ export function loadStarts(baseFile: string | null | undefined, listFile: string
   }
   if (book.skipped.length > 0) log(`Пропущено стартовых позиций: ${book.skipped.length} (недопустимые позиции)`)
   if (!listFile) return book
+  let json: string
   try {
-    return book.withList(readFileSync(listFile, 'utf8'), log)
+    json = readFileSync(listFile, 'utf8')
   } catch (err) {
     log(`Список стартовых позиций недоступен: ${err instanceof Error ? err.message : String(err)}`)
     return book
+  }
+  const names = loadStartNames(namesFile === undefined ? join(dirname(listFile), 'starts-i18n.json') : namesFile, log)
+  try {
+    return book.withList(json, log, names)
+  } catch (err) {
+    log(`Список стартовых позиций недоступен: ${err instanceof Error ? err.message : String(err)}`)
+    return book
+  }
+}
+
+/** Spec (languages) 7: the translations of the list names; a missing or broken file leaves them Russian, with one log line. */
+function loadStartNames(file: string | null, log: (line: string) => void): StartNames {
+  if (!file) return {}
+  try {
+    return loadNames(readFileSync(file, 'utf8'), log)
+  } catch (err) {
+    log(`Переводы названий стартовых позиций недоступны: ${err instanceof Error ? err.message : String(err)}`)
+    return {}
   }
 }

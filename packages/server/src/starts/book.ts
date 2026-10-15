@@ -17,6 +17,7 @@ import {
 } from '@joseki-dojo/shared'
 import { pickLeastShown, type Rng } from '../bot/rng'
 import { canonicalize, decodeJdb, fromTopRight, JdbError, mirrorMoves, trapId, type CanonicalMove, type JdbBase } from '../jdb'
+import { nameFor, type StartNames } from './names'
 
 const colorAt = (i: number): Color => (i % 2 === 0 ? 'B' : 'W')
 
@@ -46,7 +47,7 @@ function parseMoves(text: unknown): Vertex[] | null {
 /** Spec (starts) 5.3: the share of «Случайно» picks that start after the opponent's dubious move. */
 export const DUBIOUS_SHARE = 0.1
 
-/** What a start from the tree of «Из списка» is called: the group goes with the name unless the name is the group. */
+/** What a start from the tree of «Из списка» is called, in Russian: the group goes with the name unless the name is the group. */
 export interface ListStart {
   name: string
   group?: StartGroup
@@ -102,9 +103,10 @@ export class StartBook {
   /**
    * Spec (starts) 4.2: this book with the named list from `json`, the text of starts-list.json — `positions` (the list)
    * and `branches` (names of tree nodes that are not positions). A bad position or branch is left out with one `log`
-   * line. Throws when the text is not an object with a `positions` array.
+   * line. Throws when the text is not an object with a `positions` array. The names come in every language from `names`
+   * (starts-i18n.json, languages spec 7), keyed by the canonical moves.
    */
-  withList(json: string, log: (line: string) => void): StartBook {
+  withList(json: string, log: (line: string) => void, names: StartNames = {}): StartBook {
     const raw = JSON.parse(json) as unknown
     const file = (raw ?? {}) as Record<string, unknown>
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw) || !Array.isArray(file.positions)) {
@@ -121,9 +123,10 @@ export class StartBook {
       const id = trapId(path)
       if (!this.paths.has(id)) return skip('такой стартовой позиции нет в базе')
       if (entries.some((x) => x.id === id)) return skip('эта позиция уже есть в списке')
-      const name = e.name.trim()
-      const short = typeof e.short === 'string' && e.short.trim() !== '' ? e.short.trim() : name
-      entries.push({ id, group: e.group, name, short, rare: e.rare === true, moves: path.map(vertexToGtp) })
+      const moves = path.map(vertexToGtp)
+      const short = typeof e.short === 'string' && e.short.trim() !== '' ? e.short.trim() : undefined
+      const local = nameFor(names, moves.join(' '), { name: e.name.trim(), short }, log)
+      entries.push({ id, group: e.group, name: local.name, short: local.short ?? local.name, rare: e.rare === true, moves })
     })
     const branches: StartBranch[] = []
     const treeStarts = new Map<string, TreeStart>()
@@ -139,9 +142,10 @@ export class StartBook {
       if (branches.some((x) => same(x.moves, moves))) return skip('эта ветка уже есть')
       const below = entries.find((e) => e.moves.length > moves.length && same(e.moves.slice(0, moves.length), moves))
       if (!below) return skip('под веткой нет позиций')
-      const branch: StartBranch = { id: trapId(path), moves, name: b.name.trim() }
+      const name = b.name.trim()
+      const branch: StartBranch = { id: trapId(path), moves, name: nameFor(names, moves.join(' '), { name }, log).name }
       branches.push(branch)
-      treeStarts.set(branch.id, { path, name: branch.name, group: below.group })
+      treeStarts.set(branch.id, { path, name, group: below.group })
     })
     // A group can be started from its corner stone when all its positions begin with the same one.
     const heads: StartGroupHead[] = []
@@ -194,7 +198,7 @@ export class StartBook {
   /** Spec (starts) 5.1: a node of the tree «Из списка» can start from — a list position, a branch or a group stone; null for anything else. */
   listStart(id: string): ListStart | null {
     const entry = this.entryOf(id)
-    if (entry) return { name: entry.name, group: entry.group }
+    if (entry) return { name: entry.name.ru, group: entry.group }
     const node = this.treeStarts.get(id)
     return node ? { name: node.name, ...(node.group ? { group: node.group } : {}) } : null
   }

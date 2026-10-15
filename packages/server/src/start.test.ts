@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { gtpToVertex, type HealthResponse, type InstallStatus, type Language, type Vertex } from '@joseki-dojo/shared'
+import { gtpToVertex, type HealthResponse, type InstallStatus, type Language, type StartsInfo, type Vertex } from '@joseki-dojo/shared'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_KATAGO, REPO_LOCK, tempDir } from '../test/helpers'
 import { createInstallFixture, fakeBuildCommand, type InstallFixture } from '../test/install-fixture'
@@ -194,6 +194,20 @@ describe('startServer', () => {
       expect(noStartsLog(lines)).toBe(false)
       expect(starts).toMatchObject({ count: 3 })
       expect((starts as { list: unknown[] }).list).toHaveLength(2)
+    })
+
+    it('serves the names in every language from starts-i18n.json next to the list; without it they stay Russian', async () => {
+      const dir = tempDir()
+      const base = join(dir, 'starts.jdb')
+      const list = join(dir, 'starts-list.json')
+      writeTestStarts(base, list)
+      const missing = await startWith(base, list)
+      expect(missing.lines.filter((l) => l.startsWith('Переводы названий стартовых позиций недоступны: '))).toHaveLength(1)
+      expect((missing.starts as StartsInfo).list[0].name).toMatchObject({ ru: 'Тестовое начало 4-4', en: 'Тестовое начало 4-4' })
+      writeFileSync(join(dir, 'starts-i18n.json'), JSON.stringify({ 'Q16 O17 R14': { en: { name: 'Test start', short: 'Start' } } }))
+      const named = await startWith(base, list)
+      expect((named.starts as StartsInfo).list[0].name).toMatchObject({ ru: 'Тестовое начало 4-4', en: 'Test start', ja: 'Test start' })
+      expect(named.lines.some((l) => l.startsWith('Переводы названий'))).toBe(false)
     })
 
     it('turns the start modes off for a broken base', async () => {

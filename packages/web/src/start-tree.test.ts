@@ -1,9 +1,11 @@
-import { translator, type StartBranch, type StartGroupHead, type StartListEntry } from '@joseki-dojo/shared'
+import { LANGUAGES, translator, type LocalizedName, type StartBranch, type StartGroupHead, type StartListEntry } from '@joseki-dojo/shared'
 import { describe, expect, it } from 'vitest'
 import { buildStartTree, findById, findNode, nodeTitle, type StartTreeNode } from './start-tree'
 
-const pos = (id: string, group: StartListEntry['group'], moves: string, rare = false): StartListEntry => ({ id, group, name: `Полное ${id}`, short: id, rare, moves: moves.split(' ') })
-const branch = (moves: string, name: string): StartBranch => ({ id: `ветка ${moves}`, moves: moves.split(' '), name })
+// The server sends every language; here English is the Russian name marked «en».
+const named = (ru: string): LocalizedName => ({ ...(Object.fromEntries(LANGUAGES.map((l) => [l, ru])) as LocalizedName), en: `en ${ru}` })
+const pos = (id: string, group: StartListEntry['group'], moves: string, rare = false): StartListEntry => ({ id, group, name: named(`Полное ${id}`), short: named(id), rare, moves: moves.split(' ') })
+const branch = (moves: string, name: string): StartBranch => ({ id: `ветка ${moves}`, moves: moves.split(' '), name: named(name) })
 // File order: chapter order, with a 4-4 position in the middle.
 const LIST = [
   pos('косуми', '3-4', 'R16 P17 Q15'),
@@ -20,7 +22,7 @@ const names = (n: StartTreeNode): string[] => n.children.map((c) => c.short)
 const ROOT = translator('ru')('tree.root')
 
 describe('buildStartTree', () => {
-  const root = buildStartTree(LIST, BRANCHES, GROUPS, ROOT)
+  const root = buildStartTree(LIST, BRANCHES, GROUPS, ROOT, 'ru')
   const g44 = root.children[0]
   const g34 = root.children[1]
   const high = g34.children[1]
@@ -66,6 +68,15 @@ describe('buildStartTree', () => {
   })
 
   it('is just the root for an empty list', () => {
-    expect(buildStartTree([], [], [], ROOT)).toMatchObject({ kind: 'root', children: [], count: 0 })
+    expect(buildStartTree([], [], [], ROOT, 'ru')).toMatchObject({ kind: 'root', children: [], count: 0 })
+  })
+
+  it('names the nodes in the language it is given, the groups staying the same', () => {
+    const en = buildStartTree(LIST, BRANCHES, GROUPS, translator('en')('tree.root'), 'en')
+    const enUnder = findById(en, 'снизу')
+    expect([en.name, en.children.map((c) => c.name)]).toEqual(['Empty corner', ['4-4', '3-4']])
+    expect(names(en.children[1])).toEqual(['en Малое приближение', 'en Высокое приближение'])
+    expect(enUnder).toMatchObject({ name: 'en Полное снизу', short: 'en снизу' })
+    expect(enUnder && nodeTitle(enUnder)).toBe('3-4 · en Полное снизу')
   })
 })

@@ -18,7 +18,7 @@ import { ReviewScreen } from './screens/ReviewScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { StartScreen } from './screens/StartScreen'
 import { SessionFollow } from './session-follow'
-import { reviewLabels, reviewTitle, sessionTitle } from './session-title'
+import { listedName, reviewLabels, reviewTitle, sessionTitle } from './session-title'
 import { applyTheme } from './theme'
 import type { VariationUpdate } from './variation'
 
@@ -146,7 +146,7 @@ export function App() {
   // The App renders the provider, so it takes its texts from `i18n` itself rather than from the context.
   const t = i18n.t
   const rootName = t('tree.root')
-  const startTree = useMemo(() => buildStartTree(starts?.list ?? [], starts?.branches ?? [], starts?.groups ?? [], rootName), [starts, rootName])
+  const startTree = useMemo(() => buildStartTree(starts?.list ?? [], starts?.branches ?? [], starts?.groups ?? [], rootName, language), [starts, rootName, language])
 
   useEffect(() => {
     let cancelled = false
@@ -336,10 +336,10 @@ export function App() {
       />
     )
   } else if (session.status === 'playing') {
-    crumb = sessionTitle(session.settings, t)
+    crumb = sessionTitle(session.settings, t, listedName(startTree, session.settings.start))
     screen = <GameScreen session={session} errorSeq={errorSeq} send={send} />
   } else {
-    crumb = reviewTitle(session.settings, t)
+    crumb = reviewTitle(session.settings, t, listedName(startTree, session.settings.start))
     screen = (
       <ReviewScreen
         review={review}

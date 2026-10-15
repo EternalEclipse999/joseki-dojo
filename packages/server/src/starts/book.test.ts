@@ -7,6 +7,7 @@ import { decodeJdb, encodeJdb, fromTopRight, JdbError, mirrorDiagonal, needsMirr
 import { testTrapsTree } from '../traps/fixture'
 import { StartBook } from './book'
 import { TEST_STARTS_LIST, testDubiousStartsTree, testStartsTree, writeTestStarts } from './fixture'
+import { loadNames } from './names'
 
 const v = (gtp: string): Vertex => gtpToVertex(gtp) as Vertex
 const id = (moves: string): string => trapId(moves.split(' ').map(v))
@@ -16,6 +17,7 @@ const C = id('Q17 R15')
 const base = () => decodeJdb(encodeJdb(testStartsTree()))
 const book = (): StartBook => StartBook.fromBase(base())
 const listed = (): StartBook => book().withList(JSON.stringify(TEST_STARTS_LIST), () => {})
+const ru = (name: string): unknown => expect.objectContaining({ ru: name })
 
 describe('StartBook', () => {
   it('keeps the fixture canonical', () => {
@@ -55,12 +57,34 @@ describe('StartBook', () => {
   it('reads the named list in file order, with short names, rare marks and branches', () => {
     const b = listed()
     expect(b.list()).toEqual([
-      { id: B, group: '4-4', name: 'Тестовое начало 4-4', short: 'Начало 4-4', rare: false, moves: ['Q16', 'O17', 'R14'] },
-      { id: C, group: '3-4', name: 'Тестовое начало 3-4', short: 'Тестовое начало 3-4', rare: true, moves: ['Q17', 'R15'] },
+      { id: B, group: '4-4', name: ru('Тестовое начало 4-4'), short: ru('Начало 4-4'), rare: false, moves: ['Q16', 'O17', 'R14'] },
+      { id: C, group: '3-4', name: ru('Тестовое начало 3-4'), short: ru('Тестовое начало 3-4'), rare: true, moves: ['Q17', 'R15'] },
     ])
-    expect(b.branches()).toEqual([{ id: A, moves: ['Q16', 'O17'], name: 'Тестовая ветка' }])
+    expect(b.branches()).toEqual([{ id: A, moves: ['Q16', 'O17'], name: ru('Тестовая ветка') }])
     expect([b.isListed(B), b.isListed(A)]).toEqual([true, false])
-    expect([b.entryOf(C)?.group, b.entryOf(C)?.name, b.entryOf(A)]).toEqual(['3-4', 'Тестовое начало 3-4', null])
+    expect([b.entryOf(C)?.group, b.entryOf(C)?.name.ru, b.entryOf(A)]).toEqual(['3-4', 'Тестовое начало 3-4', null])
+  })
+
+  it('names the list in every language from the translations, keyed by the canonical moves, the crumbs staying Russian', () => {
+    const names = loadNames(
+      JSON.stringify({
+        'Q16 O17 R14': { en: { name: 'Test start', short: 'Start' }, ja: { name: 'テスト', short: 'テ' } },
+        'Q16 O17': { en: { name: 'Test branch' } },
+      }),
+      () => {},
+    )
+    const lines: string[] = []
+    // R14 O17 is O17 R14 mirrored in the diagonal: the canonical moves find the translation.
+    const list = { branches: [{ moves: 'Q16 R14', name: 'Ветка' }], positions: [{ group: '4-4', name: 'Начало', short: 'Нач', moves: 'Q16 R14 O17' }, TEST_STARTS_LIST.positions[1]] }
+    const b = book().withList(JSON.stringify(list), (l) => lines.push(l), names)
+    expect(b.list()[0].name).toEqual({ en: 'Test start', ru: 'Начало', 'zh-Hans': 'Test start', 'zh-Hant': 'Test start', ko: 'Test start', ja: 'テスト' })
+    expect(b.list()[0].short).toMatchObject({ en: 'Start', ru: 'Нач', ja: 'テ', ko: 'Start' })
+    // Without a translation the short caption is the name, in every language.
+    expect(b.list()[1].short).toMatchObject({ en: 'Тестовое начало 3-4', ru: 'Тестовое начало 3-4' })
+    expect(b.branches()[0].name).toMatchObject({ en: 'Test branch', ru: 'Ветка', ko: 'Test branch' })
+    expect([b.listStart(B), b.listStart(A)]).toEqual([{ name: 'Начало', group: '4-4' }, { name: 'Ветка', group: '4-4' }])
+    expect(lines).toHaveLength(3)
+    expect(lines.every((l) => l.startsWith('Нет перевода названия '))).toBe(true)
   })
 
   it('offers the corner stone of each group whose positions all begin with it', () => {
@@ -85,7 +109,7 @@ describe('StartBook', () => {
     // R14 is O17 mirrored in the diagonal.
     const b = book().withList(JSON.stringify({ branches: [{ moves: 'Q16 R14', name: 'Ветка' }], positions: [{ group: '4-4', name: 'Зеркально', moves: 'Q16 R14 O17' }] }), () => {})
     expect(b.list().map((e) => e.moves)).toEqual([['Q16', 'O17', 'R14']])
-    expect(b.branches()).toEqual([{ id: A, moves: ['Q16', 'O17'], name: 'Ветка' }])
+    expect(b.branches()).toEqual([{ id: A, moves: ['Q16', 'O17'], name: ru('Ветка') }])
   })
 
   it('skips bad positions with a log line each', () => {
@@ -100,7 +124,7 @@ describe('StartBook', () => {
       null,
     ]
     const b = book().withList(JSON.stringify({ positions }), (l) => lines.push(l))
-    expect(b.list().map((e) => e.name)).toEqual(['first'])
+    expect(b.list().map((e) => e.name.ru)).toEqual(['first'])
     expect(lines).toHaveLength(6)
     expect(lines[0]).toMatch(/^Список стартовых позиций, позиция 1: /)
   })
@@ -117,7 +141,7 @@ describe('StartBook', () => {
       { moves: 'Q16 O17', name: 'повтор' },
     ]
     const b = book().withList(JSON.stringify({ branches, positions: TEST_STARTS_LIST.positions }), (l) => lines.push(l))
-    expect(b.branches()).toEqual([{ id: A, moves: ['Q16', 'O17'], name: 'ветка' }])
+    expect(b.branches()).toEqual([{ id: A, moves: ['Q16', 'O17'], name: ru('ветка') }])
     expect(lines).toHaveLength(6)
     expect(lines[0]).toMatch(/^Список стартовых позиций, ветка 1: /)
   })

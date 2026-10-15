@@ -3,7 +3,7 @@ import { ArrowRight, Dice3, ListChecks, Play, Shuffle, Swords } from 'lucide-pre
 import { BOT_RANKS, DEFAULT_BOT_RANK, isBotRank, type MessageKey, type SessionSettings } from '@joseki-dojo/shared'
 import { StartTree } from '../components/StartTree'
 import { rankLabel } from '../format'
-import { useT } from '../i18n'
+import { useI18n } from '../i18n'
 import { RANK_MARKS, rankAt, rankIndex } from '../rank-scale'
 import { buildStartTree, findById, findNode, nodeTitle, type StartTreeNode } from '../start-tree'
 
@@ -67,9 +67,9 @@ const initialTreeKey = (tree: StartTreeNode, lastStartId: string | null): string
 }
 
 export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, startsCount = 0, startTree: tree, last = null }: StartScreenProps) {
-  const t = useT()
+  const { t, language } = useI18n()
   // Without a tree: the empty corner alone, which turns «Из списка» off.
-  const startTree = tree ?? buildStartTree([], [], [], t('tree.root'))
+  const startTree = tree ?? buildStartTree([], [], [], t('tree.root'), language)
   const listReady = startTree.children.length > 0
   const available = (m: ModeChoice): boolean => (m === 'traps' ? trapsCount > 0 : m === 'random' ? startsCount > 0 : m === 'list' ? listReady : true)
   const [mode, setMode] = useState<ModeChoice>(last && available(last.mode) ? last.mode : 'free')

@@ -1,4 +1,5 @@
 import type { Mode, ResolvedSettings, StartRef, Translate } from '@joseki-dojo/shared'
+import { findById, type StartTreeNode } from './start-tree'
 
 /** The captions of the review's actions: a new game with the same settings and the way back to the start screen. */
 export interface ReviewLabels {
@@ -9,6 +10,15 @@ export interface ReviewLabels {
 /** Starts spec 5.4: «Из списка» plays the same node again and goes back to the tree; the other modes go on to a new game. */
 export function reviewLabels(mode: Mode, t: Translate): ReviewLabels {
   return mode === 'list' ? { next: t('review.replayPosition'), back: t('review.toPositions') } : { next: t('review.next'), back: t('review.toTrainings') }
+}
+
+/**
+ * Languages spec 7: the name of a named start in the language of `tree`, while it is still on the list; undefined
+ * otherwise, and the crumbs keep the saved (Russian) name. A start the server left unnamed stays so.
+ */
+export function listedName(tree: StartTreeNode, start: StartRef | undefined): string | undefined {
+  if (!start || start.name === null) return undefined
+  return findById(tree, start.id)?.name
 }
 
 /**

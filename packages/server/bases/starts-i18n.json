@@ -1,0 +1,2227 @@
+{
+  "Q16 O17 Q14": {
+    "en": {
+      "name": "Small knight's approach — one-space jump",
+      "short": "One-space jump"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 单关守角",
+      "short": "单关守角"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 單關守角",
+      "short": "單關守角"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 한칸 뛰어받음",
+      "short": "한칸 뛰어받음"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 一間受け",
+      "short": "一間受け"
+    }
+  },
+  "Q16 O17 R14": {
+    "en": {
+      "name": "Small knight's approach — knight's-move answer",
+      "short": "Knight's-move answer"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 小飞守角",
+      "short": "小飞守角"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 小飛守角",
+      "short": "小飛守角"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 날일자 받음",
+      "short": "날일자 받음"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 小ゲイマ受け",
+      "short": "小ゲイマ受け"
+    }
+  },
+  "Q16 O17 R13": {
+    "en": {
+      "name": "Small knight's approach — large knight's-move answer",
+      "short": "Large knight's-move answer"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 大飞守角",
+      "short": "大飞守角"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 大飛守角",
+      "short": "大飛守角"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 눈목자 받음",
+      "short": "눈목자 받음"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 大ゲイマ受け",
+      "short": "大ゲイマ受け"
+    }
+  },
+  "Q16 O17 P17": {
+    "en": {
+      "name": "Small knight's approach — diagonal attachment",
+      "short": "Diagonal attachment"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 尖顶",
+      "short": "尖顶"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 尖頂",
+      "short": "尖頂"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 마늘모붙임",
+      "short": "마늘모붙임"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — コスミツケ",
+      "short": "コスミツケ"
+    }
+  },
+  "Q16 O17 O16": {
+    "en": {
+      "name": "Small knight's approach — attachment on top",
+      "short": "Attachment on top"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 压",
+      "short": "压"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 壓",
+      "short": "壓"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 붙임",
+      "short": "붙임"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — ツケ",
+      "short": "ツケ"
+    }
+  },
+  "Q16 O17 O15": {
+    "en": {
+      "name": "Small knight's approach — cap",
+      "short": "Cap"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 镇",
+      "short": "镇"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 鎮",
+      "short": "鎮"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 모자",
+      "short": "모자"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — ボウシ",
+      "short": "ボウシ"
+    }
+  },
+  "Q16 O17 P15": {
+    "en": {
+      "name": "Small knight's approach — diagonal move",
+      "short": "Diagonal move"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 尖",
+      "short": "尖"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 尖",
+      "short": "尖"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 마늘모",
+      "short": "마늘모"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — コスミ",
+      "short": "コスミ"
+    }
+  },
+  "Q16 O17 P18": {
+    "en": {
+      "name": "Small knight's approach — low knight's-move block",
+      "short": "Low knight's-move block"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 二路飞",
+      "short": "二路飞"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 二路飛",
+      "short": "二路飛"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 2선 날일자",
+      "short": "2선 날일자"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 二線へのケイマ",
+      "short": "二線へのケイマ"
+    }
+  },
+  "Q16 O17 R17": {
+    "en": {
+      "name": "Small knight's approach — diagonal to the 3-3 point",
+      "short": "Diagonal to the 3-3 point"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 尖三三",
+      "short": "尖三三"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 尖三三",
+      "short": "尖三三"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 삼삼 마늘모",
+      "short": "삼삼 마늘모"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 三々へのコスミ",
+      "short": "三々へのコスミ"
+    }
+  },
+  "Q16 O17 M17": {
+    "en": {
+      "name": "Small knight's approach — one-space low pincer",
+      "short": "One-space low pincer"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 一间低夹",
+      "short": "一间低夹"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 一間低夾",
+      "short": "一間低夾"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 한칸 협공",
+      "short": "한칸 협공"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 一間バサミ",
+      "short": "一間バサミ"
+    }
+  },
+  "Q16 O17 M16": {
+    "en": {
+      "name": "Small knight's approach — one-space high pincer",
+      "short": "One-space high pincer"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 一间高夹",
+      "short": "一间高夹"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 一間高夾",
+      "short": "一間高夾"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 한칸 높은 협공",
+      "short": "한칸 높은 협공"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 一間高バサミ",
+      "short": "一間高バサミ"
+    }
+  },
+  "Q16 O17 L17": {
+    "en": {
+      "name": "Small knight's approach — two-space low pincer",
+      "short": "Two-space low pincer"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 二间低夹",
+      "short": "二间低夹"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 二間低夾",
+      "short": "二間低夾"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 두칸 협공",
+      "short": "두칸 협공"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 二間バサミ",
+      "short": "二間バサミ"
+    }
+  },
+  "Q16 O17 L16": {
+    "en": {
+      "name": "Small knight's approach — two-space high pincer",
+      "short": "Two-space high pincer"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 二间高夹",
+      "short": "二间高夹"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 二間高夾",
+      "short": "二間高夾"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 두칸 높은 협공",
+      "short": "두칸 높은 협공"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 二間高バサミ",
+      "short": "二間高バサミ"
+    }
+  },
+  "Q16 O17 K17": {
+    "en": {
+      "name": "Small knight's approach — three-space low pincer",
+      "short": "Three-space low pincer"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 三间低夹",
+      "short": "三间低夹"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 三間低夾",
+      "short": "三間低夾"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 세칸 협공",
+      "short": "세칸 협공"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 三間バサミ",
+      "short": "三間バサミ"
+    }
+  },
+  "Q16 O17 K16": {
+    "en": {
+      "name": "Small knight's approach — three-space high pincer",
+      "short": "Three-space high pincer"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 三间高夹",
+      "short": "三间高夹"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 三間高夾",
+      "short": "三間高夾"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 세칸 높은 협공",
+      "short": "세칸 높은 협공"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 三間高バサミ",
+      "short": "三間高バサミ"
+    }
+  },
+  "Q16 O16 L16": {
+    "en": {
+      "name": "High approach — two-space high pincer",
+      "short": "Two-space high pincer"
+    },
+    "zh-Hans": {
+      "name": "一间高挂 — 二间高夹",
+      "short": "二间高夹"
+    },
+    "zh-Hant": {
+      "name": "一間高掛 — 二間高夾",
+      "short": "二間高夾"
+    },
+    "ko": {
+      "name": "한칸 높은 걸침 — 두칸 높은 협공",
+      "short": "두칸 높은 협공"
+    },
+    "ja": {
+      "name": "一間高ガカリ — 二間高バサミ",
+      "short": "二間高バサミ"
+    }
+  },
+  "Q16 O16 M17": {
+    "en": {
+      "name": "High approach — one-space low pincer",
+      "short": "One-space low pincer"
+    },
+    "zh-Hans": {
+      "name": "一间高挂 — 一间低夹",
+      "short": "一间低夹"
+    },
+    "zh-Hant": {
+      "name": "一間高掛 — 一間低夾",
+      "short": "一間低夾"
+    },
+    "ko": {
+      "name": "한칸 높은 걸침 — 한칸 협공",
+      "short": "한칸 협공"
+    },
+    "ja": {
+      "name": "一間高ガカリ — 一間バサミ",
+      "short": "一間バサミ"
+    }
+  },
+  "Q16 N16 Q14": {
+    "en": {
+      "name": "Two-space high approach — one-space jump",
+      "short": "One-space jump"
+    },
+    "zh-Hans": {
+      "name": "二间高挂 — 单关守角",
+      "short": "单关守角"
+    },
+    "zh-Hant": {
+      "name": "二間高掛 — 單關守角",
+      "short": "單關守角"
+    },
+    "ko": {
+      "name": "두칸 높은 걸침 — 한칸 뛰어받음",
+      "short": "한칸 뛰어받음"
+    },
+    "ja": {
+      "name": "二間高ガカリ — 一間受け",
+      "short": "一間受け"
+    }
+  },
+  "Q16 N16 R13": {
+    "en": {
+      "name": "Two-space high approach — large knight's-move answer",
+      "short": "Large knight's-move answer"
+    },
+    "zh-Hans": {
+      "name": "二间高挂 — 大飞守角",
+      "short": "大飞守角"
+    },
+    "zh-Hant": {
+      "name": "二間高掛 — 大飛守角",
+      "short": "大飛守角"
+    },
+    "ko": {
+      "name": "두칸 높은 걸침 — 눈목자 받음",
+      "short": "눈목자 받음"
+    },
+    "ja": {
+      "name": "二間高ガカリ — 大ゲイマ受け",
+      "short": "大ゲイマ受け"
+    }
+  },
+  "Q16 N17 R13": {
+    "en": {
+      "name": "Large knight's approach — large knight's-move answer",
+      "short": "Large knight's-move answer"
+    },
+    "zh-Hans": {
+      "name": "大飞挂 — 大飞守角",
+      "short": "大飞守角"
+    },
+    "zh-Hant": {
+      "name": "大飛掛 — 大飛守角",
+      "short": "大飛守角"
+    },
+    "ko": {
+      "name": "눈목자 걸침 — 눈목자 받음",
+      "short": "눈목자 받음"
+    },
+    "ja": {
+      "name": "大ゲイマガカリ — 大ゲイマ受け",
+      "short": "大ゲイマ受け"
+    }
+  },
+  "Q16 R17 Q17": {
+    "en": {
+      "name": "3-3 invasion — block",
+      "short": "Block"
+    },
+    "zh-Hans": {
+      "name": "点三三 — 挡",
+      "short": "挡"
+    },
+    "zh-Hant": {
+      "name": "點三三 — 擋",
+      "short": "擋"
+    },
+    "ko": {
+      "name": "삼삼 침입 — 막음",
+      "short": "막음"
+    },
+    "ja": {
+      "name": "三々入り — オサエ",
+      "short": "オサエ"
+    }
+  },
+  "Q16 R17 Q17 R16": {
+    "en": {
+      "name": "3-3 invasion — push along the third line",
+      "short": "Push along the third line"
+    },
+    "zh-Hans": {
+      "name": "点三三 — 长",
+      "short": "长"
+    },
+    "zh-Hant": {
+      "name": "點三三 — 長",
+      "short": "長"
+    },
+    "ko": {
+      "name": "삼삼 침입 — 밀기",
+      "short": "밀기"
+    },
+    "ja": {
+      "name": "三々入り — ハイ",
+      "short": "ハイ"
+    }
+  },
+  "Q16 R17 Q17 R16 R15 S15": {
+    "en": {
+      "name": "3-3 invasion — hane on the second line",
+      "short": "Hane on the second line"
+    },
+    "zh-Hans": {
+      "name": "点三三 — 二路扳",
+      "short": "二路扳"
+    },
+    "zh-Hant": {
+      "name": "點三三 — 二路扳",
+      "short": "二路扳"
+    },
+    "ko": {
+      "name": "삼삼 침입 — 2선 젖힘",
+      "short": "2선 젖힘"
+    },
+    "ja": {
+      "name": "三々入り — 二線のハネ",
+      "short": "二線のハネ"
+    }
+  },
+  "Q16 R17 Q17 R16 R15 S15 S14": {
+    "en": {
+      "name": "3-3 invasion — double hane",
+      "short": "Double hane"
+    },
+    "zh-Hans": {
+      "name": "点三三 — 连扳",
+      "short": "连扳"
+    },
+    "zh-Hant": {
+      "name": "點三三 — 連扳",
+      "short": "連扳"
+    },
+    "ko": {
+      "name": "삼삼 침입 — 이단젖힘",
+      "short": "이단젖힘"
+    },
+    "ja": {
+      "name": "三々入り — 二段バネ",
+      "short": "二段バネ"
+    }
+  },
+  "Q16 R17 Q17 R16 R14": {
+    "en": {
+      "name": "3-3 invasion — knight's-move answer",
+      "short": "Knight's-move answer"
+    },
+    "zh-Hans": {
+      "name": "点三三 — 小飞",
+      "short": "小飞"
+    },
+    "zh-Hant": {
+      "name": "點三三 — 小飛",
+      "short": "小飛"
+    },
+    "ko": {
+      "name": "삼삼 침입 — 날일자 받음",
+      "short": "날일자 받음"
+    },
+    "ja": {
+      "name": "三々入り — ケイマ",
+      "short": "ケイマ"
+    }
+  },
+  "Q16 R17 Q17 R16 R14 S14": {
+    "en": {
+      "name": "3-3 invasion — attachment under the knight's move",
+      "short": "Attachment under the knight's move"
+    },
+    "zh-Hans": {
+      "name": "点三三 — 二路托",
+      "short": "二路托"
+    },
+    "zh-Hant": {
+      "name": "點三三 — 二路托",
+      "short": "二路托"
+    },
+    "ko": {
+      "name": "삼삼 침입 — 밑붙임",
+      "short": "밑붙임"
+    },
+    "ja": {
+      "name": "三々入り — 下ツケ",
+      "short": "下ツケ"
+    }
+  },
+  "Q16 R17 Q17 R16 R14 S14 S13 R15": {
+    "en": {
+      "name": "Flying knife",
+      "short": "Flying knife"
+    },
+    "zh-Hans": {
+      "name": "飞刀",
+      "short": "飞刀"
+    },
+    "zh-Hant": {
+      "name": "飛刀",
+      "short": "飛刀"
+    },
+    "ko": {
+      "name": "비도",
+      "short": "비도"
+    },
+    "ja": {
+      "name": "飛刀",
+      "short": "飛刀"
+    }
+  },
+  "Q16 O17 M17 R17": {
+    "en": {
+      "name": "One-space low pincer — 3-3 invasion",
+      "short": "3-3 invasion"
+    },
+    "zh-Hans": {
+      "name": "一间低夹 — 点三三",
+      "short": "点三三"
+    },
+    "zh-Hant": {
+      "name": "一間低夾 — 點三三",
+      "short": "點三三"
+    },
+    "ko": {
+      "name": "한칸 협공 — 삼삼 침입",
+      "short": "삼삼 침입"
+    },
+    "ja": {
+      "name": "一間バサミ — 三々入り",
+      "short": "三々入り"
+    }
+  },
+  "Q17 R15 P16": {
+    "en": {
+      "name": "Small knight's approach — Shusaku's kosumi",
+      "short": "Shusaku's kosumi"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 秀策尖",
+      "short": "秀策尖"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 秀策尖",
+      "short": "秀策尖"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 슈사쿠의 마늘모",
+      "short": "슈사쿠의 마늘모"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 秀策のコスミ",
+      "short": "秀策のコスミ"
+    }
+  },
+  "Q17 R15 O16": {
+    "en": {
+      "name": "Small knight's approach — knight's-move answer",
+      "short": "Knight's-move answer"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 小飞",
+      "short": "小飞"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 小飛",
+      "short": "小飛"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 날일자 받음",
+      "short": "날일자 받음"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 小ゲイマ受け",
+      "short": "小ゲイマ受け"
+    }
+  },
+  "Q17 R15 N17": {
+    "en": {
+      "name": "Small knight's approach — two-space extension",
+      "short": "Two-space extension"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 拆二",
+      "short": "拆二"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 拆二",
+      "short": "拆二"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 두칸 벌림",
+      "short": "두칸 벌림"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 二間ビラキ",
+      "short": "二間ビラキ"
+    }
+  },
+  "Q17 R15 R13": {
+    "en": {
+      "name": "Small knight's approach — one-space low pincer",
+      "short": "One-space low pincer"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 一间低夹",
+      "short": "一间低夹"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 一間低夾",
+      "short": "一間低夾"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 한칸 협공",
+      "short": "한칸 협공"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 一間バサミ",
+      "short": "一間バサミ"
+    }
+  },
+  "Q17 R15 R12": {
+    "en": {
+      "name": "Small knight's approach — two-space low pincer",
+      "short": "Two-space low pincer"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 二间低夹",
+      "short": "二间低夹"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 二間低夾",
+      "short": "二間低夾"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 두칸 협공",
+      "short": "두칸 협공"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 二間バサミ",
+      "short": "二間バサミ"
+    }
+  },
+  "Q17 R15 R11": {
+    "en": {
+      "name": "Small knight's approach — three-space low pincer",
+      "short": "Three-space low pincer"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 三间低夹",
+      "short": "三间低夹"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 三間低夾",
+      "short": "三間低夾"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 세칸 협공",
+      "short": "세칸 협공"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 三間バサミ",
+      "short": "三間バサミ"
+    }
+  },
+  "Q17 R15 Q13": {
+    "en": {
+      "name": "Small knight's approach — one-space high pincer",
+      "short": "One-space high pincer"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 一间高夹",
+      "short": "一间高夹"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 一間高夾",
+      "short": "一間高夾"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 한칸 높은 협공",
+      "short": "한칸 높은 협공"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 一間高バサミ",
+      "short": "一間高バサミ"
+    }
+  },
+  "Q17 R15 Q12": {
+    "en": {
+      "name": "Small knight's approach — two-space high pincer",
+      "short": "Two-space high pincer"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 二间高夹",
+      "short": "二间高夹"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 二間高夾",
+      "short": "二間高夾"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 두칸 높은 협공",
+      "short": "두칸 높은 협공"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 二間高バサミ",
+      "short": "二間高バサミ"
+    }
+  },
+  "Q17 R15 Q11": {
+    "en": {
+      "name": "Small knight's approach — three-space high pincer",
+      "short": "Three-space high pincer"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 三间高夹",
+      "short": "三间高夹"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 三間高夾",
+      "short": "三間高夾"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 세칸 높은 협공",
+      "short": "세칸 높은 협공"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 三間高バサミ",
+      "short": "三間高バサミ"
+    }
+  },
+  "Q17 R15 Q15": {
+    "en": {
+      "name": "Small knight's approach — outside attachment",
+      "short": "Outside attachment"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 靠",
+      "short": "靠"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 靠",
+      "short": "靠"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 위붙임",
+      "short": "위붙임"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — 上ツケ",
+      "short": "上ツケ"
+    }
+  },
+  "Q17 R15 R16": {
+    "en": {
+      "name": "Small knight's approach — diagonal attachment",
+      "short": "Diagonal attachment"
+    },
+    "zh-Hans": {
+      "name": "小飞挂 — 尖顶",
+      "short": "尖顶"
+    },
+    "zh-Hant": {
+      "name": "小飛掛 — 尖頂",
+      "short": "尖頂"
+    },
+    "ko": {
+      "name": "날일자 걸침 — 마늘모붙임",
+      "short": "마늘모붙임"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ — コスミツケ",
+      "short": "コスミツケ"
+    }
+  },
+  "Q17 Q15 O16": {
+    "en": {
+      "name": "High approach — knight's-move answer",
+      "short": "Knight's-move answer"
+    },
+    "zh-Hans": {
+      "name": "一间高挂 — 小飞",
+      "short": "小飞"
+    },
+    "zh-Hant": {
+      "name": "一間高掛 — 小飛",
+      "short": "小飛"
+    },
+    "ko": {
+      "name": "한칸 높은 걸침 — 날일자 받음",
+      "short": "날일자 받음"
+    },
+    "ja": {
+      "name": "一間高ガカリ — 小ゲイマ受け",
+      "short": "小ゲイマ受け"
+    }
+  },
+  "Q17 Q15 O17": {
+    "en": {
+      "name": "High approach — one-space low extension",
+      "short": "One-space low extension"
+    },
+    "zh-Hans": {
+      "name": "一间高挂 — 拆一",
+      "short": "拆一"
+    },
+    "zh-Hant": {
+      "name": "一間高掛 — 拆一",
+      "short": "拆一"
+    },
+    "ko": {
+      "name": "한칸 높은 걸침 — 한칸 벌림",
+      "short": "한칸 벌림"
+    },
+    "ja": {
+      "name": "一間高ガカリ — 一間ビラキ",
+      "short": "一間ビラキ"
+    }
+  },
+  "Q17 Q15 R15": {
+    "en": {
+      "name": "High approach — attachment underneath",
+      "short": "Attachment underneath"
+    },
+    "zh-Hans": {
+      "name": "一间高挂 — 托",
+      "short": "托"
+    },
+    "zh-Hant": {
+      "name": "一間高掛 — 托",
+      "short": "托"
+    },
+    "ko": {
+      "name": "한칸 높은 걸침 — 밑붙임",
+      "short": "밑붙임"
+    },
+    "ja": {
+      "name": "一間高ガカリ — 下ツケ",
+      "short": "下ツケ"
+    }
+  },
+  "Q17 Q15 R15 R14": {
+    "en": {
+      "name": "Attachment underneath — hane",
+      "short": "Hane"
+    },
+    "zh-Hans": {
+      "name": "托 — 扳",
+      "short": "扳"
+    },
+    "zh-Hant": {
+      "name": "托 — 扳",
+      "short": "扳"
+    },
+    "ko": {
+      "name": "밑붙임 — 젖힘",
+      "short": "젖힘"
+    },
+    "ja": {
+      "name": "下ツケ — オサエ",
+      "short": "オサエ"
+    }
+  },
+  "Q17 Q15 R15 R14 R16": {
+    "en": {
+      "name": "Attachment underneath — hane and draw back",
+      "short": "Draw back"
+    },
+    "zh-Hans": {
+      "name": "托退定式",
+      "short": "退"
+    },
+    "zh-Hant": {
+      "name": "托退定式",
+      "short": "退"
+    },
+    "ko": {
+      "name": "밑붙임 — 붙여끌기",
+      "short": "끌기"
+    },
+    "ja": {
+      "name": "下ツケ — ツケヒキ",
+      "short": "ヒキ"
+    }
+  },
+  "Q17 Q15 R15 Q16": {
+    "en": {
+      "name": "Attachment underneath — start of the avalanche",
+      "short": "Start of the avalanche"
+    },
+    "zh-Hans": {
+      "name": "托 — 长（走向雪崩）",
+      "short": "长（走向雪崩）"
+    },
+    "zh-Hant": {
+      "name": "托 — 長（走向雪崩）",
+      "short": "長（走向雪崩）"
+    },
+    "ko": {
+      "name": "밑붙임 — 뻗음 (눈사태로)",
+      "short": "뻗음 (눈사태로)"
+    },
+    "ja": {
+      "name": "下ツケ — ノビ（ナダレ型へ）",
+      "short": "ノビ（ナダレ型へ）"
+    }
+  },
+  "Q17 Q15 R15 Q16 R16 P17": {
+    "en": {
+      "name": "Avalanche — base position",
+      "short": "Avalanche base position"
+    },
+    "zh-Hans": {
+      "name": "雪崩 — 基本型",
+      "short": "雪崩基本型"
+    },
+    "zh-Hant": {
+      "name": "雪崩 — 基本型",
+      "short": "雪崩基本型"
+    },
+    "ko": {
+      "name": "눈사태 — 기본형",
+      "short": "눈사태 기본형"
+    },
+    "ja": {
+      "name": "ナダレ — 基本形",
+      "short": "ナダレの基本形"
+    }
+  },
+  "Q17 Q15 R15 Q16 R16 P17 Q14": {
+    "en": {
+      "name": "Small avalanche",
+      "short": "Small avalanche"
+    },
+    "zh-Hans": {
+      "name": "小雪崩",
+      "short": "小雪崩"
+    },
+    "zh-Hant": {
+      "name": "小雪崩",
+      "short": "小雪崩"
+    },
+    "ko": {
+      "name": "작은 눈사태",
+      "short": "작은 눈사태"
+    },
+    "ja": {
+      "name": "小ナダレ",
+      "short": "小ナダレ"
+    }
+  },
+  "Q17 Q15 R15 Q16 R16 P17 R14 Q14": {
+    "en": {
+      "name": "Large avalanche",
+      "short": "Large avalanche"
+    },
+    "zh-Hans": {
+      "name": "大雪崩",
+      "short": "大雪崩"
+    },
+    "zh-Hant": {
+      "name": "大雪崩",
+      "short": "大雪崩"
+    },
+    "ko": {
+      "name": "큰 눈사태",
+      "short": "큰 눈사태"
+    },
+    "ja": {
+      "name": "大ナダレ",
+      "short": "大ナダレ"
+    }
+  },
+  "Q17 Q15 P15": {
+    "en": {
+      "name": "High approach — outside attachment",
+      "short": "Outside attachment"
+    },
+    "zh-Hans": {
+      "name": "一间高挂 — 靠",
+      "short": "靠"
+    },
+    "zh-Hant": {
+      "name": "一間高掛 — 靠",
+      "short": "靠"
+    },
+    "ko": {
+      "name": "한칸 높은 걸침 — 위붙임",
+      "short": "위붙임"
+    },
+    "ja": {
+      "name": "一間高ガカリ — 上ツケ",
+      "short": "上ツケ"
+    }
+  },
+  "Q17 Q15 R13": {
+    "en": {
+      "name": "High approach — one-space low pincer",
+      "short": "One-space low pincer"
+    },
+    "zh-Hans": {
+      "name": "一间高挂 — 一间低夹",
+      "short": "一间低夹"
+    },
+    "zh-Hant": {
+      "name": "一間高掛 — 一間低夾",
+      "short": "一間低夾"
+    },
+    "ko": {
+      "name": "한칸 높은 걸침 — 한칸 협공",
+      "short": "한칸 협공"
+    },
+    "ja": {
+      "name": "一間高ガカリ — 一間バサミ",
+      "short": "一間バサミ"
+    }
+  },
+  "Q17 Q15 Q13": {
+    "en": {
+      "name": "High approach — one-space high pincer",
+      "short": "One-space high pincer"
+    },
+    "zh-Hans": {
+      "name": "一间高挂 — 一间高夹",
+      "short": "一间高夹"
+    },
+    "zh-Hant": {
+      "name": "一間高掛 — 一間高夾",
+      "short": "一間高夾"
+    },
+    "ko": {
+      "name": "한칸 높은 걸침 — 한칸 높은 협공",
+      "short": "한칸 높은 협공"
+    },
+    "ja": {
+      "name": "一間高ガカリ — 一間高バサミ",
+      "short": "一間高バサミ"
+    }
+  },
+  "Q17 Q15 Q12": {
+    "en": {
+      "name": "Muramasa's magic sword",
+      "short": "Magic sword"
+    },
+    "zh-Hans": {
+      "name": "妖刀",
+      "short": "妖刀"
+    },
+    "zh-Hant": {
+      "name": "妖刀",
+      "short": "妖刀"
+    },
+    "ko": {
+      "name": "요도",
+      "short": "요도"
+    },
+    "ja": {
+      "name": "村正の妖刀",
+      "short": "村正の妖刀"
+    }
+  },
+  "Q17 R14 R16": {
+    "en": {
+      "name": "Large knight's approach — inside diagonal",
+      "short": "Inside diagonal"
+    },
+    "zh-Hans": {
+      "name": "大飞挂 — 尖",
+      "short": "尖"
+    },
+    "zh-Hant": {
+      "name": "大飛掛 — 尖",
+      "short": "尖"
+    },
+    "ko": {
+      "name": "눈목자 걸침 — 마늘모",
+      "short": "마늘모"
+    },
+    "ja": {
+      "name": "大ゲイマガカリ — 隅へのコスミ",
+      "short": "隅へのコスミ"
+    }
+  },
+  "Q17 R14 Q15": {
+    "en": {
+      "name": "Large knight's approach — shoulder hit",
+      "short": "Shoulder hit"
+    },
+    "zh-Hans": {
+      "name": "大飞挂 — 肩冲",
+      "short": "肩冲"
+    },
+    "zh-Hant": {
+      "name": "大飛掛 — 肩衝",
+      "short": "肩衝"
+    },
+    "ko": {
+      "name": "눈목자 걸침 — 어깨짚기",
+      "short": "어깨짚기"
+    },
+    "ja": {
+      "name": "大ゲイマガカリ — 肩ツキ",
+      "short": "肩ツキ"
+    }
+  },
+  "Q17 R14 R12": {
+    "en": {
+      "name": "Large knight's approach — one-space low pincer",
+      "short": "One-space low pincer"
+    },
+    "zh-Hans": {
+      "name": "大飞挂 — 一间低夹",
+      "short": "一间低夹"
+    },
+    "zh-Hant": {
+      "name": "大飛掛 — 一間低夾",
+      "short": "一間低夾"
+    },
+    "ko": {
+      "name": "눈목자 걸침 — 한칸 협공",
+      "short": "한칸 협공"
+    },
+    "ja": {
+      "name": "大ゲイマガカリ — 一間バサミ",
+      "short": "一間バサミ"
+    }
+  },
+  "Q17 R14 Q12": {
+    "en": {
+      "name": "Large knight's approach — one-space high pincer",
+      "short": "One-space high pincer"
+    },
+    "zh-Hans": {
+      "name": "大飞挂 — 一间高夹",
+      "short": "一间高夹"
+    },
+    "zh-Hant": {
+      "name": "大飛掛 — 一間高夾",
+      "short": "一間高夾"
+    },
+    "ko": {
+      "name": "눈목자 걸침 — 한칸 높은 협공",
+      "short": "한칸 높은 협공"
+    },
+    "ja": {
+      "name": "大ゲイマガカリ — 一間高バサミ",
+      "short": "一間高バサミ"
+    }
+  },
+  "Q17 R14 Q11": {
+    "en": {
+      "name": "Large knight's approach — two-space high pincer",
+      "short": "Two-space high pincer"
+    },
+    "zh-Hans": {
+      "name": "大飞挂 — 二间高夹",
+      "short": "二间高夹"
+    },
+    "zh-Hant": {
+      "name": "大飛掛 — 二間高夾",
+      "short": "二間高夾"
+    },
+    "ko": {
+      "name": "눈목자 걸침 — 두칸 높은 협공",
+      "short": "두칸 높은 협공"
+    },
+    "ja": {
+      "name": "大ゲイマガカリ — 二間高バサミ",
+      "short": "二間高バサミ"
+    }
+  },
+  "Q17 Q14 O16": {
+    "en": {
+      "name": "Two-space high approach — knight's-move answer",
+      "short": "Knight's-move answer"
+    },
+    "zh-Hans": {
+      "name": "二间高挂 — 小飞",
+      "short": "小飞"
+    },
+    "zh-Hant": {
+      "name": "二間高掛 — 小飛",
+      "short": "小飛"
+    },
+    "ko": {
+      "name": "두칸 높은 걸침 — 날일자 받음",
+      "short": "날일자 받음"
+    },
+    "ja": {
+      "name": "二間高ガカリ — 小ゲイマ受け",
+      "short": "小ゲイマ受け"
+    }
+  },
+  "Q17 Q14 R16": {
+    "en": {
+      "name": "Two-space high approach — inside diagonal",
+      "short": "Inside diagonal"
+    },
+    "zh-Hans": {
+      "name": "二间高挂 — 尖",
+      "short": "尖"
+    },
+    "zh-Hant": {
+      "name": "二間高掛 — 尖",
+      "short": "尖"
+    },
+    "ko": {
+      "name": "두칸 높은 걸침 — 마늘모",
+      "short": "마늘모"
+    },
+    "ja": {
+      "name": "二間高ガカリ — 隅へのコスミ",
+      "short": "隅へのコスミ"
+    }
+  },
+  "Q17 Q14 P16": {
+    "en": {
+      "name": "Two-space high approach — outside diagonal",
+      "short": "Outside diagonal"
+    },
+    "zh-Hans": {
+      "name": "二间高挂 — 尖出",
+      "short": "尖出"
+    },
+    "zh-Hant": {
+      "name": "二間高掛 — 尖出",
+      "short": "尖出"
+    },
+    "ko": {
+      "name": "두칸 높은 걸침 — 바깥쪽 마늘모",
+      "short": "바깥쪽 마늘모"
+    },
+    "ja": {
+      "name": "二間高ガカリ — 外へのコスミ",
+      "short": "外へのコスミ"
+    }
+  },
+  "Q17 Q14 R15": {
+    "en": {
+      "name": "Two-space high approach — kado (knight's move under the approach stone)",
+      "short": "Kado"
+    },
+    "zh-Hans": {
+      "name": "二间高挂 — 小飞守角",
+      "short": "小飞守角"
+    },
+    "zh-Hant": {
+      "name": "二間高掛 — 小飛守角",
+      "short": "小飛守角"
+    },
+    "ko": {
+      "name": "두칸 높은 걸침 — 밑 날일자",
+      "short": "밑 날일자"
+    },
+    "ja": {
+      "name": "二間高ガカリ — カド",
+      "short": "カド"
+    }
+  },
+  "Q17 Q14 P14": {
+    "en": {
+      "name": "Two-space high approach — attachment on the head",
+      "short": "Attachment on the head"
+    },
+    "zh-Hans": {
+      "name": "二间高挂 — 靠",
+      "short": "靠"
+    },
+    "zh-Hant": {
+      "name": "二間高掛 — 靠",
+      "short": "靠"
+    },
+    "ko": {
+      "name": "두칸 높은 걸침 — 위붙임",
+      "short": "위붙임"
+    },
+    "ja": {
+      "name": "二間高ガカリ — 頭ツケ",
+      "short": "頭ツケ"
+    }
+  },
+  "Q17 Q14 R12": {
+    "en": {
+      "name": "Two-space high approach — one-space low pincer",
+      "short": "One-space low pincer"
+    },
+    "zh-Hans": {
+      "name": "二间高挂 — 一间低夹",
+      "short": "一间低夹"
+    },
+    "zh-Hant": {
+      "name": "二間高掛 — 一間低夾",
+      "short": "一間低夾"
+    },
+    "ko": {
+      "name": "두칸 높은 걸침 — 한칸 협공",
+      "short": "한칸 협공"
+    },
+    "ja": {
+      "name": "二間高ガカリ — 一間バサミ",
+      "short": "一間バサミ"
+    }
+  },
+  "R17 Q16 Q17": {
+    "en": {
+      "name": "Shoulder hit — push along the third line",
+      "short": "Push along the third line"
+    },
+    "zh-Hans": {
+      "name": "肩冲 — 长",
+      "short": "长"
+    },
+    "zh-Hant": {
+      "name": "肩衝 — 長",
+      "short": "長"
+    },
+    "ko": {
+      "name": "어깨짚기 — 밀기",
+      "short": "밀기"
+    },
+    "ja": {
+      "name": "肩ツキ — ハイ",
+      "short": "ハイ"
+    }
+  },
+  "R17 O16 Q14": {
+    "en": {
+      "name": "Large knight's approach — large knight's-move answer",
+      "short": "Large knight's-move answer"
+    },
+    "zh-Hans": {
+      "name": "大飞挂 — 大飞",
+      "short": "大飞"
+    },
+    "zh-Hant": {
+      "name": "大飛掛 — 大飛",
+      "short": "大飛"
+    },
+    "ko": {
+      "name": "눈목자 걸침 — 눈목자 받음",
+      "short": "눈목자 받음"
+    },
+    "ja": {
+      "name": "大ゲイマガカリ — 大ゲイマ受け",
+      "short": "大ゲイマ受け"
+    }
+  },
+  "R17 O16 R14": {
+    "en": {
+      "name": "Large knight's approach — two-space extension",
+      "short": "Two-space extension"
+    },
+    "zh-Hans": {
+      "name": "大飞挂 — 拆二",
+      "short": "拆二"
+    },
+    "zh-Hant": {
+      "name": "大飛掛 — 拆二",
+      "short": "拆二"
+    },
+    "ko": {
+      "name": "눈목자 걸침 — 두칸 벌림",
+      "short": "두칸 벌림"
+    },
+    "ja": {
+      "name": "大ゲイマガカリ — 二間ビラキ",
+      "short": "二間ビラキ"
+    }
+  },
+  "R17 O16 Q15": {
+    "en": {
+      "name": "Large knight's approach — knight's-move answer",
+      "short": "Knight's-move answer"
+    },
+    "zh-Hans": {
+      "name": "大飞挂 — 小飞",
+      "short": "小飞"
+    },
+    "zh-Hant": {
+      "name": "大飛掛 — 小飛",
+      "short": "小飛"
+    },
+    "ko": {
+      "name": "눈목자 걸침 — 날일자 받음",
+      "short": "날일자 받음"
+    },
+    "ja": {
+      "name": "大ゲイマガカリ — 小ゲイマ受け",
+      "short": "小ゲイマ受け"
+    }
+  },
+  "R17 O16 P17": {
+    "en": {
+      "name": "Large knight's approach — one-space low extension",
+      "short": "One-space low extension"
+    },
+    "zh-Hans": {
+      "name": "大飞挂 — 拆一",
+      "short": "拆一"
+    },
+    "zh-Hant": {
+      "name": "大飛掛 — 拆一",
+      "short": "拆一"
+    },
+    "ko": {
+      "name": "눈목자 걸침 — 한칸 벌림",
+      "short": "한칸 벌림"
+    },
+    "ja": {
+      "name": "大ゲイマガカリ — 一間ビラキ",
+      "short": "一間ビラキ"
+    }
+  },
+  "R17 O17 Q15": {
+    "en": {
+      "name": "Two-space low approach — knight's-move answer",
+      "short": "Knight's-move answer"
+    },
+    "zh-Hans": {
+      "name": "二间低挂 — 小飞",
+      "short": "小飞"
+    },
+    "zh-Hant": {
+      "name": "二間低掛 — 小飛",
+      "short": "小飛"
+    },
+    "ko": {
+      "name": "두칸 걸침 — 날일자 받음",
+      "short": "날일자 받음"
+    },
+    "ja": {
+      "name": "二間ガカリ — 小ゲイマ受け",
+      "short": "小ゲイマ受け"
+    }
+  },
+  "R17 O17 R14": {
+    "en": {
+      "name": "Two-space low approach — two-space extension",
+      "short": "Two-space extension"
+    },
+    "zh-Hans": {
+      "name": "二间低挂 — 拆二",
+      "short": "拆二"
+    },
+    "zh-Hant": {
+      "name": "二間低掛 — 拆二",
+      "short": "拆二"
+    },
+    "ko": {
+      "name": "두칸 걸침 — 두칸 벌림",
+      "short": "두칸 벌림"
+    },
+    "ja": {
+      "name": "二間ガカリ — 二間ビラキ",
+      "short": "二間ビラキ"
+    }
+  },
+  "P16 R16 R17": {
+    "en": {
+      "name": "3-4 point approach — inside attachment",
+      "short": "Inside attachment"
+    },
+    "zh-Hans": {
+      "name": "小目挂 — 托",
+      "short": "托"
+    },
+    "zh-Hant": {
+      "name": "小目掛 — 托",
+      "short": "托"
+    },
+    "ko": {
+      "name": "소목 걸침 — 밑붙임",
+      "short": "밑붙임"
+    },
+    "ja": {
+      "name": "小目ガカリ — 内ツケ",
+      "short": "内ツケ"
+    }
+  },
+  "P16 R16 R15": {
+    "en": {
+      "name": "3-4 point approach — outside attachment",
+      "short": "Outside attachment"
+    },
+    "zh-Hans": {
+      "name": "小目挂 — 外靠",
+      "short": "外靠"
+    },
+    "zh-Hant": {
+      "name": "小目掛 — 外靠",
+      "short": "外靠"
+    },
+    "ko": {
+      "name": "소목 걸침 — 위붙임",
+      "short": "위붙임"
+    },
+    "ja": {
+      "name": "小目ガカリ — 外ツケ",
+      "short": "外ツケ"
+    }
+  },
+  "P16 R16 Q14": {
+    "en": {
+      "name": "3-4 point approach — knight's-move press",
+      "short": "Knight's-move press"
+    },
+    "zh-Hans": {
+      "name": "小目挂 — 飞压",
+      "short": "飞压"
+    },
+    "zh-Hant": {
+      "name": "小目掛 — 飛壓",
+      "short": "飛壓"
+    },
+    "ko": {
+      "name": "소목 걸침 — 날일자씌움",
+      "short": "날일자씌움"
+    },
+    "ja": {
+      "name": "小目ガカリ — ケイマガケ",
+      "short": "ケイマガケ"
+    }
+  },
+  "P16 R16 Q13": {
+    "en": {
+      "name": "3-4 point approach — large knight's-move press",
+      "short": "Large knight's-move press"
+    },
+    "zh-Hans": {
+      "name": "小目挂 — 大斜",
+      "short": "大斜"
+    },
+    "zh-Hant": {
+      "name": "小目掛 — 大斜",
+      "short": "大斜"
+    },
+    "ko": {
+      "name": "소목 걸침 — 눈목자씌움",
+      "short": "눈목자씌움"
+    },
+    "ja": {
+      "name": "小目ガカリ — 大斜ガケ",
+      "short": "大斜ガケ"
+    }
+  },
+  "P16 R17 Q15": {
+    "en": {
+      "name": "3-3 invasion — knight's-move press",
+      "short": "Knight's-move press"
+    },
+    "zh-Hans": {
+      "name": "点三三 — 飞压",
+      "short": "飞压"
+    },
+    "zh-Hant": {
+      "name": "點三三 — 飛壓",
+      "short": "飛壓"
+    },
+    "ko": {
+      "name": "삼삼 침입 — 날일자씌움",
+      "short": "날일자씌움"
+    },
+    "ja": {
+      "name": "三々入り — ケイマガケ",
+      "short": "ケイマガケ"
+    }
+  },
+  "P16 R17 R16": {
+    "en": {
+      "name": "3-3 invasion — attachment on top",
+      "short": "Attachment on top"
+    },
+    "zh-Hans": {
+      "name": "点三三 — 靠",
+      "short": "靠"
+    },
+    "zh-Hant": {
+      "name": "點三三 — 靠",
+      "short": "靠"
+    },
+    "ko": {
+      "name": "삼삼 침입 — 위붙임",
+      "short": "위붙임"
+    },
+    "ja": {
+      "name": "三々入り — ツケ",
+      "short": "ツケ"
+    }
+  },
+  "P17 R16 Q15": {
+    "en": {
+      "name": "3-4 point approach — knight's-move press",
+      "short": "Knight's-move press"
+    },
+    "zh-Hans": {
+      "name": "小目挂 — 飞压",
+      "short": "飞压"
+    },
+    "zh-Hant": {
+      "name": "小目掛 — 飛壓",
+      "short": "飛壓"
+    },
+    "ko": {
+      "name": "소목 걸침 — 날일자씌움",
+      "short": "날일자씌움"
+    },
+    "ja": {
+      "name": "小目ガカリ — ケイマガケ",
+      "short": "ケイマガケ"
+    }
+  },
+  "P17 R16 Q14": {
+    "en": {
+      "name": "Taisha",
+      "short": "Taisha"
+    },
+    "zh-Hans": {
+      "name": "大斜",
+      "short": "大斜"
+    },
+    "zh-Hant": {
+      "name": "大斜",
+      "short": "大斜"
+    },
+    "ko": {
+      "name": "대사",
+      "short": "대사"
+    },
+    "ja": {
+      "name": "大斜",
+      "short": "大斜"
+    }
+  },
+  "P17 R16 Q14 P16": {
+    "en": {
+      "name": "Taisha — jump-attachment",
+      "short": "Jump-attachment"
+    },
+    "zh-Hans": {
+      "name": "大斜 — 跳贴",
+      "short": "跳贴"
+    },
+    "zh-Hant": {
+      "name": "大斜 — 跳貼",
+      "short": "跳貼"
+    },
+    "ko": {
+      "name": "대사 — 뛰어붙임",
+      "short": "뛰어붙임"
+    },
+    "ja": {
+      "name": "大斜 — トビツケ",
+      "short": "トビツケ"
+    }
+  },
+  "P17 R16 Q14 Q15": {
+    "en": {
+      "name": "Taisha — diagonal attachment",
+      "short": "Diagonal attachment"
+    },
+    "zh-Hans": {
+      "name": "大斜 — 尖顶",
+      "short": "尖顶"
+    },
+    "zh-Hant": {
+      "name": "大斜 — 尖頂",
+      "short": "尖頂"
+    },
+    "ko": {
+      "name": "대사 — 마늘모붙임",
+      "short": "마늘모붙임"
+    },
+    "ja": {
+      "name": "大斜 — コスミツケ",
+      "short": "コスミツケ"
+    }
+  },
+  "P17 R16 R14": {
+    "en": {
+      "name": "3-4 point approach — one-space low pincer",
+      "short": "One-space low pincer"
+    },
+    "zh-Hans": {
+      "name": "小目挂 — 一间低夹",
+      "short": "一间低夹"
+    },
+    "zh-Hant": {
+      "name": "小目掛 — 一間低夾",
+      "short": "一間低夾"
+    },
+    "ko": {
+      "name": "소목 걸침 — 한칸 협공",
+      "short": "한칸 협공"
+    },
+    "ja": {
+      "name": "小目ガカリ — 一間バサミ",
+      "short": "一間バサミ"
+    }
+  },
+  "P17 R16 R13": {
+    "en": {
+      "name": "3-4 point approach — two-space low pincer",
+      "short": "Two-space low pincer"
+    },
+    "zh-Hans": {
+      "name": "小目挂 — 二间低夹",
+      "short": "二间低夹"
+    },
+    "zh-Hant": {
+      "name": "小目掛 — 二間低夾",
+      "short": "二間低夾"
+    },
+    "ko": {
+      "name": "소목 걸침 — 두칸 협공",
+      "short": "두칸 협공"
+    },
+    "ja": {
+      "name": "小目ガカリ — 二間バサミ",
+      "short": "二間バサミ"
+    }
+  },
+  "P17 R16 R12": {
+    "en": {
+      "name": "3-4 point approach — three-space low pincer",
+      "short": "Three-space low pincer"
+    },
+    "zh-Hans": {
+      "name": "小目挂 — 三间低夹",
+      "short": "三间低夹"
+    },
+    "zh-Hant": {
+      "name": "小目掛 — 三間低夾",
+      "short": "三間低夾"
+    },
+    "ko": {
+      "name": "소목 걸침 — 세칸 협공",
+      "short": "세칸 협공"
+    },
+    "ja": {
+      "name": "小目ガカリ — 三間バサミ",
+      "short": "三間バサミ"
+    }
+  },
+  "P17 R16 Q13": {
+    "en": {
+      "name": "3-4 point approach — two-space high pincer",
+      "short": "Two-space high pincer"
+    },
+    "zh-Hans": {
+      "name": "小目挂 — 二间高夹",
+      "short": "二间高夹"
+    },
+    "zh-Hant": {
+      "name": "小目掛 — 二間高夾",
+      "short": "二間高夾"
+    },
+    "ko": {
+      "name": "소목 걸침 — 두칸 높은 협공",
+      "short": "두칸 높은 협공"
+    },
+    "ja": {
+      "name": "小目ガカリ — 二間高バサミ",
+      "short": "二間高バサミ"
+    }
+  },
+  "P17 Q15 R16": {
+    "en": {
+      "name": "High approach — knight's-move answer",
+      "short": "Knight's-move answer"
+    },
+    "zh-Hans": {
+      "name": "高挂 — 小飞",
+      "short": "小飞"
+    },
+    "zh-Hant": {
+      "name": "高掛 — 小飛",
+      "short": "小飛"
+    },
+    "ko": {
+      "name": "높은 걸침 — 날일자 받음",
+      "short": "날일자 받음"
+    },
+    "ja": {
+      "name": "高ガカリ — 小ゲイマ受け",
+      "short": "小ゲイマ受け"
+    }
+  },
+  "P17 Q15 R17": {
+    "en": {
+      "name": "High approach — 3-3 answer",
+      "short": "3-3 answer"
+    },
+    "zh-Hans": {
+      "name": "高挂 — 三三",
+      "short": "三三"
+    },
+    "zh-Hant": {
+      "name": "高掛 — 三三",
+      "short": "三三"
+    },
+    "ko": {
+      "name": "높은 걸침 — 삼삼 받음",
+      "short": "삼삼 받음"
+    },
+    "ja": {
+      "name": "高ガカリ — 三々受け",
+      "short": "三々受け"
+    }
+  },
+  "P17 R17 Q15": {
+    "en": {
+      "name": "3-3 invasion — knight's-move press",
+      "short": "Knight's-move press"
+    },
+    "zh-Hans": {
+      "name": "点三三 — 飞压",
+      "short": "飞压"
+    },
+    "zh-Hant": {
+      "name": "點三三 — 飛壓",
+      "short": "飛壓"
+    },
+    "ko": {
+      "name": "삼삼 침입 — 날일자씌움",
+      "short": "날일자씌움"
+    },
+    "ja": {
+      "name": "三々入り — ケイマガケ",
+      "short": "ケイマガケ"
+    }
+  },
+  "P17 R17 R16": {
+    "en": {
+      "name": "3-3 invasion — attachment on top",
+      "short": "Attachment on top"
+    },
+    "zh-Hans": {
+      "name": "点三三 — 靠",
+      "short": "靠"
+    },
+    "zh-Hant": {
+      "name": "點三三 — 靠",
+      "short": "靠"
+    },
+    "ko": {
+      "name": "삼삼 침입 — 위붙임",
+      "short": "위붙임"
+    },
+    "ja": {
+      "name": "三々入り — ツケ",
+      "short": "ツケ"
+    }
+  },
+  "Q17 R15": {
+    "en": {
+      "name": "Small knight's approach"
+    },
+    "zh-Hans": {
+      "name": "小飞挂"
+    },
+    "zh-Hant": {
+      "name": "小飛掛"
+    },
+    "ko": {
+      "name": "날일자 걸침"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ"
+    }
+  },
+  "Q17 Q15": {
+    "en": {
+      "name": "High approach"
+    },
+    "zh-Hans": {
+      "name": "一间高挂"
+    },
+    "zh-Hant": {
+      "name": "一間高掛"
+    },
+    "ko": {
+      "name": "한칸 높은 걸침"
+    },
+    "ja": {
+      "name": "一間高ガカリ"
+    }
+  },
+  "Q17 R14": {
+    "en": {
+      "name": "Large knight's approach"
+    },
+    "zh-Hans": {
+      "name": "大飞挂"
+    },
+    "zh-Hant": {
+      "name": "大飛掛"
+    },
+    "ko": {
+      "name": "눈목자 걸침"
+    },
+    "ja": {
+      "name": "大ゲイマガカリ"
+    }
+  },
+  "Q17 Q14": {
+    "en": {
+      "name": "Two-space high approach"
+    },
+    "zh-Hans": {
+      "name": "二间高挂"
+    },
+    "zh-Hant": {
+      "name": "二間高掛"
+    },
+    "ko": {
+      "name": "두칸 높은 걸침"
+    },
+    "ja": {
+      "name": "二間高ガカリ"
+    }
+  },
+  "Q16 O17": {
+    "en": {
+      "name": "Small knight's approach"
+    },
+    "zh-Hans": {
+      "name": "小飞挂"
+    },
+    "zh-Hant": {
+      "name": "小飛掛"
+    },
+    "ko": {
+      "name": "날일자 걸침"
+    },
+    "ja": {
+      "name": "小ゲイマガカリ"
+    }
+  },
+  "Q16 O16": {
+    "en": {
+      "name": "High approach"
+    },
+    "zh-Hans": {
+      "name": "一间高挂"
+    },
+    "zh-Hant": {
+      "name": "一間高掛"
+    },
+    "ko": {
+      "name": "한칸 높은 걸침"
+    },
+    "ja": {
+      "name": "一間高ガカリ"
+    }
+  },
+  "Q16 N16": {
+    "en": {
+      "name": "Two-space high approach"
+    },
+    "zh-Hans": {
+      "name": "二间高挂"
+    },
+    "zh-Hant": {
+      "name": "二間高掛"
+    },
+    "ko": {
+      "name": "두칸 높은 걸침"
+    },
+    "ja": {
+      "name": "二間高ガカリ"
+    }
+  },
+  "Q16 N17": {
+    "en": {
+      "name": "Large knight's approach"
+    },
+    "zh-Hans": {
+      "name": "大飞挂"
+    },
+    "zh-Hant": {
+      "name": "大飛掛"
+    },
+    "ko": {
+      "name": "눈목자 걸침"
+    },
+    "ja": {
+      "name": "大ゲイマガカリ"
+    }
+  },
+  "Q16 R17": {
+    "en": {
+      "name": "3-3 invasion"
+    },
+    "zh-Hans": {
+      "name": "点三三"
+    },
+    "zh-Hant": {
+      "name": "點三三"
+    },
+    "ko": {
+      "name": "삼삼 침입"
+    },
+    "ja": {
+      "name": "三々入り"
+    }
+  },
+  "P17 R16": {
+    "en": {
+      "name": "3-4 point approach"
+    },
+    "zh-Hans": {
+      "name": "小目挂"
+    },
+    "zh-Hant": {
+      "name": "小目掛"
+    },
+    "ko": {
+      "name": "소목 걸침"
+    },
+    "ja": {
+      "name": "小目ガカリ"
+    }
+  },
+  "P17 Q15": {
+    "en": {
+      "name": "High approach"
+    },
+    "zh-Hans": {
+      "name": "高挂"
+    },
+    "zh-Hant": {
+      "name": "高掛"
+    },
+    "ko": {
+      "name": "높은 걸침"
+    },
+    "ja": {
+      "name": "高ガカリ"
+    }
+  },
+  "P17 R17": {
+    "en": {
+      "name": "3-3 invasion"
+    },
+    "zh-Hans": {
+      "name": "点三三"
+    },
+    "zh-Hant": {
+      "name": "點三三"
+    },
+    "ko": {
+      "name": "삼삼 침입"
+    },
+    "ja": {
+      "name": "三々入り"
+    }
+  },
+  "P16 R16": {
+    "en": {
+      "name": "3-4 point approach"
+    },
+    "zh-Hans": {
+      "name": "小目挂"
+    },
+    "zh-Hant": {
+      "name": "小目掛"
+    },
+    "ko": {
+      "name": "소목 걸침"
+    },
+    "ja": {
+      "name": "小目ガカリ"
+    }
+  },
+  "P16 R17": {
+    "en": {
+      "name": "3-3 invasion"
+    },
+    "zh-Hans": {
+      "name": "点三三"
+    },
+    "zh-Hant": {
+      "name": "點三三"
+    },
+    "ko": {
+      "name": "삼삼 침입"
+    },
+    "ja": {
+      "name": "三々入り"
+    }
+  },
+  "R17 Q16": {
+    "en": {
+      "name": "Shoulder hit"
+    },
+    "zh-Hans": {
+      "name": "肩冲"
+    },
+    "zh-Hant": {
+      "name": "肩衝"
+    },
+    "ko": {
+      "name": "어깨짚기"
+    },
+    "ja": {
+      "name": "肩ツキ"
+    }
+  },
+  "R17 O16": {
+    "en": {
+      "name": "Large knight's approach"
+    },
+    "zh-Hans": {
+      "name": "大飞挂"
+    },
+    "zh-Hant": {
+      "name": "大飛掛"
+    },
+    "ko": {
+      "name": "눈목자 걸침"
+    },
+    "ja": {
+      "name": "大ゲイマガカリ"
+    }
+  },
+  "R17 O17": {
+    "en": {
+      "name": "Two-space low approach"
+    },
+    "zh-Hans": {
+      "name": "二间低挂"
+    },
+    "zh-Hant": {
+      "name": "二間低掛"
+    },
+    "ko": {
+      "name": "두칸 걸침"
+    },
+    "ja": {
+      "name": "二間ガカリ"
+    }
+  }
+}
