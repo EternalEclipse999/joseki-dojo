@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { gtpToVertex, type HealthResponse, type InstallStatus, type Language, type StartsInfo, type Vertex } from '@joseki-dojo/shared'
+import { gtpToVertex, type HealthResponse, type InstallStatus, type Language, type StartsInfo, type UiSettings, type Vertex } from '@joseki-dojo/shared'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_KATAGO, REPO_LOCK, tempDir } from '../test/helpers'
 import { createInstallFixture, fakeBuildCommand, type InstallFixture } from '../test/install-fixture'
@@ -75,6 +75,27 @@ describe('startServer', () => {
     const second = await start('ja')
     servers.push(second)
     expect(second.services.config.ui.language).toBe('ko')
+  })
+
+  it('starts when the installer language cannot be saved: the log says so and the language screen stays the fallback', async () => {
+    const root = tempDir()
+    const blocker = join(root, 'not-a-folder')
+    writeFileSync(blocker, '') // the config would live inside a file, so it cannot be written
+    const lines: string[] = []
+    const server = await startServer({
+      configFile: join(blocker, 'config.json'),
+      dataDir: join(root, 'data'),
+      enginesDir: join(root, 'engines'),
+      lockFile: REPO_LOCK,
+      webDist: null,
+      port: 0,
+      log: (line) => void lines.push(line),
+      initialLanguage: 'ko',
+    })
+    servers.push(server)
+    expect(lines.filter((l) => l.startsWith('Не удалось сохранить язык из установщика: '))).toHaveLength(1)
+    expect(server.services.config.ui.language).toBeUndefined()
+    expect((await getJson<UiSettings>(`${server.url}/api/ui`)).language).toBeUndefined()
   })
 
   it('installs KataGo through /api/install when it is missing', async () => {

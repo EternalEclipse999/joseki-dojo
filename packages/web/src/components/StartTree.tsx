@@ -26,7 +26,7 @@ const details = (n: StartTreeNode, t: Translate): string => {
 
 /** A card's accessible name: «A: Хане, позиций: 1», «B: Шапка, редко». */
 const cardLabel = (n: StartTreeNode, letter: string | null, t: Translate): string =>
-  [`${letter ? `${letter}: ` : ''}${n.short}`, ...(n.rare ? [t('tree.rare')] : []), ...(n.count > 0 ? [t('tree.cardPositions', { count: n.count })] : [])].join(', ')
+  [`${letter ? `${letter}: ` : ''}${n.short}`, ...(n.rare ? [t('tree.rare')] : []), ...(n.count > 0 ? [t('tree.cardPositions', { count: n.count })] : [])].join(t('common.listSeparator'))
 
 export interface StartTreeProps {
   root: StartTreeNode

@@ -70,7 +70,10 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
   const services = createServices(config, engine, { configFile: options.configFile, enginesDir: options.enginesDir, lock, commandFor, log, fetch: options.fetch, traps, starts })
   let app: FastifyInstance | undefined
   try {
-    if (options.initialLanguage) await services.ui.applyInitialLanguage(options.initialLanguage)
+    // The installer's choice is a convenience: when the config cannot be written, the first-start language screen asks instead.
+    if (options.initialLanguage) {
+      await services.ui.applyInitialLanguage(options.initialLanguage).catch((err) => log(`Не удалось сохранить язык из установщика: ${err instanceof Error ? err.message : String(err)}`))
+    }
     app = await buildApp(services, options.webDist)
     await app.listen({ port: options.port ?? config.port, host: '127.0.0.1' })
   } catch (err) {

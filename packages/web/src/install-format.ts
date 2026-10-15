@@ -1,4 +1,5 @@
 import type { InstallFile, InstallStatus, InstallStep, Language, MessageKey, Translate } from '@joseki-dojo/shared'
+import { oneDecimalFormat } from './format'
 
 /** Spec 5.2: what the install screen says during each step (nothing while idle). */
 export const INSTALL_STEP_TEXT: Record<InstallStep, MessageKey | null> = {
@@ -14,8 +15,7 @@ export const INSTALL_STEP_TEXT: Record<InstallStep, MessageKey | null> = {
 
 export const isInstalling = (step: InstallStep): boolean => step !== 'idle' && step !== 'done' && step !== 'failed'
 
-const megabytes = (bytes: number, lang: Language): string =>
-  new Intl.NumberFormat(lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(bytes / 1_048_576)
+const megabytes = (bytes: number, lang: Language): string => oneDecimalFormat(lang).format(bytes / 1_048_576)
 
 /** "12.3 of 93.4 MB" while downloading, "done" once checked; the megabytes have one decimal in the reader's language. */
 export function fileProgressText(f: InstallFile, t: Translate, lang: Language): string {

@@ -2,7 +2,7 @@ import type { Message } from './message'
 
 /** Spec (languages) 4.1: the model dictionary. Every other language has exactly these keys. */
 export const ru = {
-  // A number of points already formatted by the caller (`value`, one decimal) with its plural form chosen by `count`.
+  // A number of points already formatted by the caller (`value`, one decimal). pointsText (web format.ts) passes no `count`, so the `other` form is used («5,1 очка», "1.0 points").
   'common.pointsValue': { one: '{value} очко', few: '{value} очка', many: '{value} очков', other: '{value} очка' },
   'common.retry': 'Повторить',
   'common.pass': 'пас',
@@ -17,6 +17,8 @@ export const ru = {
   // The button in Settings and on the engine screen that runs the installer's benchmark again.
   'common.repickEngine': 'Подобрать движок заново',
   'error.internal': 'Внутренняя ошибка: {detail}',
+  // A request that never reached the app server (the browser's TypeError, e.g. "Failed to fetch").
+  'error.network': 'Нет связи с сервером',
   'error.ui.language': 'Неизвестный язык',
   'error.ui.theme': 'Неизвестная тема оформления',
   // {status} is the HTTP status code of a failed request.
@@ -142,6 +144,7 @@ export const ru = {
   'update.installing': 'Устанавливаю версию {version}, приложение перезапустится…',
   'app.loading': 'Загрузка…',
   'app.disconnected': 'Нет связи с сервером, переподключаюсь…',
+  'app.startFailed': 'Joseki Dojo не запустился',
   'app.crumb.newTraining': 'Новая тренировка',
   'app.crumb.settings': 'Настройки',
   'app.crumb.install': 'Установка KataGo',

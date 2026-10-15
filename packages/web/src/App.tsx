@@ -138,7 +138,7 @@ export function App() {
         setLanguageState(lang)
         rememberLanguage(lang)
         setLanguageChosen(true)
-        saveLanguage(lang).catch(() => undefined) // the next start asks again; the page already shows the choice
+        saveLanguage(lang).catch((e: unknown) => setError(failureText(e))) // the page already shows the choice; the banner tells that it was not saved
       },
     }),
     [language, languageChosen],

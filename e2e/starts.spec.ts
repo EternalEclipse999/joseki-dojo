@@ -13,6 +13,8 @@ test('a start from the tree: the position is on the board, its name is in the cr
   const tree = page.locator('.start-tree')
   const name = tree.locator('.start-info-name')
   await tree.locator('.start-card', { hasText: '4-4' }).click()
+  // The new card under the pointer may turn hovered, and a hovered continuation shows a ring instead of its letter.
+  await page.mouse.move(0, 0)
   await tree.locator('.start-board .corner-mark', { hasText: 'A' }).click()
   await expect(name).toHaveText('Тестовое начало')
   await expect(tree.locator('.start-card', { hasText: 'Продолжение' })).toBeVisible()

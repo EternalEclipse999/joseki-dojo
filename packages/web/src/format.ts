@@ -1,8 +1,19 @@
 import { vertexToGtp, type Actor, type Category, type Color, type Corner, type Language, type MessageKey, type MoveVertex, type Translate } from '@joseki-dojo/shared'
 
+const oneDecimalFormats = new Map<Language, Intl.NumberFormat>()
+const integerFormats = new Map<Language, Intl.NumberFormat>()
+const cachedFormat = (cache: Map<Language, Intl.NumberFormat>, lang: Language, options?: Intl.NumberFormatOptions): Intl.NumberFormat => {
+  let format = cache.get(lang)
+  if (!format) cache.set(lang, (format = new Intl.NumberFormat(lang, options)))
+  return format
+}
+
+/** One decimal in the language. One formatter per language: a screen formats many numbers on every render, and building a formatter is slow. */
+export const oneDecimalFormat = (lang: Language): Intl.NumberFormat => cachedFormat(oneDecimalFormats, lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+
 /** One decimal, in the reader's language («5,1» / "5.1"); a value that rounds to zero prints without a sign. */
 export const formatPoints = (n: number, lang: Language): string => {
-  const format = new Intl.NumberFormat(lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+  const format = oneDecimalFormat(lang)
   const text = format.format(n)
   const zero = format.format(0)
   return text.replace(/^[-−]/, '') === zero ? zero : text
@@ -16,7 +27,7 @@ export const formatPoints = (n: number, lang: Language): string => {
 export const pointsText = (n: number, t: Translate, lang: Language): string => t('common.pointsValue', { value: formatPoints(n, lang) })
 
 /** Visit counts with grouped thousands («1 200» / "1,200"). */
-export const formatCount = (n: number, lang: Language): string => new Intl.NumberFormat(lang).format(Math.round(n))
+export const formatCount = (n: number, lang: Language): string => cachedFormat(integerFormats, lang).format(Math.round(n))
 
 export const moveLabel = (v: MoveVertex, t: Translate): string => (v === 'pass' ? t('common.pass') : vertexToGtp(v))
 

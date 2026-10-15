@@ -1,17 +1,7 @@
 {
   "port": 5180,
   "dataDir": ".data",
-  "katago": {
-    "commandOverride": [
-      "node",
-      "../packages/server/test/fake-katago.mjs"
-    ]
-  },
-  "analysis": {
-    "reviewVisits": 10,
-    "endVisits": 5
-  },
-  "ui": {
-    "language": "ru"
-  }
+  "katago": { "commandOverride": ["node", "../packages/server/test/fake-katago.mjs"] },
+  "analysis": { "reviewVisits": 10, "endVisits": 5 },
+  "ui": { "language": "ru" }
 }

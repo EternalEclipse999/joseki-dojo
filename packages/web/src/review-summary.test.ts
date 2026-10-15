@@ -23,7 +23,7 @@ describe('summaryTiles', () => {
   it('speaks the reader’s language and writes numbers its way', () => {
     expect(summaryTiles({ userLoss: 1, botMistakes: 1, botMistakeLoss: 1, punished: 1, keptPoints: 0.5 }, translator('en'), 'en')).toEqual([
       { k: 'You lost', v: '1.0', s: 'points' },
-      { k: 'Bot mistakes', v: '1', s: 'worth 1.0 points' },
+      { k: 'Bot mistakes', v: '1', s: 'costing 1.0 points' },
       { k: 'Punished', v: '1 of 1', s: 'kept 0.5' },
     ])
   })

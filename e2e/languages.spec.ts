@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-// The server keeps the language in its config: put Russian back, so that the other specs keep their texts.
+// e2e/languages-server.ts: the profile of this spec, which starts in Russian. The language is put back after each test, so that every test starts from Russian.
 test.afterEach(async ({ request }) => {
   await request.put('/api/ui', { data: { language: 'ru' } })
 })
@@ -34,6 +34,38 @@ test('settings switch the language too', async ({ page }) => {
   // Texts from the Japanese dictionary: the settings heading and the title of the language section.
   await expect(page.getByRole('heading', { name: '設定', exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: '言語', exact: true })).toBeVisible()
+})
+
+// e2e/make-starts.ts writes the names: «Тестовое начало» is "Test start" (short "Start") and «Тестовое продолжение» is "Test continuation" ("Continuation").
+test('the names of the start positions follow the language, also when it changes with the tree on screen', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Новая тренировка' })).toBeVisible()
+  await page.getByRole('button', { name: 'Язык' }).click()
+  const saved = languageSaved(page)
+  await page.getByRole('menuitemradio', { name: 'English' }).click()
+  await saved
+  await expect(page.getByRole('heading', { name: 'New training' })).toBeVisible()
+
+  await page.getByRole('radio', { name: /From the list/ }).check()
+  const tree = page.locator('.start-tree')
+  const name = tree.locator('.start-info-name')
+  await tree.locator('.start-card', { hasText: '4-4' }).click()
+  // The new card under the pointer may turn hovered, and a hovered continuation shows a ring instead of its letter.
+  await page.mouse.move(0, 0)
+  await tree.locator('.start-board .corner-mark', { hasText: 'A' }).click()
+  await expect(name).toHaveText('Test start')
+  await expect(tree.locator('.start-card', { hasText: 'Continuation' })).toBeVisible()
+  await expect(tree.locator('.start-outline-row.current')).toContainText('Start')
+  await expect(page.getByText('Тестовое начало')).toHaveCount(0)
+
+  // The tree stays on the same position and shows its name in the new language.
+  await page.getByRole('button', { name: 'Language', exact: true }).click()
+  const savedJapanese = languageSaved(page)
+  await page.getByRole('menuitemradio', { name: '日本語' }).click()
+  await savedJapanese
+  await expect(name).toHaveText('テスト開始')
+  await expect(tree.locator('.start-card', { hasText: '続き' })).toBeVisible()
+  await expect(page.getByText('Test start')).toHaveCount(0)
 })
 
 test('a late answer of /api/ui does not undo a language picked before it arrives', async ({ page, request }) => {

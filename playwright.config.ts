@@ -6,8 +6,8 @@ export default defineConfig({
   use: { baseURL: 'http://127.0.0.1:5180' },
   projects: [
     { name: 'chromium', use: { browserName: 'chromium' }, testIgnore: 'languages.spec.ts' },
-    // It switches the language the 5180 server saves, so it waits until the other specs, which read Russian, are done.
-    { name: 'languages', use: { browserName: 'chromium' }, testMatch: 'languages.spec.ts', dependencies: ['chromium'] },
+    // It saves other languages, so it runs against its own server (5183), not the one the other specs read Russian from.
+    { name: 'languages', use: { browserName: 'chromium', baseURL: 'http://127.0.0.1:5183' }, testMatch: 'languages.spec.ts' },
   ],
   // Playwright starts these one after another: the first builds the web UI that the second serves too.
   webServer: [
@@ -29,6 +29,13 @@ export default defineConfig({
       // Spec 9: KataGo is installed from an older katago.lock.json: the engine-update bar and the re-pick button.
       command: 'npx tsx e2e/repick-server.ts',
       url: 'http://127.0.0.1:5182/api/health',
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      // Spec (languages) 9: its own profile in Russian (the language spec saves other languages), the same fake KataGo and start positions.
+      command: 'npx tsx e2e/languages-server.ts',
+      url: 'http://127.0.0.1:5183/api/health',
       reuseExistingServer: false,
       timeout: 120_000,
     },

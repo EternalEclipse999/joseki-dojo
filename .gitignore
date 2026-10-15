@@ -10,6 +10,7 @@ test-results/
 playwright-report/
 *.log
 e2e/.repick/
+e2e/.languages/
 e2e/*.jdb
 e2e/starts-list.test.json
 e2e/starts-i18n.test.json
