@@ -153,6 +153,16 @@ Conventions:
 | наказать ошибку | punish (a mistake) | 咎める（とがめる, togameru） | 惩罚（chéngfá） | 懲罰 | 응징（膺懲） | KaTrain's "refutation" is とがめる手順 / 反击 / 反制手段 / 대응책. zh and ko are the usual commentary words; no glossary entry found for them. | Medium (zh, ko Low) | KT (teaching undo message), row «правильный ответ на ловушку» |
 | движок (KataGo) | engine | エンジン | 引擎（yǐnqíng） | 引擎 | 엔진 | Not a Go term, but every Go GUI names the AI program so: KaTrain "engine settings" エンジン設定 / KataGo引擎设置 / 엔진 설정, Lizzie "Engine" エンジン / 引擎 / 엔진. zh-Hant has the same characters (KaTrain tw writes just "KataGo設定"). | High | KT (engine settings), LZ (LizzieConfig.title.engine) |
 | сеть (нейросеть KataGo, файл весов) | network, net (the neural net file) | ネットワーク | 网络 | 網路 | 네트워크 | No settled word: KaTrain says "model" (KataGoモデルファイル / KataGo模型文件 / KataGo模型檔 / KataGo 신경망 파일), Lizzie "weights" (权重文件; ja "weight file", ko "Network 파일"). The app keeps the KataGo word "network" (ネットワーク / 网络 / 網路 / 네트워크) in every text: the main net, the human net, the settings and the install list. | Medium | KT (engine:model, engine:humanlike_model, models available), LZ (prompt.selectWeight, display.network-missing) |
+| Ваш уровень (настройка) | Your level | あなたのレベル | 你的水平 | 你的程度 | 내 수준 | The setting `settings.level.title`: the player's rank on the bot's scale (rows «кю», «дан») plus «профи». The rank words themselves follow those rows. | App word (catalogs), not a Go term | catalogs |
+| профи (уровень) | pro | プロ | 职业 | 職業 | 프로 | `level.pro`, the step above 9 дан on «Ваш уровень». | App word (catalogs), not a Go term | catalogs |
+| повторение (вкладка «Повторение», повторение карточки) | repetition (tab: Repetition) | 復習（ふくしゅう） | 复习 | 複習 | 반복 | The tab, the queue and one repetition of a card (`header.repetition`, `repetition.title`; the review panel `review.repetition.title`: Position repetition / 局面の復習 / 局面复习 / 局面複習 / 국면 반복). Not the game review, which is 検討 / 复盘 / 復盤 / 복기 (row «разбор партии»). | App word (catalogs), not a Go term | catalogs |
+| Снова (оценка повторения) | Again | もう一度 | 重来 | 重來 | 다시 | `rating.again`, the first of the four FSRS ratings; the app's own rating for a mistake, a blunder or an unpunished mistake. | App word (catalogs), not a Go term | catalogs |
+| Трудно (оценка повторения) | Hard | 難しい | 困难 | 困難 | 어려움 | `rating.hard`; the app's own rating for an inaccuracy. | App word (catalogs), not a Go term | catalogs |
+| Хорошо (оценка повторения) | Good | 正解 | 良好 | 良好 | 알맞음 | `rating.good`; the app's own rating when every move was accurate. | App word (catalogs), not a Go term | catalogs |
+| Легко (оценка повторения) | Easy | 簡単 | 简单 | 簡單 | 쉬움 | `rating.easy`; only the player gives it. | App word (catalogs), not a Go term | catalogs |
+| изучается (карточка на этапе обучения) | learning | 学習中 | 学习中 | 學習中 | 학습 중 | `repetition.stage.learning`, `tree.card.learning`: a card in its learning or relearning steps. | App word (catalogs), not a Go term | catalogs |
+| изучена (карточка на этапе повторения) | learned | 習得済み | 已掌握 | 已掌握 | 학습 완료 | `repetition.stage.learned`, `tree.card.learned`; the tree's «изучено N из M» uses the same word (`tree.progress`: 習得 / 已掌握 / 학습 완료). | App word (catalogs), not a Go term | catalogs |
+| карточка (карточка повторения) | card | カード; counter 枚 | 卡片; counter 张 | 卡片; counter 張 | 카드; counter 장 | `repetition.list` (Cards / カード / 卡片 / 卡片 / 카드), `header.dueBadge`, `repetition.learnedOf`. | App word (catalogs), not a Go term | catalogs |
 
 ---
 
@@ -223,6 +233,7 @@ Multilingual / software
 - GM:<slug> — GoMagic glossary, https://gomagic.org/go-term/<slug>/ (used for cross-checks only; several of its entries — ko 대기사, 큰 깩끼, zh 大桂馬掛, zh 外目 — are contradicted by primary sources)
 - KT — KaTrain locales (cn, tw, jp, ko), https://github.com/sanderland/katrain/tree/master/katrain/i18n/locales
 - LZ — Lizzie localisation (zh_CN, ja_JP, ko), https://github.com/featurecat/lizzie/tree/master/src/main/resources/l10n
+- catalogs — the app's own message catalogs, `packages/shared/src/i18n/{ru,en,ja,ko,zh-Hans,zh-Hant}.ts`: the rows marked "App word" give the words they use for app terms that are not Go terms.
 - enWP:Taisha — https://en.wikipedia.org/wiki/Taisha_jōseki ; enWP:Nadare — https://en.wikipedia.org/wiki/Nadare_jōseki ; enWP:Joseki — https://en.wikipedia.org/wiki/Jōseki
 
 ---
