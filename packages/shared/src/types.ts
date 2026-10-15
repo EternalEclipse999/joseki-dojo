@@ -157,6 +157,8 @@ export interface ReviewData {
   summary: ReviewSummary
   /** Only in traps mode. */
   trap?: ReviewTrap
+  /** Spec (repetition) 5.3: present when this training is a position card repetition. */
+  repetition?: RepetitionInfo
 }
 
 export type HealthState = 'starting' | 'ready' | 'failed'
@@ -176,6 +178,13 @@ export const BOT_RANKS: readonly string[] = [
 export const isBotRank = (s: string): boolean => BOT_RANKS.includes(s)
 
 export const DEFAULT_BOT_RANK = '7k'
+
+/** Spec (repetition) 3.1: the player's level — the bot ranks, weakest first, then «профи». */
+export const PLAYER_LEVELS: readonly string[] = [...BOT_RANKS, 'pro']
+export const isPlayerLevel = (s: string): boolean => PLAYER_LEVELS.includes(s)
+export const DEFAULT_PLAYER_LEVEL = '7k'
+/** The human SL profile of a level: `rank_7k` … `rank_9d`, `proyear_2023` for «профи». */
+export const humanProfile = (level: string): string => (level === 'pro' ? 'proyear_2023' : `rank_${level}`)
 
 /** The colour theme: «Как в системе», «Светлая», «Тёмная». */
 export type Theme = 'system' | 'light' | 'dark'
@@ -237,4 +246,63 @@ export interface StartsInfo {
   list: StartListEntry[]
   branches: StartBranch[]
   groups: StartGroupHead[]
+}
+
+/** Spec (repetition) 4.4: an FSRS answer. */
+export type Rating = 'again' | 'hard' | 'good' | 'easy'
+export const RATINGS: readonly Rating[] = ['again', 'hard', 'good', 'easy']
+/** Spec (repetition) 4.1: a tree position, or (iteration 2) a «find a good move» problem. */
+export type CardKind = 'position' | 'move'
+/** «изучается» (learning or relearning) or «изучена» (review stage). */
+export type CardStage = 'learning' | 'learned'
+
+/** Spec (repetition) 4.4, 5.3: the review of a training counted as a card repetition. */
+export interface RepetitionInfo {
+  cardId: string
+  reviewId: number
+  auto: Rating
+  rating: Rating
+  /** The worst user move behind the auto rating; null when every move was exact. */
+  worst: { category: Category | 'unpunished'; loss: number } | null
+  /** Only the card's latest review can be re-rated. */
+  editable: boolean
+  /** The card's next due time after this review, ISO. */
+  due: string
+}
+
+/** Spec (repetition) 5.1: the tab's summary; days start at 04:00 local time. */
+export interface CardSummary {
+  dueNow: number
+  dueByKind: Record<CardKind, number>
+  /** Seven counts: cards due by the end of today (overdue included), then each next day. */
+  forecast: number[]
+  total: number
+  learned: number
+  /** The earliest due time when nothing is due now, ISO; null without cards. */
+  nextDue: string | null
+}
+
+export interface CardListItem {
+  id: string
+  kind: CardKind
+  /** Position cards: the start id (the web names it from the tree). */
+  startId: string | null
+  /** Canonical GTP moves for the small board. */
+  moves: string[]
+  due: string
+  stage: CardStage
+  lastRating: Rating | null
+  reps: number
+  /** Spec (repetition) 5.2: a position card whose start is no longer on the list: not served or counted, only deletable. */
+  orphan: boolean
+}
+
+/** Spec (repetition) 5.2: the next card of the queue. */
+export type DueCard = { card: { id: string; kind: 'position'; startId: string; userColor: Color; botRank: string } } | { card: null; nextDue: string | null }
+
+/** Spec (repetition) 6: a position card's state for the tree. */
+export interface StartCardState {
+  stage: CardStage
+  due: string
+  dueNow: boolean
 }

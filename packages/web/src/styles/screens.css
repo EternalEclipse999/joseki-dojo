@@ -151,6 +151,15 @@
 .start-card .start-rare, .start-outline-row .start-rare { margin-left: auto; }
 .start-outline-row .start-rare { padding-left: 6px; }
 .start-card .start-rare + .start-count, .start-outline-row .start-rare + .start-count { margin-left: 0; }
+/* Repetition spec 6: a position card's mark, the progress of a group or a branch and its due cards. */
+.card-mark { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.card-mark.learning { background: var(--warning); }
+.card-mark.learned { background: var(--good); }
+.card-mark.due { background: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); }
+.start-card .card-mark, .start-outline-row .card-mark { margin-left: auto; }
+.start-card .start-rare + .card-mark, .start-outline-row .start-rare + .card-mark, .card-mark + .start-count { margin-left: 0; }
+.start-tree .badge.due { background: var(--accent); color: var(--on-accent); font-variant-numeric: tabular-nums; }
+.start-info-card { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
 .corner-mark { cursor: pointer; }
 .corner-mark-disc { fill: var(--board); }
 .corner-mark text { fill: var(--board-accent); font-weight: 600; }
@@ -158,3 +167,23 @@
 .corner-ghost { pointer-events: none; }
 @media (max-width: 640px) { .start-tree { grid-template-columns: 1fr; } .start-board { width: 200px; height: 200px; } }
 .start-preview { width: 56px; height: 56px; flex: none; }
+
+/* Repetition (repetition spec 5.1): the summary, the week ahead, the start button and the cards. */
+.repetition .metrics { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.forecast { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.forecast-day { display: grid; justify-items: center; gap: 2px; padding: 8px 4px; border-radius: var(--radius); background: var(--surface); min-width: 0; }
+.forecast-day b { font-size: 16px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.forecast-day span { max-width: 100%; overflow: hidden; font-size: 12px; color: var(--text-2); text-overflow: ellipsis; white-space: nowrap; }
+.forecast-day.empty b { color: var(--text-3); }
+.repetition .notice { margin-right: auto; color: var(--text-2); }
+.card-list { display: grid; }
+.card-list h2 { margin-bottom: 4px; }
+.card-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.card-row .start-preview { width: 40px; height: 40px; }
+.card-row-text { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.card-row-text span { font-size: 12px; color: var(--text-2); }
+
+/* The repetition panel above the review (repetition spec 5.3): KataGo's rating, the four buttons, the queue's actions. */
+.repetition-panel { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--accent-bg); }
+.repetition-panel .label { margin-bottom: 0; }
+.repetition-panel .segmented { justify-self: start; flex-wrap: wrap; }

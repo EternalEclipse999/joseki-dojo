@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, resolve } from 'node:path'
-import { isBotRank, isLanguage, THEMES, type UiSettings } from '@joseki-dojo/shared'
+import { DEFAULT_PLAYER_LEVEL, isBotRank, isLanguage, isPlayerLevel, THEMES, type UiSettings } from '@joseki-dojo/shared'
 
 export interface KataGoSettings {
   path: string
@@ -32,6 +32,7 @@ export interface AppConfig {
   analysis: { reviewVisits: number; endVisits: number; variationVisits: number }
   thresholds: Thresholds
   bot: { defaultRank: string; temperature: number }
+  player: { level: string }
   maxSessionMoves: number
   setup?: SetupInfo
   ui: UiSettings
@@ -55,6 +56,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   analysis: { reviewVisits: 500, endVisits: 200, variationVisits: 5000 },
   thresholds: { inaccuracy: 0.5, mistake: 2, blunder: 5, punished: 1 },
   bot: { defaultRank: '7k', temperature: 1 },
+  player: { level: DEFAULT_PLAYER_LEVEL },
   maxSessionMoves: 60,
   ui: { theme: 'system' },
 }
@@ -77,6 +79,7 @@ export function loadConfig(file: string): AppConfig {
     analysis: { ...DEFAULT_CONFIG.analysis, ...raw.analysis },
     thresholds: { ...DEFAULT_CONFIG.thresholds, ...raw.thresholds },
     bot: { ...DEFAULT_CONFIG.bot, ...raw.bot },
+    player: { ...DEFAULT_CONFIG.player, ...raw.player },
     ui: { ...DEFAULT_CONFIG.ui, ...raw.ui },
   }
   // A config written before the variations feature has no limit of its own: 10x the review visits.
@@ -126,6 +129,7 @@ function validate(c: AppConfig): void {
     throw new ConfigError('thresholds must satisfy inaccuracy < mistake < blunder')
   }
   if (!isBotRank(c.bot.defaultRank)) throw new ConfigError(`bot.defaultRank is not a valid rank: ${c.bot.defaultRank}`)
+  if (!isPlayerLevel(c.player.level)) throw new ConfigError(`player.level is not a valid level: ${c.player.level}`)
   if (!THEMES.includes(c.ui.theme)) throw new ConfigError(`ui.theme is not a valid theme: ${String(c.ui.theme)}`)
   if (c.ui.language !== undefined && !isLanguage(c.ui.language)) throw new ConfigError(`ui.language is not a valid language: ${String(c.ui.language)}`)
 }

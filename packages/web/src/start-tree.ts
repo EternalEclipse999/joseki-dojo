@@ -1,4 +1,4 @@
-import { START_GROUPS, type Language, type StartBranch, type StartGroupHead, type StartListEntry } from '@joseki-dojo/shared'
+import { START_GROUPS, type Language, type StartBranch, type StartCardState, type StartGroupHead, type StartListEntry } from '@joseki-dojo/shared'
 
 export type StartTreeKind = 'root' | 'group' | 'branch' | 'position'
 
@@ -97,6 +97,36 @@ export function nodeTitle(n: StartTreeNode): string {
   let group: StartTreeNode | null = n.parent
   while (group && group.kind !== 'group') group = group.parent
   return group ? `${group.name} · ${n.name}` : n.name
+}
+
+export interface NodeProgress {
+  /** The node's own card, when it is a position with a card. */
+  own: StartCardState | null
+  /** Positions at or under the node: learned, all, due now. */
+  learned: number
+  total: number
+  due: number
+  /** Some position at or under the node has a card. */
+  started: boolean
+}
+
+/** Spec (repetition) 6: the card progress of a node. */
+export function nodeProgress(node: StartTreeNode, cards: Readonly<Record<string, StartCardState>>): NodeProgress {
+  const p: NodeProgress = { own: node.id ? (cards[node.id] ?? null) : null, learned: 0, total: 0, due: 0, started: false }
+  const walk = (n: StartTreeNode): void => {
+    if (n.kind === 'position' && n.id) {
+      p.total++
+      const c = cards[n.id]
+      if (c) {
+        p.started = true
+        if (c.stage === 'learned') p.learned++
+        if (c.dueNow) p.due++
+      }
+    }
+    n.children.forEach(walk)
+  }
+  walk(node)
+  return p
 }
 
 function find(root: StartTreeNode, test: (n: StartTreeNode) => boolean): StartTreeNode | null {

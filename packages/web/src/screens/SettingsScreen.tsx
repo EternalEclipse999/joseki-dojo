@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import { Check, Gauge, LoaderCircle, TriangleAlert } from 'lucide-preact'
-import { LANGUAGE_NAMES, LANGUAGES, localize, type LocalizedText, type MessageKey, type SettingsUpdate, type SettingsView, type Theme } from '@joseki-dojo/shared'
-import { failureText, fetchSettings, fetchUi, saveSettings, saveTheme } from '../api'
+import { LANGUAGE_NAMES, LANGUAGES, localize, PLAYER_LEVELS, type LocalizedText, type MessageKey, type SettingsUpdate, type SettingsView, type Theme } from '@joseki-dojo/shared'
+import { failureText, fetchPlayer, fetchSettings, fetchUi, savePlayer, saveSettings, saveTheme } from '../api'
 import { errorText } from '../error-text'
+import { levelLabel } from '../format'
 import { useI18n } from '../i18n'
 import { applyTheme, THEME_OPTIONS } from '../theme'
 
@@ -16,6 +17,66 @@ const PATH_FIELDS: { key: PathKey; label: MessageKey; models: boolean }[] = [
   { key: 'mainModel', label: 'settings.engine.mainModel', models: true },
   { key: 'humanModel', label: 'settings.engine.humanModel', models: true },
 ]
+
+/** The player's level: saved at once, without «Сохранить и проверить». */
+function LevelSection() {
+  const { language, t } = useI18n()
+  const [level, setLevel] = useState<string | null>(null)
+  const [error, setError] = useState<LocalizedText | null>(null)
+  const [loadFailed, setLoadFailed] = useState(false)
+  const latest = useRef(0)
+  const confirmed = useRef<string | null>(null)
+  const load = (): void => {
+    setError(null)
+    setLoadFailed(false)
+    fetchPlayer()
+      .then((p) => {
+        confirmed.current = p.level
+        setLevel(p.level)
+      })
+      .catch((e: unknown) => {
+        setError(failureText(e))
+        setLoadFailed(true)
+      })
+  }
+  useEffect(load, [])
+  const choose = (next: string): void => {
+    const request = ++latest.current
+    setLevel(next)
+    setError(null)
+    savePlayer(next)
+      .then((p) => {
+        confirmed.current = p.level
+        if (request === latest.current) setLevel(p.level)
+      })
+      .catch((e: unknown) => {
+        if (request !== latest.current) return
+        setLevel(confirmed.current)
+        setError(failureText(e))
+      })
+  }
+  return (
+    <section class="card section">
+      <div class="section-head">
+        <h2>{t('settings.level.title')}</h2>
+        <p>{t('settings.level.hint')}</p>
+      </div>
+      <select aria-label={t('settings.level.title')} value={level ?? ''} disabled={level === null} onChange={(e) => choose(e.currentTarget.value)}>
+        {PLAYER_LEVELS.map((l) => (
+          <option key={l} value={l}>
+            {levelLabel(l, t)}
+          </option>
+        ))}
+      </select>
+      {error && <p class="hint error">{errorText(error, language)}</p>}
+      {loadFailed && (
+        <button type="button" class="btn" onClick={load}>
+          {t('common.retry')}
+        </button>
+      )}
+    </section>
+  )
+}
 
 /** The colour theme: applied at once and saved without «Сохранить и проверить». */
 function ThemeSection() {
@@ -151,6 +212,8 @@ export function SettingsScreen({ onClose, onSaved, onRepick }: { onClose: () => 
             <span>{localize(language, view.versionWarning)}</span>
           </p>
         )}
+
+        <LevelSection />
 
         <ThemeSection />
 

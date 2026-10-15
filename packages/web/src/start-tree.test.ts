@@ -1,6 +1,6 @@
 import { LANGUAGES, translator, type LocalizedName, type StartBranch, type StartGroupHead, type StartListEntry } from '@joseki-dojo/shared'
 import { describe, expect, it } from 'vitest'
-import { buildStartTree, findById, findNode, nodeTitle, type StartTreeNode } from './start-tree'
+import { buildStartTree, findById, findNode, nodeProgress, nodeTitle, type StartTreeNode } from './start-tree'
 
 // The server sends every language; here English is the Russian name marked «en».
 const named = (ru: string): LocalizedName => ({ ...(Object.fromEntries(LANGUAGES.map((l) => [l, ru])) as LocalizedName), en: `en ${ru}` })
@@ -78,5 +78,24 @@ describe('buildStartTree', () => {
     expect(names(en.children[1])).toEqual(['en Малое приближение', 'en Высокое приближение'])
     expect(enUnder).toMatchObject({ name: 'en Полное снизу', short: 'en снизу' })
     expect(enUnder && nodeTitle(enUnder)).toBe('3-4 · en Полное снизу')
+  })
+})
+
+describe('nodeProgress', () => {
+  const root = buildStartTree(LIST, BRANCHES, GROUPS, ROOT, 'ru')
+  const cards = {
+    снизу: { stage: 'learned' as const, due: '2026-10-20T10:00:00.000Z', dueNow: false },
+    хане: { stage: 'learning' as const, due: '2026-10-15T10:00:00.000Z', dueNow: true },
+  }
+  it('counts the learned and due positions under a node and gives a position its own state', () => {
+    const under = findById(root, 'снизу')!
+    expect(nodeProgress(under, cards)).toEqual({ own: cards.снизу, learned: 1, total: 3, due: 1, started: true })
+    const g44 = findNode(root, 'group:4-4')!
+    expect(nodeProgress(g44, cards)).toEqual({ own: null, learned: 0, total: 1, due: 0, started: false })
+  })
+
+  it('sums a branch and a group without a card of their own', () => {
+    expect(nodeProgress(findById(root, 'ветка R16 P16')!, cards)).toEqual({ own: null, learned: 1, total: 4, due: 1, started: true })
+    expect(nodeProgress(findNode(root, 'group:3-4')!, cards)).toMatchObject({ own: null, learned: 1, total: 5, due: 1, started: true })
   })
 })

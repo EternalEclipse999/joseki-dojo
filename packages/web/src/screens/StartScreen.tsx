@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks'
 import { ArrowRight, Dice3, ListChecks, Play, Shuffle, Swords } from 'lucide-preact'
-import { BOT_RANKS, DEFAULT_BOT_RANK, isBotRank, type MessageKey, type SessionSettings } from '@joseki-dojo/shared'
+import { BOT_RANKS, DEFAULT_BOT_RANK, isBotRank, type MessageKey, type SessionSettings, type StartCardState } from '@joseki-dojo/shared'
 import { StartTree } from '../components/StartTree'
 import { rankLabel } from '../format'
 import { useI18n } from '../i18n'
@@ -53,6 +53,8 @@ export interface StartScreenProps {
   startTree?: StartTreeNode
   /** The settings of the last training: the screen opens with them, and the tree on its node (starts spec 5.1). */
   last?: SessionSettings | null
+  /** Repetition spec 6: the position cards' states by start id, marked in the tree. */
+  cards?: Record<string, StartCardState>
 }
 
 /** Spec 5: a new training — mode, corner, colour, bot strength and environment. */
@@ -66,7 +68,7 @@ const initialTreeKey = (tree: StartTreeNode, lastStartId: string | null): string
   return readTreeKey()
 }
 
-export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, startsCount = 0, startTree: tree, last = null }: StartScreenProps) {
+export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, startsCount = 0, startTree: tree, last = null, cards }: StartScreenProps) {
   const { t, language } = useI18n()
   // Without a tree: the empty corner alone, which turns «Из списка» off.
   const startTree = tree ?? buildStartTree([], [], [], t('tree.root'), language)
@@ -126,7 +128,7 @@ export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, starts
             </label>
           </div>
         </div>
-        {mode === 'list' && <StartTree root={startTree} current={current} onCurrent={pick} onStart={start} />}
+        {mode === 'list' && <StartTree root={startTree} current={current} onCurrent={pick} onStart={start} cards={cards} />}
 
         <div class="options">
           <div role="radiogroup" aria-label={t('start.corner.label')}>

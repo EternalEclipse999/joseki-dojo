@@ -1,7 +1,8 @@
 import { useRef, useState } from 'preact/hooks'
-import type { Translate } from '@joseki-dojo/shared'
-import { useT } from '../i18n'
-import type { StartTreeNode } from '../start-tree'
+import type { StartCardState, Translate } from '@joseki-dojo/shared'
+import { formatWhen } from '../format'
+import { useI18n, useT } from '../i18n'
+import { nodeProgress, type NodeProgress, type StartTreeNode } from '../start-tree'
 import { CornerBoard } from './CornerBoard'
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -15,18 +16,65 @@ const chain = (n: StartTreeNode): StartTreeNode[] => {
   return out
 }
 
-/** The line under the name: the moves on the board (a start begins with them) and the positions inside. */
-const details = (n: StartTreeNode, t: Translate): string => {
-  const parts = [
-    ...(n.moves.length > 0 ? [t('tree.movesOnBoard', { count: n.moves.length })] : []),
-    ...(n.count > 0 ? [t('tree.positionsInside', { count: n.count })] : []),
-  ].join(' · ')
-  return parts.charAt(0).toUpperCase() + parts.slice(1)
-}
+const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
 
-/** A card's accessible name: «A: Хане, позиций: 1», «B: Шапка, редко». */
-const cardLabel = (n: StartTreeNode, letter: string | null, t: Translate): string =>
-  [`${letter ? `${letter}: ` : ''}${n.short}`, ...(n.rare ? [t('tree.rare')] : []), ...(n.count > 0 ? [t('tree.cardPositions', { count: n.count })] : [])].join(t('common.listSeparator'))
+/** The line under the name: the moves on the board (a start begins with them) and the positions inside. */
+const details = (n: StartTreeNode, t: Translate): string =>
+  capitalize(
+    [
+      ...(n.moves.length > 0 ? [t('tree.movesOnBoard', { count: n.moves.length })] : []),
+      ...(n.count > 0 ? [t('tree.positionsInside', { count: n.count })] : []),
+    ].join(' · '),
+  )
+
+type Cards = Readonly<Record<string, StartCardState>>
+const NO_CARDS: Cards = {}
+
+/** Repetition spec 6: a position card's mark — due now, else its stage. */
+const markClass = (own: StartCardState): string => `card-mark ${own.dueNow ? 'due' : own.stage}`
+const markText = (own: StartCardState, t: Translate): string => t(own.dueNow ? 'tree.card.due' : own.stage === 'learned' ? 'tree.card.learned' : 'tree.card.learning')
+
+/** Repetition spec 6: a group or a branch the player has begun shows «learned of all» instead of the positions inside. */
+const summed = (n: StartTreeNode, p: NodeProgress): boolean => p.started && (n.kind === 'group' || n.kind === 'branch')
+
+/** A card's accessible name: «A: Хане, позиций: 1», «B: Шапка, редко», «C: Снизу, изучается», «D: Ветка, изучено 1 из 4, 1 карточка к повторению». */
+const cardLabel = (n: StartTreeNode, letter: string | null, p: NodeProgress, t: Translate): string =>
+  [
+    `${letter ? `${letter}: ` : ''}${n.short}`,
+    ...(n.rare ? [t('tree.rare')] : []),
+    ...(p.own ? [markText(p.own, t)] : []),
+    ...(summed(n, p)
+      ? [t('tree.progress', { learned: p.learned, total: p.total }), ...(p.due > 0 ? [t('header.dueBadge', { count: p.due })] : [])]
+      : n.count > 0
+        ? [t('tree.cardPositions', { count: n.count })]
+        : []),
+  ].join(t('common.listSeparator'))
+
+/** Repetition spec 6: the end of an outline row or a card — the card's mark, the positions inside or «learned/all», and the due ones. */
+function NodeMarks({ node, progress: p }: { node: StartTreeNode; progress: NodeProgress }) {
+  const t = useT()
+  const progress = t('tree.progress', { learned: p.learned, total: p.total })
+  const due = t('header.dueBadge', { count: p.due })
+  return (
+    <>
+      {p.own && <span class={markClass(p.own)} role="img" title={markText(p.own, t)} aria-label={markText(p.own, t)} />}
+      {summed(node, p) ? (
+        <>
+          <span class="start-count" role="img" title={progress} aria-label={progress}>
+            {p.learned}/{p.total}
+          </span>
+          {p.due > 0 && (
+            <span class="badge due" role="img" title={due} aria-label={due}>
+              {p.due}
+            </span>
+          )}
+        </>
+      ) : (
+        node.count > 0 && <span class="start-count">{node.count}</span>
+      )}
+    </>
+  )
+}
 
 export interface StartTreeProps {
   root: StartTreeNode
@@ -34,17 +82,20 @@ export interface StartTreeProps {
   onCurrent: (node: StartTreeNode) => void
   /** Enter on any node but the empty corner: «Начать тренировку». */
   onStart: () => void
+  /** Repetition spec 6: the position cards' states by start id. */
+  cards?: Record<string, StartCardState>
 }
 
 /** Spec (starts) 5.1: «Из списка» — the outline, the corner board with lettered continuations, the cards. */
-export function StartTree({ root, current, onCurrent, onStart }: StartTreeProps) {
-  const t = useT()
+export function StartTree({ root, current, onCurrent, onStart, cards = NO_CARDS }: StartTreeProps) {
+  const { language, t } = useI18n()
   const [hover, setHover] = useState<number | null>(null)
   const box = useRef<HTMLDivElement>(null)
   const path = chain(current)
   const kids = current.children
   const hovered = hover !== null ? (kids[hover] ?? null) : null
   const shown = hovered ?? current
+  const shownCard = shown.id ? (cards[shown.id] ?? null) : null
   const go = (n: StartTreeNode): void => {
     setHover(null)
     onCurrent(n)
@@ -81,7 +132,7 @@ export function StartTree({ root, current, onCurrent, onStart }: StartTreeProps)
       aria-label={t('tree.label')}
     >
       <nav class="start-outline" aria-label={t('tree.outline')}>
-        <OutlineRow node={root} depth={0} path={path} current={current} onPick={go} />
+        <OutlineRow node={root} depth={0} path={path} current={current} cards={cards} onPick={go} />
       </nav>
       <div class="start-explorer">
         <div class="start-crumbs">
@@ -119,18 +170,25 @@ export function StartTree({ root, current, onCurrent, onStart }: StartTreeProps)
             <div class="start-info-name">{shown.name}</div>
             <div class="start-info-sub">{details(shown, t)}</div>
             {shown.rare && <div class="start-rare">{t('tree.rarelyPlayed')}</div>}
+            {shownCard && (
+              <div class="start-info-card">
+                <span class={markClass(shownCard)} aria-hidden="true" />
+                {capitalize(shownCard.dueNow ? t('tree.card.due') : t('tree.card.next', { when: formatWhen(shownCard.due, new Date(), language, t) }))}
+              </div>
+            )}
           </div>
         </div>
         {kids.length > 0 && (
           <div class="start-cards" onMouseLeave={() => setHover(null)}>
             {kids.map((c, i) => {
               const letter = letterOf(i)
+              const progress = nodeProgress(c, cards)
               return (
                 <button
                   type="button"
                   key={c.key}
                   class={`start-card${c.rare ? ' rare' : ''}${i === hover ? ' hover' : ''}`}
-                  aria-label={cardLabel(c, letter, t)}
+                  aria-label={cardLabel(c, letter, progress, t)}
                   onMouseEnter={() => setHover(i)}
                   onFocus={() => setHover(i)}
                   onBlur={() => setHover(null)}
@@ -140,7 +198,7 @@ export function StartTree({ root, current, onCurrent, onStart }: StartTreeProps)
                   <CornerBoard moves={c.moves} />
                   <span class="start-card-name">{c.short}</span>
                   {c.rare && <span class="start-rare">{t('tree.rare')}</span>}
-                  {c.count > 0 && <span class="start-count">{c.count}</span>}
+                  <NodeMarks node={c} progress={progress} />
                 </button>
               )
             })}
@@ -156,11 +214,12 @@ interface OutlineRowProps {
   depth: number
   path: StartTreeNode[]
   current: StartTreeNode
+  cards: Cards
   onPick: (node: StartTreeNode) => void
 }
 
 /** One row of the outline; the rows on the path to the current node are open. */
-function OutlineRow({ node, depth, path, current, onPick }: OutlineRowProps) {
+function OutlineRow({ node, depth, path, current, cards, onPick }: OutlineRowProps) {
   const t = useT()
   const onPath = path.includes(node)
   const open = onPath && node.children.length > 0
@@ -180,9 +239,9 @@ function OutlineRow({ node, depth, path, current, onPick }: OutlineRowProps) {
         </span>
         <span class="start-outline-name">{node.short}</span>
         {node.rare && <span class="start-rare">{t('tree.rare')}</span>}
-        {node.count > 0 && <span class="start-count">{node.count}</span>}
+        <NodeMarks node={node} progress={nodeProgress(node, cards)} />
       </button>
-      {open && node.children.map((c) => <OutlineRow key={c.key} node={c} depth={depth + 1} path={path} current={current} onPick={onPick} />)}
+      {open && node.children.map((c) => <OutlineRow key={c.key} node={c} depth={depth + 1} path={path} current={current} cards={cards} onPick={onPick} />)}
     </>
   )
 }

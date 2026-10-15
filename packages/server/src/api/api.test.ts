@@ -283,6 +283,22 @@ describe('/api/ui', () => {
   })
 })
 
+describe('/api/player', () => {
+  const put = (body: unknown): Promise<Response> =>
+    fetch(`http://${host}/api/player`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+
+  it('serves the level, saves a valid one and refuses an unknown one', async () => {
+    expect(await (await fetch(`http://${host}/api/player`)).json()).toEqual({ level: '7k' })
+    const res = await put({ level: '1d' })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ level: '1d' })
+    const bad = await put({ level: 'x' })
+    expect(bad.status).toBe(400)
+    expect(((await bad.json()) as { error: { key: string } }).error.key).toBe('error.player.level')
+    expect(await (await fetch(`http://${host}/api/player`)).json()).toEqual({ level: '1d' })
+  })
+})
+
 describe('GET /api/traps', () => {
   it('reports an empty book without a base', async () => {
     expect(await (await fetch(`http://${host}/api/traps`)).json()).toEqual({ count: 0, verified: false })
@@ -320,6 +336,64 @@ describe('GET /api/starts', () => {
       await other.close()
       await services.engine.stop()
       services.db.close()
+    }
+  })
+})
+
+describe('/api/cards', () => {
+  it('records a card from a list training and serves, re-rates and deletes it', async () => {
+    const config = testConfig()
+    const starts = StartBook.fromBase(decodeJdb(encodeJdb(testStartsTree()))).withList(JSON.stringify(TEST_STARTS_LIST), () => {})
+    const withStarts = createServices(config, fakeEngine(), serviceOptions(config, { starts }))
+    await withStarts.health.check()
+    const other = await buildApp(withStarts)
+    await other.listen({ port: 0, host: '127.0.0.1' })
+    const otherHost = `127.0.0.1:${(other.server.address() as AddressInfo).port}`
+    const startId = starts.list()[0].id
+    const c = await Client.connect(`ws://${otherHost}/ws`)
+    clients.push(c)
+    try {
+      const train = async (previous = ''): Promise<string> => {
+        c.send({ type: 'startSession', settings: { mode: 'list', environment: 'empty', userColor: 'W', botRank: '7k', corner: 'TR', startId } })
+        const m = await c.next((x) => x.type === 'sessionState' && x.session.id !== previous)
+        if (m.type !== 'sessionState') throw new Error('unexpected message')
+        c.send({ type: 'playMove', sessionId: m.session.id, vertex: [17, 1] })
+        await c.next((x) => x.type === 'sessionState' && x.session.id === m.session.id && x.session.moves.length === 2)
+        c.send({ type: 'finish', sessionId: m.session.id })
+        await c.next((x) => x.type === 'reviewReady' && x.sessionId === m.session.id)
+        return m.session.id
+      }
+      const first = await train()
+      const m = { session: { id: first } }
+      const json = async (path: string, init?: RequestInit) => (await fetch(`http://${otherHost}${path}`, init)).json() as Promise<Record<string, any>>
+      expect(await json('/api/cards/summary')).toMatchObject({ total: 1 })
+      const items = (await json('/api/cards')) as unknown as { id: string; startId: string }[]
+      expect(items).toHaveLength(1)
+      expect(items[0].startId).toBe(startId)
+      const review = await json(`/api/sessions/${m.session.id}/review`)
+      expect(review.repetition.auto).toBe('good')
+      const put = (body: object) => fetch(`http://${otherHost}/api/cards/reviews/${review.repetition.reviewId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+      const hard = await put({ rating: 'hard' })
+      expect(hard.status).toBe(200)
+      expect(await hard.json()).toMatchObject({ rating: 'hard' })
+      expect((await put({ rating: 'x' })).status).toBe(400)
+      // «Трудно» keeps the card in its learning steps, minutes away: the queue's learn-ahead serves it already.
+      expect(await json('/api/cards/due')).toMatchObject({ card: { id: items[0].id, startId } })
+      expect((await json('/api/cards/starts'))[startId]).toMatchObject({ dueNow: false })
+      const second = await train(first)
+      await json(`/api/sessions/${second}/review`)
+      expect((await put({ rating: 'good' })).status).toBe(409)
+      expect(await (await put({ rating: 'good' })).json()).toEqual({ error: 'not_latest' })
+      const unknown = await fetch(`http://${otherHost}/api/cards/reviews/9999`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rating: 'good' }) })
+      expect(unknown.status).toBe(404)
+      expect(await unknown.json()).toEqual({ error: 'review_not_found' })
+      const del = () => fetch(`http://${otherHost}/api/cards/${items[0].id}`, { method: 'DELETE' })
+      expect((await del()).status).toBe(204)
+      expect((await del()).status).toBe(404)
+    } finally {
+      await other.close()
+      await withStarts.engine.stop()
+      withStarts.db.close()
     }
   })
 })
