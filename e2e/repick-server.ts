@@ -18,6 +18,7 @@ writeFileSync(
   join(root, 'config.json'),
   JSON.stringify({
     setup: { kind: 'cpu', lockId: '1.17.0/aaaaaaaaaaaa/bbbbbbbbbbbb' },
+    ui: { language: 'ru' },
     katago: { path: old('katago.exe'), analysisConfig: old('analysis.cfg'), mainModel: old('main.bin.gz'), humanModel: old('human.bin.gz') },
   }),
 )

@@ -4,13 +4,17 @@ export default defineConfig({
   testDir: 'e2e',
   timeout: 30_000,
   use: { baseURL: 'http://127.0.0.1:5180' },
-  projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
+  projects: [
+    { name: 'chromium', use: { browserName: 'chromium' }, testIgnore: 'languages.spec.ts' },
+    // It saves other languages, so it runs against its own server (5183), not the one the other specs read Russian from.
+    { name: 'languages', use: { browserName: 'chromium', baseURL: 'http://127.0.0.1:5183' }, testMatch: 'languages.spec.ts' },
+  ],
   // Playwright starts these one after another: the first builds the web UI that the second serves too.
   webServer: [
     {
       command: `node -e "require('fs').rmSync('e2e/.data',{recursive:true,force:true})" && npx tsx e2e/make-traps.ts && npx tsx e2e/make-starts.ts && npm run build && npx tsx packages/server/src/main.ts`,
       url: 'http://127.0.0.1:5180/api/health',
-      env: { JOSEKI_CONFIG: 'e2e/config.e2e.json', JOSEKI_TRAPS: 'e2e/traps.test.jdb', JOSEKI_STARTS: 'e2e/starts.test.jdb', JOSEKI_STARTS_LIST: 'e2e/starts-list.test.json' },
+      env: { JOSEKI_CONFIG: 'e2e/config.e2e.json', JOSEKI_TRAPS: 'e2e/traps.test.jdb', JOSEKI_STARTS: 'e2e/starts.test.jdb', JOSEKI_STARTS_LIST: 'e2e/starts-list.test.json', JOSEKI_STARTS_NAMES: 'e2e/starts-i18n.test.json' },
       reuseExistingServer: false,
       timeout: 120_000,
     },
@@ -25,6 +29,13 @@ export default defineConfig({
       // Spec 9: KataGo is installed from an older katago.lock.json: the engine-update bar and the re-pick button.
       command: 'npx tsx e2e/repick-server.ts',
       url: 'http://127.0.0.1:5182/api/health',
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      // Spec (languages) 9: its own profile in Russian (the language spec saves other languages), the same fake KataGo and start positions.
+      command: 'npx tsx e2e/languages-server.ts',
+      url: 'http://127.0.0.1:5183/api/health',
       reuseExistingServer: false,
       timeout: 120_000,
     },

@@ -30,6 +30,10 @@ module.exports = {
     createDesktopShortcut: true,
     createStartMenuShortcut: true,
     shortcutName: 'Joseki Dojo',
+    // Spec (languages) 8.1: a language choice before the one-click install; English is preselected (build/installer.nsh).
+    installerLanguages: ['en_US', 'ru_RU', 'zh_CN', 'zh_TW', 'ko_KR', 'ja_JP'],
+    displayLanguageSelector: true,
+    include: 'build/installer.nsh',
     runAfterFinish: true,
     artifactName: 'Joseki-Dojo-Setup-${version}.${ext}',
   },

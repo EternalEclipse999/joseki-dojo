@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, resolve } from 'node:path'
-import { isBotRank, THEMES, type UiSettings } from '@joseki-dojo/shared'
+import { isBotRank, isLanguage, THEMES, type UiSettings } from '@joseki-dojo/shared'
 
 export interface KataGoSettings {
   path: string
@@ -104,9 +104,9 @@ function parseJson(file: string): unknown {
   try {
     const value: unknown = JSON.parse(readFileSync(file, 'utf8'))
     if (typeof value === 'object' && value !== null && !Array.isArray(value)) return value
-    throw new Error('ожидался объект JSON')
+    throw new Error('expected a JSON object')
   } catch (err) {
-    throw new ConfigError(`${basename(file)}: некорректный JSON (${err instanceof Error ? err.message : String(err)})`)
+    throw new ConfigError(`${basename(file)}: invalid JSON (${err instanceof Error ? err.message : String(err)})`)
   }
 }
 
@@ -127,4 +127,5 @@ function validate(c: AppConfig): void {
   }
   if (!isBotRank(c.bot.defaultRank)) throw new ConfigError(`bot.defaultRank is not a valid rank: ${c.bot.defaultRank}`)
   if (!THEMES.includes(c.ui.theme)) throw new ConfigError(`ui.theme is not a valid theme: ${String(c.ui.theme)}`)
+  if (c.ui.language !== undefined && !isLanguage(c.ui.language)) throw new ConfigError(`ui.language is not a valid language: ${String(c.ui.language)}`)
 }

@@ -26,20 +26,22 @@ describe('unzip', () => {
   it('refuses a symbolic link', async () => {
     const root = temp()
     const zip = archive({ 'katago.txt': strToU8('ok'), link: symlink('../outside.txt') })
-    await expect(unzip(zip, join(root, 'out'))).rejects.toThrow('Не удалось распаковать build.zip: в архиве есть символическая ссылка link')
+    await expect(unzip(zip, join(root, 'out'))).rejects.toMatchObject({
+      text: { key: 'install.error.unzip', params: { name: 'build.zip', detail: { key: 'install.error.symlink', params: { name: 'link' } } } },
+    })
     expect(existsSync(join(root, 'outside.txt'))).toBe(false)
     expect(existsSync(join(root, 'out', 'link'))).toBe(false)
   })
 
   it.each(['../evil.txt', 'a/../../evil.txt', 'a\\..\\..\\evil.txt', '/evil.txt', 'C:/evil.txt'])('refuses an entry that leaves the folder: %s', async (name) => {
     const root = temp()
-    await expect(unzip(archive({ [name]: strToU8('evil') }), join(root, 'out'))).rejects.toThrow(/^Не удалось распаковать build\.zip: /)
+    await expect(unzip(archive({ [name]: strToU8('evil') }), join(root, 'out'))).rejects.toMatchObject({ text: { key: 'install.error.unzip', params: { name: 'build.zip' } } })
     expect(existsSync(join(root, 'evil.txt'))).toBe(false)
   })
 
   it('reports a file that is not an archive', async () => {
     const file = join(temp(), 'build.zip')
     writeFileSync(file, 'not a zip')
-    await expect(unzip(file, join(temp(), 'out'))).rejects.toThrow(/^Не удалось распаковать build\.zip: /)
+    await expect(unzip(file, join(temp(), 'out'))).rejects.toMatchObject({ text: { key: 'install.error.unzip', params: { name: 'build.zip' } } })
   })
 })

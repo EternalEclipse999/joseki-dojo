@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { gtpToVertex, type HealthResponse, type InstallStatus, type Vertex } from '@joseki-dojo/shared'
+import { gtpToVertex, type HealthResponse, type InstallStatus, type Language, type StartsInfo, type UiSettings, type Vertex } from '@joseki-dojo/shared'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_KATAGO, REPO_LOCK, tempDir } from '../test/helpers'
 import { createInstallFixture, fakeBuildCommand, type InstallFixture } from '../test/install-fixture'
@@ -63,6 +63,41 @@ describe('startServer', () => {
     expect(server.services.engine.pendingCount).toBe(0)
   })
 
+  it('writes initialLanguage into a config without a language, and keeps a saved one', async () => {
+    const root = tempDir()
+    const configFile = join(root, 'config.json')
+    const start = (initialLanguage: Language): Promise<RunningServer> =>
+      startServer({ configFile, dataDir: join(root, 'data'), enginesDir: join(root, 'engines'), lockFile: REPO_LOCK, webDist: null, port: 0, log: () => undefined, initialLanguage })
+    const first = await start('ko')
+    servers.push(first)
+    expect(first.services.config.ui.language).toBe('ko')
+    await first.close()
+    const second = await start('ja')
+    servers.push(second)
+    expect(second.services.config.ui.language).toBe('ko')
+  })
+
+  it('starts when the installer language cannot be saved: the log says so and the language screen stays the fallback', async () => {
+    const root = tempDir()
+    const blocker = join(root, 'not-a-folder')
+    writeFileSync(blocker, '') // the config would live inside a file, so it cannot be written
+    const lines: string[] = []
+    const server = await startServer({
+      configFile: join(blocker, 'config.json'),
+      dataDir: join(root, 'data'),
+      enginesDir: join(root, 'engines'),
+      lockFile: REPO_LOCK,
+      webDist: null,
+      port: 0,
+      log: (line) => void lines.push(line),
+      initialLanguage: 'ko',
+    })
+    servers.push(server)
+    expect(lines.filter((l) => l.startsWith('Не удалось сохранить язык из установщика: '))).toHaveLength(1)
+    expect(server.services.config.ui.language).toBeUndefined()
+    expect((await getJson<UiSettings>(`${server.url}/api/ui`)).language).toBeUndefined()
+  })
+
   it('installs KataGo through /api/install when it is missing', async () => {
     const fixture = await createInstallFixture()
     fixtures.push(fixture)
@@ -80,7 +115,7 @@ describe('startServer', () => {
     })
     servers.push(server)
 
-    expect((await health(server, 'failed')).reason).toMatch(/^KataGo не найден/)
+    expect((await health(server, 'failed')).reason).toMatchObject({ key: 'health.missing.katago' })
     expect(await getJson<InstallStatus>(`${server.url}/api/install`)).toMatchObject({ step: 'idle', installed: false })
 
     const started = (await (await fetch(`${server.url}/api/install`, { method: 'POST' })).json()) as InstallStatus
@@ -90,7 +125,7 @@ describe('startServer', () => {
     await vi.waitFor(
       async () => {
         const s = await getJson<InstallStatus>(`${server.url}/api/install`)
-        if (s.step !== 'done') throw new Error(`install is ${s.step}: ${s.error}`)
+        if (s.step !== 'done') throw new Error(`install is ${s.step}: ${JSON.stringify(s.error)}`)
       },
       { timeout: 10_000, interval: 50 },
     )
@@ -180,6 +215,20 @@ describe('startServer', () => {
       expect(noStartsLog(lines)).toBe(false)
       expect(starts).toMatchObject({ count: 3 })
       expect((starts as { list: unknown[] }).list).toHaveLength(2)
+    })
+
+    it('serves the names in every language from starts-i18n.json next to the list; without it they stay Russian', async () => {
+      const dir = tempDir()
+      const base = join(dir, 'starts.jdb')
+      const list = join(dir, 'starts-list.json')
+      writeTestStarts(base, list)
+      const missing = await startWith(base, list)
+      expect(missing.lines.filter((l) => l.startsWith('Переводы названий стартовых позиций недоступны: '))).toHaveLength(1)
+      expect((missing.starts as StartsInfo).list[0].name).toMatchObject({ ru: 'Тестовое начало 4-4', en: 'Тестовое начало 4-4' })
+      writeFileSync(join(dir, 'starts-i18n.json'), JSON.stringify({ 'Q16 O17 R14': { en: { name: 'Test start', short: 'Start' } } }))
+      const named = await startWith(base, list)
+      expect((named.starts as StartsInfo).list[0].name).toMatchObject({ ru: 'Тестовое начало 4-4', en: 'Test start', ja: 'Test start' })
+      expect(named.lines.some((l) => l.startsWith('Переводы названий'))).toBe(false)
     })
 
     it('turns the start modes off for a broken base', async () => {

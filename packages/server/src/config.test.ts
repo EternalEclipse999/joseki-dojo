@@ -16,7 +16,7 @@ describe('loadConfig', () => {
     const file = configFile()
     writeFileSync(file, '{ not json')
     expect(() => loadConfig(file)).toThrow(ConfigError)
-    expect(() => loadConfig(file)).toThrow(/config\.local\.json: некорректный JSON/)
+    expect(() => loadConfig(file)).toThrow(/config\.local\.json: invalid JSON/)
   })
 
   it('rejects valid JSON that is not an object', () => {
@@ -26,6 +26,11 @@ describe('loadConfig', () => {
       expect(() => loadConfig(file)).toThrow(ConfigError)
       expect(() => loadConfig(file)).toThrow(/config\.local\.json/)
     }
+  })
+
+  it('reads ui.language and refuses an unknown one', () => {
+    expect(loadConfig(configFile({ ui: { language: 'zh-Hant' } })).ui).toEqual({ theme: 'system', language: 'zh-Hant' })
+    expect(() => loadConfig(configFile({ ui: { language: 'xx' } }))).toThrow('ui.language is not a valid language: xx')
   })
 
   it('uses defaults when the file is missing and resolves paths against its directory', () => {

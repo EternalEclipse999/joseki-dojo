@@ -30,7 +30,7 @@ export class HumanBot implements MoveChooser {
       priority: 10,
       overrideSettings: { humanSLProfile: `rank_${req.rank}` },
     })
-    if (!r.humanPolicy) throw new EngineError('KataGo не вернул humanPolicy: human-сеть не загружена', 'query_error')
+    if (!r.humanPolicy) throw new EngineError({ key: 'error.engine.noHumanPolicy' }, 'query_error')
     const choice = chooseBotMove(
       {
         humanPolicy: r.humanPolicy,

@@ -178,10 +178,10 @@ describe('runGpu', () => {
     const before = readFileSync(join(root, TRAPS_FILE))
     const engine = {
       analyze: async (): Promise<never> => {
-        throw new EngineError('gone', 'engine_failed')
+        throw new EngineError({ key: 'error.engine.stopped' }, 'engine_failed')
       },
     }
-    await expect(runGpu({ root, engine, opts, engineInfo: ENGINE_INFO, log: () => {} })).rejects.toThrow('gone')
+    await expect(runGpu({ root, engine, opts, engineInfo: ENGINE_INFO, log: () => {} })).rejects.toThrow('KataGo was stopped')
     expect(readFileSync(join(root, TRAPS_FILE))).toEqual(before)
     expect(git(root, 'rev-parse', 'HEAD')).toBe(head)
   })

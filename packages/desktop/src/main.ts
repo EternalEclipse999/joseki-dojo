@@ -4,10 +4,11 @@
 import { closeSync, existsSync, mkdirSync, openSync, renameSync, writeFileSync, writeSync } from 'node:fs'
 import { join } from 'node:path'
 import { startServer, type RunningServer } from '@joseki-dojo/server'
-import { THEMES, type AppUpdateState, type Theme } from '@joseki-dojo/shared'
+import { THEMES, t, type AppUpdateState, type Theme } from '@joseki-dojo/shared'
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, session, shell, type IpcMainInvokeEvent } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { CHANNELS } from './channels'
+import { configLanguage, forgetInstallerLanguage, readInstallerLanguage } from './installer-language'
 import { runInstall, sameOrigin, withTimeout } from './lifecycle'
 import { UpdateController } from './update-controller'
 
@@ -83,7 +84,10 @@ function shutdown(): Promise<void> {
 /** Boot failed: log it (synchronously), stop whatever started, exit. */
 async function fatal(err: unknown): Promise<void> {
   log(`Start failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`)
-  dialog.showErrorBox('Joseki Dojo не запустился', err instanceof Error ? err.message : String(err))
+  // On a first start that fails the installer's choice is not in the config yet; both readers never throw.
+  const userData = app.getPath('userData')
+  const lang = readInstallerLanguage(userData) ?? configLanguage(join(userData, 'config.json'))
+  dialog.showErrorBox(t(lang, 'app.startFailed'), err instanceof Error ? err.message : String(err))
   await withTimeout(closeAll(), CLOSE_TIMEOUT_MS)
   if (logFd !== null) closeSync(logFd)
   logFd = null
@@ -187,6 +191,8 @@ async function boot(): Promise<void> {
   logFd = openSync(logPath, 'a')
   log(`Joseki Dojo ${app.getVersion()}, data: ${userData}`)
   if (closing) return // a quit arrived before the start
+  // Spec (languages) 8.1: the language the Windows installer asked for; the server keeps it only while the config has none.
+  const installerLanguage = readInstallerLanguage(userData)
   starting = startServer({
     configFile: join(userData, 'config.json'),
     dataDir,
@@ -195,14 +201,17 @@ async function boot(): Promise<void> {
     trapsFile: app.isPackaged ? join(resourcesDir, 'bases', 'traps.jdb') : join(resourcesDir, 'packages', 'server', 'bases', 'traps.jdb'),
     startsFile: app.isPackaged ? join(resourcesDir, 'bases', 'starts.jdb') : join(resourcesDir, 'packages', 'server', 'bases', 'starts.jdb'),
     startsListFile: app.isPackaged ? join(resourcesDir, 'bases', 'starts-list.json') : join(resourcesDir, 'packages', 'server', 'bases', 'starts-list.json'),
+    startsNamesFile: app.isPackaged ? join(resourcesDir, 'bases', 'starts-i18n.json') : join(resourcesDir, 'packages', 'server', 'bases', 'starts-i18n.json'),
     webDist,
     port: 0,
     log,
+    initialLanguage: installerLanguage ?? undefined,
     // Chromium's network stack honours the system proxy and the Windows certificate store
     // (HTTPS-scanning antivirus), unlike Node's global fetch.
     fetch: (input, init) => net.fetch(input as string | Request, init),
   })
   server = await starting
+  if (installerLanguage) forgetInstallerLanguage(userData, log) // handed over: it must not override a later choice
   if (closing) return // a quit arrived while the server was starting: closeAll stops it
   // The saved theme is applied before the window shows, so it does not flash in the system colours.
   nativeTheme.themeSource = server.services.config.ui.theme

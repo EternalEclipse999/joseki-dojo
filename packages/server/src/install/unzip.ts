@@ -3,6 +3,7 @@ import { basename, dirname, resolve } from 'node:path'
 import type { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import yauzl, { type Entry, type ZipFile } from 'yauzl'
+import { TextError } from '../text-error'
 
 /** File type bits of a Unix mode, kept in the high half of an entry's external attributes. */
 const S_IFMT = 0o170000
@@ -14,7 +15,7 @@ const openStream = (zip: ZipFile, entry: Entry): Promise<Readable> =>
   new Promise((done, fail) => zip.openReadStream(entry, (err, stream) => (err ? fail(err) : done(stream))))
 
 async function writeEntry(zip: ZipFile, entry: Entry, root: string): Promise<void> {
-  if (((entry.externalFileAttributes >>> 16) & S_IFMT) === S_IFLNK) throw new Error(`в архиве есть символическая ссылка ${entry.fileName}`)
+  if (((entry.externalFileAttributes >>> 16) & S_IFMT) === S_IFLNK) throw new TextError({ key: 'install.error.symlink', params: { name: entry.fileName } })
   const target = resolve(root, entry.fileName)
   if (entry.fileName.endsWith('/')) return void mkdirSync(target, { recursive: true })
   mkdirSync(dirname(target), { recursive: true })
@@ -40,7 +41,8 @@ export async function unzip(zipFile: string, dir: string): Promise<void> {
       opened.readEntry()
     })
   } catch (err) {
-    throw new Error(`Не удалось распаковать ${basename(zipFile)}: ${err instanceof Error ? err.message : String(err)}`, { cause: err })
+    const detail = err instanceof TextError ? err.text : err instanceof Error ? err.message : String(err)
+    throw new TextError({ key: 'install.error.unzip', params: { name: basename(zipFile), detail } }, { cause: err })
   } finally {
     zip?.close()
   }

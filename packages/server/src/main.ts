@@ -12,6 +12,8 @@ const server = await startServer({
   trapsFile: process.env.JOSEKI_TRAPS ?? join(repoRoot, 'packages', 'server', 'bases', 'traps.jdb'),
   startsFile: process.env.JOSEKI_STARTS ?? join(repoRoot, 'packages', 'server', 'bases', 'starts.jdb'),
   startsListFile: process.env.JOSEKI_STARTS_LIST ?? join(repoRoot, 'packages', 'server', 'bases', 'starts-list.json'),
+  // Unset: starts-i18n.json next to the list.
+  startsNamesFile: process.env.JOSEKI_STARTS_NAMES,
   webDist: join(repoRoot, 'packages', 'web', 'dist'),
 })
 console.log(`Joseki Dojo: ${server.url}`)

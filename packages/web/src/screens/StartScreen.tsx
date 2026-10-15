@@ -1,28 +1,28 @@
 import { useState } from 'preact/hooks'
 import { ArrowRight, Dice3, ListChecks, Play, Shuffle, Swords } from 'lucide-preact'
-import { BOT_RANKS, DEFAULT_BOT_RANK, isBotRank, type SessionSettings } from '@joseki-dojo/shared'
+import { BOT_RANKS, DEFAULT_BOT_RANK, isBotRank, type MessageKey, type SessionSettings } from '@joseki-dojo/shared'
 import { StartTree } from '../components/StartTree'
 import { rankLabel } from '../format'
+import { useI18n } from '../i18n'
 import { RANK_MARKS, rankAt, rankIndex } from '../rank-scale'
-import { findById, findNode, nodeTitle, type StartTreeNode } from '../start-tree'
+import { buildStartTree, findById, findNode, nodeTitle, type StartTreeNode } from '../start-tree'
 
 type ModeChoice = SessionSettings['mode']
 type ColorChoice = SessionSettings['userColor']
 type CornerChoice = SessionSettings['corner']
 
-const COLORS: { value: ColorChoice; label: string; hidden?: string; stone?: 'black' | 'white' }[] = [
-  { value: 'B', label: 'Чёрные', stone: 'black' },
-  { value: 'W', label: 'Белые', stone: 'white' },
-  { value: 'random', label: 'Случайно', hidden: ' (случайный цвет)' },
+const COLORS: { value: ColorChoice; label: MessageKey; hidden?: MessageKey; stone?: 'black' | 'white' }[] = [
+  { value: 'B', label: 'start.color.black', stone: 'black' },
+  { value: 'W', label: 'start.color.white', stone: 'white' },
+  { value: 'random', label: 'start.color.random', hidden: 'start.color.randomHint' },
 ]
-const QUADRANTS: { value: Exclude<CornerChoice, 'random'>; label: string; cls: string }[] = [
-  { value: 'TL', label: 'Левый верхний', cls: 'q-tl' },
-  { value: 'TR', label: 'Правый верхний', cls: 'q-tr' },
-  { value: 'BL', label: 'Левый нижний', cls: 'q-bl' },
-  { value: 'BR', label: 'Правый нижний', cls: 'q-br' },
+const QUADRANTS: { value: Exclude<CornerChoice, 'random'>; label: MessageKey; cls: string }[] = [
+  { value: 'TL', label: 'start.corner.topLeft', cls: 'q-tl' },
+  { value: 'TR', label: 'start.corner.topRight', cls: 'q-tr' },
+  { value: 'BL', label: 'start.corner.bottomLeft', cls: 'q-bl' },
+  { value: 'BR', label: 'start.corner.bottomRight', cls: 'q-br' },
 ]
-const SOON_ENVIRONMENTS = ['фусеки', 'лесенка', 'смешанно']
-const EMPTY_TREE: StartTreeNode = { key: '', kind: 'root', name: 'Пустой угол', short: 'Пустой угол', moves: [], id: null, rare: false, count: 0, parent: null, children: [] }
+const SOON_ENVIRONMENTS: MessageKey[] = ['start.environment.fuseki', 'start.environment.ladder', 'start.environment.mixed']
 /** Spec (starts) 5.1: the last current node of the tree, remembered in the browser. */
 const TREE_KEY = 'joseki-dojo.start-tree'
 const readTreeKey = (): string => {
@@ -66,7 +66,10 @@ const initialTreeKey = (tree: StartTreeNode, lastStartId: string | null): string
   return readTreeKey()
 }
 
-export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, startsCount = 0, startTree = EMPTY_TREE, last = null }: StartScreenProps) {
+export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, startsCount = 0, startTree: tree, last = null }: StartScreenProps) {
+  const { t, language } = useI18n()
+  // Without a tree: the empty corner alone, which turns «Из списка» off.
+  const startTree = tree ?? buildStartTree([], [], [], t('tree.root'), language)
   const listReady = startTree.children.length > 0
   const available = (m: ModeChoice): boolean => (m === 'traps' ? trapsCount > 0 : m === 'random' ? startsCount > 0 : m === 'list' ? listReady : true)
   const [mode, setMode] = useState<ModeChoice>(last && available(last.mode) ? last.mode : 'free')
@@ -90,50 +93,50 @@ export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, starts
     <main>
       <div class={`page start${mode === 'list' ? ' wide' : ''}`}>
         <div class="page-head">
-          <h1>Новая тренировка</h1>
-          <p>Бот разыграет с вами дзёсеки в выбранном углу и ошибётся, как живой соперник</p>
+          <h1>{t('start.title')}</h1>
+          <p>{t('start.subtitle')}</p>
         </div>
 
-        <div role="radiogroup" aria-label="Режим">
-          <div class="label">Режим</div>
+        <div role="radiogroup" aria-label={t('start.mode.label')}>
+          <div class="label">{t('start.mode.label')}</div>
           <div class="modes">
             <label class="mode">
               <input type="radio" name="mode" checked={mode === 'free'} onChange={() => setMode('free')} />
               <Play aria-hidden="true" />
-              <b>Свободно</b>
-              <span class="d">любое дзёсеки</span>
+              <b>{t('start.mode.free')}</b>
+              <span class="d">{t('start.mode.freeHint')}</span>
             </label>
             <label class="mode">
               <input type="radio" name="mode" checked={mode === 'traps'} disabled={trapsCount === 0} onChange={() => setMode('traps')} />
               <Swords aria-hidden="true" />
-              <b>Ловушки</b>
-              <span class="d">{trapsCount > 0 ? 'бот разыграет известную ловушку' : 'нет базы ловушек'}</span>
+              <b>{t('start.mode.traps')}</b>
+              <span class="d">{t(trapsCount > 0 ? 'start.mode.trapsHint' : 'start.mode.trapsMissing')}</span>
             </label>
             <label class="mode">
               <input type="radio" name="mode" checked={mode === 'random'} disabled={startsCount === 0} onChange={() => setMode('random')} />
               <Dice3 aria-hidden="true" />
-              <b>Случайно</b>
-              <span class="d">{startsCount > 0 ? 'позиция из базы дзёсеки' : 'база стартовых позиций недоступна'}</span>
+              <b>{t('start.mode.random')}</b>
+              <span class="d">{t(startsCount > 0 ? 'start.mode.randomHint' : 'start.mode.startsMissing')}</span>
             </label>
             <label class="mode">
               <input type="radio" name="mode" checked={mode === 'list'} disabled={!listReady} onChange={() => setMode('list')} />
               <ListChecks aria-hidden="true" />
-              <b>Из списка</b>
-              <span class="d">{listReady ? 'выберите дзёсеки' : 'база стартовых позиций недоступна'}</span>
+              <b>{t('start.mode.list')}</b>
+              <span class="d">{t(listReady ? 'start.mode.listHint' : 'start.mode.startsMissing')}</span>
             </label>
           </div>
         </div>
         {mode === 'list' && <StartTree root={startTree} current={current} onCurrent={pick} onStart={start} />}
 
         <div class="options">
-          <div role="radiogroup" aria-label="Угол">
-            <div class="label">Угол</div>
+          <div role="radiogroup" aria-label={t('start.corner.label')}>
+            <div class="label">{t('start.corner.label')}</div>
             <div class={corner === 'random' ? 'corner-picker random' : 'corner-picker'}>
               <MiniBoard />
               {QUADRANTS.map((q) => (
                 <label key={q.value} class={q.cls}>
                   <input type="radio" name="corner" checked={corner === q.value} onChange={() => setCorner(q.value)} />
-                  <span class="sr-only">{q.label}</span>
+                  <span class="sr-only">{t(q.label)}</span>
                 </label>
               ))}
             </div>
@@ -141,21 +144,21 @@ export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, starts
               <label class="chip">
                 <input type="radio" name="corner" checked={corner === 'random'} onChange={() => setCorner('random')} />
                 <Shuffle aria-hidden="true" />
-                Случайный угол
+                {t('start.corner.random')}
               </label>
             </div>
           </div>
 
           <div class="stack">
             <div>
-              <div class="label">Ваш цвет</div>
-              <div class="segmented" role="radiogroup" aria-label="Ваш цвет">
+              <div class="label">{t('start.color.label')}</div>
+              <div class="segmented" role="radiogroup" aria-label={t('start.color.label')}>
                 {COLORS.map((c) => (
                   <label key={c.value}>
                     <input type="radio" name="color" checked={userColor === c.value} onChange={() => setUserColor(c.value)} />
                     {c.stone && <span class={`stone ${c.stone}`} />}
-                    {c.label}
-                    {c.hidden && <span class="sr-only">{c.hidden}</span>}
+                    {t(c.label)}
+                    {c.hidden && <span class="sr-only"> {t(c.hidden)}</span>}
                   </label>
                 ))}
               </div>
@@ -163,8 +166,8 @@ export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, starts
 
             <div>
               <div class="label rank-head">
-                <span id="rank-label">Сила бота</span>
-                <b>{rankLabel(botRank)}</b>
+                <span id="rank-label">{t('start.rank.label')}</span>
+                <b>{rankLabel(botRank, t)}</b>
               </div>
               <input
                 type="range"
@@ -173,29 +176,29 @@ export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, starts
                 step={1}
                 value={rankIndex(botRank)}
                 aria-labelledby="rank-label"
-                aria-valuetext={rankLabel(botRank)}
+                aria-valuetext={rankLabel(botRank, t)}
                 onInput={(e) => setBotRank(rankAt(Number(e.currentTarget.value)))}
               />
               <div class="rank-marks" aria-hidden="true">
                 {RANK_MARKS.map((m) => (
                   <span key={m.rank} style={{ left: `${m.at * 100}%` }}>
-                    {rankLabel(m.rank)}
+                    {rankLabel(m.rank, t)}
                   </span>
                 ))}
               </div>
             </div>
 
-            <div role="radiogroup" aria-label="Окружение">
-              <div class="label">Окружение</div>
+            <div role="radiogroup" aria-label={t('start.environment.label')}>
+              <div class="label">{t('start.environment.label')}</div>
               <div class="chips">
                 <label class="chip">
                   <input type="radio" name="environment" checked />
-                  пустая доска
+                  {t('start.environment.empty')}
                 </label>
                 {SOON_ENVIRONMENTS.map((e) => (
                   <label class="chip" key={e}>
                     <input type="radio" name="environment" disabled />
-                    {e} · скоро
+                    {t('start.environment.soon', { name: t(e) })}
                   </label>
                 ))}
               </div>
@@ -204,9 +207,9 @@ export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, starts
         </div>
 
         <div class="start-actions">
-          {mode === 'list' && <span class="start-pick">{startId ? nodeTitle(current) : 'Выберите группу, ветку или позицию'}</span>}
+          {mode === 'list' && <span class="start-pick">{startId ? nodeTitle(current) : t('start.pickHint')}</span>}
           <button class="primary lg" disabled={!canStart} onClick={start}>
-            Начать тренировку
+            {t('start.begin')}
             <ArrowRight aria-hidden="true" />
           </button>
         </div>

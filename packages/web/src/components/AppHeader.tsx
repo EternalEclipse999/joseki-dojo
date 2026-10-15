@@ -1,14 +1,17 @@
 import { ChevronRight } from 'lucide-preact'
+import { useT } from '../i18n'
+import { LanguageMenu } from './LanguageMenu'
 
 export interface AppHeaderProps {
-  /** Where the player is («Новая тренировка», «Разбор тренировки», …). */
+  /** Where the player is («Новая тренировка», «Разбор тренировки», …), already in the current language. */
   crumb?: string
   /** The «Игра / Настройки» switch; absent during a game and an engine update. */
   nav?: { settings: boolean; onGame: () => void; onSettings: () => void }
 }
 
-/** Spec 4: the brand, the breadcrumb and the section switch on every screen. */
+/** Spec 4: the brand, the breadcrumb, the section switch and the language globe on every screen. */
 export function AppHeader({ crumb, nav }: AppHeaderProps) {
+  const t = useT()
   return (
     <header class="app-header">
       <div class="brand">
@@ -21,16 +24,19 @@ export function AppHeader({ crumb, nav }: AppHeaderProps) {
           </>
         )}
       </div>
-      {nav && (
-        <nav class="segmented" aria-label="Разделы">
-          <button aria-pressed={!nav.settings} onClick={nav.onGame}>
-            Игра
-          </button>
-          <button aria-pressed={nav.settings} onClick={nav.onSettings}>
-            Настройки
-          </button>
-        </nav>
-      )}
+      <div class="header-end">
+        {nav && (
+          <nav class="segmented" aria-label={t('header.sections')}>
+            <button aria-pressed={!nav.settings} onClick={nav.onGame}>
+              {t('header.game')}
+            </button>
+            <button aria-pressed={nav.settings} onClick={nav.onSettings}>
+              {t('header.settings')}
+            </button>
+          </nav>
+        )}
+        <LanguageMenu />
+      </div>
     </header>
   )
 }

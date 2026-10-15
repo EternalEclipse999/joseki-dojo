@@ -1,3 +1,5 @@
+import type { LocalizedText } from './i18n'
+
 export interface EngineSettings {
   path: string
   analysisConfig: string
@@ -18,7 +20,7 @@ export interface SettingsView {
   models: string[]
   lockedVersion: string
   runningVersion: string | null
-  versionWarning: string | null
+  versionWarning: LocalizedText | null
   /** `bot.defaultRank` from the config: the rank preselected on the start screen. */
   defaultBotRank: string
 }
@@ -28,4 +30,4 @@ export interface SettingsUpdate {
   analysis: AnalysisSettings
 }
 
-export type SettingsResponse = { ok: true; settings: SettingsView } | { ok: false; reason: string }
+export type SettingsResponse = { ok: true; settings: SettingsView } | { ok: false; reason: LocalizedText }

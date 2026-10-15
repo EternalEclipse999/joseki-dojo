@@ -2,6 +2,7 @@ import { GitBranch, LoaderCircle } from 'lucide-preact'
 import type { Candidate, MoveVertex, Vertex } from '@joseki-dojo/shared'
 import { isVertex, sameVertex } from '../board-maps'
 import { formatPoints, moveLabel } from '../format'
+import { useI18n } from '../i18n'
 
 export const LABELS = 'ABCDEF'
 
@@ -24,17 +25,18 @@ export interface CandidateListProps {
 
 /** Spec 7 and variations spec 3: the best moves, the selected one's line, a row click plays it, «Ветка» shows its line. */
 export function CandidateList({ candidates, selected, hot, onHot, onBranch, onPlay, gameMove, pending }: CandidateListProps) {
+  const { t, language } = useI18n()
   if (pending) {
     return (
       <p class="pending-line" aria-live="polite">
         <LoaderCircle class="spin" aria-hidden="true" />
-        KataGo считает…
+        {t('review.katagoCalculating')}
       </p>
     )
   }
-  if (candidates.length === 0) return <p class="muted small">нет ходов-кандидатов</p>
+  if (candidates.length === 0) return <p class="muted small">{t('review.noCandidates')}</p>
   return (
-    <ul class="candidates" role="listbox" aria-label="Лучшие ходы">
+    <ul class="candidates" role="listbox" aria-label={t('review.bestMoves')}>
       {candidates.map((c, i) => {
         const v = c.vertex
         const cls = [i === hot && 'hot', i === selected && 'selected'].filter(Boolean).join(' ')
@@ -57,20 +59,20 @@ export function CandidateList({ candidates, selected, hot, onHot, onBranch, onPl
             onBlur={(e) => e.target === e.currentTarget && onHot(null)}
           >
             <span class="letter">{LABELS[i]}</span>
-            <span>{moveLabel(v)}</span>
-            {gameMove !== null && sameVertex(v, gameMove) && <span class="badge">ваш ход</span>}
-            {i === 0 ? <span class="best">лучший</span> : <span class="loss">−{formatPoints(c.loss)}</span>}
+            <span>{moveLabel(v, t)}</span>
+            {gameMove !== null && sameVertex(v, gameMove) && <span class="badge">{t('review.yourMove')}</span>}
+            {i === 0 ? <span class="best">{t('review.best')}</span> : <span class="loss">−{formatPoints(c.loss, language)}</span>}
             {isVertex(v) && (
               <button
                 class="play"
-                aria-label={`Ветка ${moveLabel(v)}`}
+                aria-label={t('review.branch.of', { move: moveLabel(v, t) })}
                 onClick={(e) => {
                   e.stopPropagation()
                   onBranch(i)
                 }}
               >
                 <GitBranch aria-hidden="true" />
-                Ветка
+                {t('review.branch.button')}
               </button>
             )}
           </li>

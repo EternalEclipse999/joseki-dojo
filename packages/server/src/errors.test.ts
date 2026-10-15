@@ -6,9 +6,12 @@ import { SessionError } from './session/session'
 
 describe('toErrorMessage', () => {
   it('maps known errors to protocol codes', () => {
-    expect(toErrorMessage(new IllegalMoveError('Ko prevented'))).toEqual({ type: 'error', code: 'illegal_move', message: 'Недопустимый ход' })
-    expect(toErrorMessage(new SessionError('Сейчас ход бота', 'not_your_turn'))).toEqual({ type: 'error', code: 'not_your_turn', message: 'Сейчас ход бота' })
-    expect(toErrorMessage(new EngineError('boom', 'engine_failed'))).toEqual({ type: 'error', code: 'engine_error', message: 'boom' })
-    expect(toErrorMessage(new Error('x'))).toEqual({ type: 'error', code: 'internal_error', message: 'x' })
+    expect(toErrorMessage(new IllegalMoveError('Ko prevented'))).toEqual({ type: 'error', code: 'illegal_move', text: { key: 'error.move.illegal' } })
+    expect(toErrorMessage(new SessionError({ key: 'error.move.notYourTurn' }, 'not_your_turn'))).toEqual({ type: 'error', code: 'not_your_turn', text: { key: 'error.move.notYourTurn' } })
+    expect(toErrorMessage(new EngineError({ key: 'error.engine.stopped' }, 'engine_failed'))).toEqual({ type: 'error', code: 'engine_error', text: { key: 'error.engine.stopped' } })
+  })
+
+  it('sends a foreign error as error.internal with its text as detail', () => {
+    expect(toErrorMessage(new Error('ECONNRESET'))).toEqual({ type: 'error', code: 'internal_error', text: { key: 'error.internal', params: { detail: 'ECONNRESET' } } })
   })
 })

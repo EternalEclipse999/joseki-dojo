@@ -2,28 +2,37 @@
 
 Joseki Dojo helps you practise joseki (standard corner sequences in Go). You play out a corner against KataGo that plays like a human of the rank you choose, so it makes human mistakes. Afterwards the app shows how many points each move cost, how you should have played, and whether you punished your opponent's mistakes.
 
-**The app is in Russian for now.** Buttons and messages are in Russian; this guide uses the Russian button names, with a translation in brackets.
+**The app speaks six languages.** English is the default; Russian, Simplified Chinese, Traditional Chinese, Korean and Japanese are available too (see [Languages](#languages)). This guide names buttons and messages by their Russian text, with the English text of the default interface in brackets.
 
 ## Install on Windows
 
 1. Open the [latest release](https://github.com/EternalEclipse999/joseki-dojo/releases/latest). Scroll down to **Assets** and click `Joseki-Dojo-Setup-X.Y.Z.exe` (X.Y.Z is the version number, for example 0.1.0). Ignore the other files. The file lands in your **Downloads** folder; double-click it there.
 2. Your browser may say the file is "not commonly downloaded". This happens because the app is new and not signed with a paid certificate. Open the browser's download list, click **Keep**, then **Keep anyway**.
 3. Windows may show **"Windows protected your PC"**. Click **More info**, then **Run anyway**. You will not see this again when you update from inside the app.
-4. The app installs for your Windows user only (no administrator password needed), adds shortcuts to the Start menu and the desktop, and opens.
-5. On the first launch the app says **«Нужно скачать движок KataGo»** (KataGo needs to be downloaded). Click **«Установить»** (Install). The app downloads about 210 MB (two KataGo builds and two neural networks), checks every file, and finds out whether your processor or your graphics card runs KataGo faster. The download takes a few minutes, and setting up a graphics card can take a few more: the first start can take 5-10 minutes in total. Keep the window open. When it is done, the start screen opens and you can play.
+4. The installer first asks for the language (English is preselected); you can change it later (see [Languages](#languages)). The app installs for your Windows user only (no administrator password needed), adds shortcuts to the Start menu and the desktop, and opens in the language you chose.
+5. On the first launch the app says **«Нужно скачать движок KataGo»** (The KataGo engine needs to be downloaded). Click **«Установить»** (Install). The app downloads about 210 MB (two KataGo builds and two neural networks), checks every file, and finds out whether your processor or your graphics card runs KataGo faster. The download takes a few minutes, and setting up a graphics card can take a few more: the first start can take 5-10 minutes in total. Keep the window open. When it is done, the start screen opens and you can play.
 
 ## Install on Linux
 
 1. Open the [latest release](https://github.com/EternalEclipse999/joseki-dojo/releases/latest), scroll down to **Assets** and download `Joseki-Dojo-X.Y.Z.AppImage`.
 2. Allow it to run: right-click the file, choose **Properties → Permissions**, and tick **Allow executing file as program**. Or in a terminal: `chmod +x Joseki-Dojo-*.AppImage`
 3. Double-click the file to start the app.
-4. On the first launch the app says **«Нужно скачать движок KataGo»** (KataGo needs to be downloaded). Click **«Установить»** (Install). The app downloads about 280 MB, checks every file, and finds out whether your processor or your graphics card runs KataGo faster. The download takes a few minutes: the first start can take 5-10 minutes in total. Keep the window open. When it is done, the start screen opens and you can play.
+4. On the first start the app asks for the language (see [Languages](#languages)).
+5. Then the app says **«Нужно скачать движок KataGo»** (The KataGo engine needs to be downloaded). Click **«Установить»** (Install). The app downloads about 280 MB, checks every file, and finds out whether your processor or your graphics card runs KataGo faster. The download takes a few minutes: the first start can take 5-10 minutes in total. Keep the window open. When it is done, the start screen opens and you can play.
+
+Chinese, Japanese and Korean need CJK fonts; if you see squares instead of characters, install the Noto CJK fonts (`sudo apt install fonts-noto-cjk` on Debian/Ubuntu).
 
 ## Updating
 
-When a new version is out, a bar appears at the top of the window: **«Доступна версия X.Y.Z»** (version X.Y.Z is available). Click **«Обновить»** (Update). The app downloads the update, shows the progress, and restarts in the new version. Your settings, training history and KataGo stay as they were.
+When a new version is out, a bar appears at the top of the window: **«Доступна версия X.Y.Z»** (Version X.Y.Z is available). Click **«Обновить»** (Update). The app downloads the update, shows the progress, and restarts in the new version. Your settings, training history and KataGo stay as they were.
 
-Sometimes a new version also brings a newer tested KataGo. Then the bar says **«Доступна новая проверенная версия KataGo»** (a new tested KataGo version is available); click **«Обновить движок»** (Update engine).
+Sometimes a new version also brings a newer tested KataGo. Then the bar says **«Доступна новая проверенная версия KataGo»** (A new tested version of KataGo is available); click **«Обновить движок»** (Update the engine).
+
+## Languages
+
+The app has six interface languages: English (the default), Russian (Русский), Simplified Chinese (简体中文), Traditional Chinese (繁體中文), Korean (한국어) and Japanese (日本語). To change the language, click the globe button in the header or open **Settings → Language** («Настройки» → «Язык»). The switch is immediate: no restart, and the names of the start positions change as well. The language is saved with your settings.
+
+The Windows installer asks for the language and the app takes it on its first start. When the app has no saved language (the first start of the Linux AppImage, a start from sources, or the first start after an update from a version that had no languages), it first shows the screen **Choose your language**. On Linux, Chinese, Japanese and Korean need extra fonts (see [Install on Linux](#install-on-linux)).
 
 ## Uninstall
 
@@ -37,15 +46,15 @@ Uninstalling keeps your data (KataGo, settings, training history). To remove it 
 
 ## Variations in the review
 
-In the review you can try your own moves instead of the game. Click a point on the board, or press **«Сыграть»** (Play) next to one of KataGo's suggestions: this starts a variation from that position. With **«Отвечает KataGo»** (KataGo replies) on, KataGo answers your move; the answer comes once its analysis reaches the review's visits, or at once when you press **«Ответить сейчас»** (Reply now). The positions of the variation keep being analysed deeper while you look at them, and **«Глубже»** (Deeper) does the same for a move of the game. Use the arrows to step through the variation and **«Вернуться к партии»** (Back to the game) to leave it.
+In the review you can try your own moves instead of the game. Click a point on the board, or click a row in the list of KataGo's best moves: this starts a variation from that position. The **«Ветка»** (Branch) button on a row shows the line KataGo expects after that move, without playing it. With **«Отвечает KataGo»** (KataGo replies) on, KataGo answers your move; the answer comes once its analysis reaches the review's visits, or at once when you press **«Ответить сейчас»** (Reply now). The positions of the variation keep being analysed deeper while you look at them, and **«Глубже»** (Deeper) does the same for a move of the game. Use the arrows to step through the variation and **«Вернуться к партии»** (Back to the game) to leave it.
 
 ## Troubleshooting
 
-- **The analysis after a game is slow.** Open **«Настройки»** (Settings) and lower **«Визиты на позицию в разборе»** (visits per position in the review), for example to 100: the analysis gets faster and a little less precise. If variations in the review are slow, lower **«Предел визитов в вариантах»** (visits limit for variations) or press **«Ответить сейчас»** (Reply now) instead of waiting for KataGo. To use your graphics card, press **«Подобрать движок заново»** (Pick the engine again): the app measures the processor and the graphics card once more and keeps the faster one. If your graphics card could not run KataGo (often an old graphics driver without OpenCL), the processor is used.
+- **The analysis after a game is slow.** Open **«Настройки»** (Settings) and lower **«Визиты на позицию в разборе»** (visits per position in the review), for example to 100: the analysis gets faster and a little less precise. If variations in the review are slow, lower **«Предел визитов в вариантах»** (visit limit in variations) or press **«Ответить сейчас»** (Reply now) instead of waiting for KataGo. To use your graphics card, press **«Подобрать движок заново»** (Choose the engine again): the app measures the processor and the graphics card once more and keeps the faster one. If your graphics card could not run KataGo (often an old graphics driver without OpenCL), the processor is used.
 - **"Install" fails.** The screen says why. Most often it is the internet connection: check it and click **«Попробовать снова»** (Try again). Files that were already downloaded and checked are not downloaded again.
 - **The AppImage does not start on Linux.** Some distributions need FUSE 2 for AppImages, e.g. on Ubuntu: `sudo apt install libfuse2t64` (Ubuntu 24.04) or `sudo apt install libfuse2` (22.04).
 - **Double-clicking the AppImage does nothing (Ubuntu 24.04 or newer).** If it does not start, open a terminal in the folder with the file and run `./Joseki-Dojo-X.Y.Z.AppImage --no-sandbox`. Newer Ubuntu releases restrict the sandbox that Electron apps use; this option turns it off for this app.
-- **The engine screen says KataGo does not work.** Press **«Подобрать движок заново»** (Pick the engine again): the app repairs the setup by itself.
+- **The engine screen says KataGo does not work.** Press **«Подобрать движок заново»** (Choose the engine again): the app repairs the setup by itself.
 - **Logs** are in the data folder (see [Uninstall](#uninstall)): `data/joseki-dojo.log` for the app, `data/katago-logs/` for KataGo.
 
 ## For developers
@@ -62,7 +71,7 @@ npm install
 npm start          # builds the web UI and serves it at http://127.0.0.1:5179
 ```
 
-On the first start the page offers to install KataGo, exactly like the desktop app. Developers can also run `npm run setup` in a terminal: it asks which KataGo build to download (or takes the path of one you have), checks the files and measures the speed. In both cases everything lives in the repository: `config.local.json`, `data/`, `engines/`.
+On the first start the page asks for the language (see [Languages](#languages)) and then offers to install KataGo, exactly like the desktop app. Developers can also run `npm run setup` in a terminal: it asks which KataGo build to download (or takes the path of one you have), checks the files and measures the speed. In both cases everything lives in the repository: `config.local.json`, `data/`, `engines/`.
 
 Other settings live in `config.local.json` (defaults: `config.example.json`):
 
@@ -73,6 +82,7 @@ Other settings live in `config.local.json` (defaults: `config.example.json`):
 | `thresholds` | inaccuracy / mistake / blunder limits and the "punished" limit, in points |
 | `bot.defaultRank`, `bot.temperature` | the bot's default rank and the spread of its moves |
 | `maxSessionMoves` | safety limit: after this many moves the game goes to the review |
+| `ui.language` | the interface language: `en`, `ru`, `zh-Hans`, `zh-Hant`, `ko` or `ja`. The app writes it itself (from the first-start screen, the Windows installer, Settings or the globe), so it is not in `config.example.json`; without it, and without an installer choice, the app asks on the first start |
 
 ### Commands
 
@@ -124,9 +134,13 @@ The one-time run on the GPU machine:
 
 ### Start positions base
 
-The start modes read `packages/server/bases/starts.jdb`, a JDB base of kind `starts`. A node of category `start` is a start position: its path, in canonical form, is the moves put on the board. A node of category `dubious` is a start that ends with the opponent's dubious move; it is used only by «Случайно» (about one pick in ten), with the colours swapped so that the user answers that move. The ids are the same as for traps (the first 8 hex characters of the SHA-1 of the canonical path).
+The start modes read `packages/server/bases/starts.jdb`, a JDB base of kind `starts`. A node of category `start` is a start position: its path, in canonical form, is the moves put on the board. A node of category `dubious` is a start that ends with the opponent's dubious move; it is used only by «Случайно» (Random; about one pick in ten), with the colours swapped so that the user answers that move. The ids are the same as for traps (the first 8 hex characters of the SHA-1 of the canonical path).
 
-`packages/server/bases/starts-list.json` is the named list for «Из списка»: a JSON object with `positions` — `{ group, name, short, moves, rare }` in chapter order, with the groups `4-4`, `3-4`, `3-3`, `5-4` and `5-3`, canonical moves in GTP, the caption `short` for the tree and `rare: true` for positions pros rarely play — and `branches` — `{ moves, name }`, the names of tree nodes that are not positions (an approach, say). A position whose path is not a normal start of the base, or a branch with no positions under it, is skipped with a log line. A missing or broken base turns both start modes off; a missing or broken list turns off only «Из списка».
+`packages/server/bases/starts-list.json` is the named list for «Из списка» (From the list): a JSON object with `positions` — `{ group, name, short, moves, rare }` in chapter order, with the groups `4-4`, `3-4`, `3-3`, `5-4` and `5-3`, canonical moves in GTP, the caption `short` for the tree and `rare: true` for positions pros rarely play — and `branches` — `{ moves, name }`, the names of tree nodes that are not positions (an approach, say). A position whose path is not a normal start of the base, or a branch with no positions under it, is skipped with a log line. A missing or broken base turns both start modes off; a missing or broken list turns off only «Из списка».
+
+The names in `starts-list.json` are Russian. `packages/server/bases/starts-i18n.json` holds the names in the other five languages (`en`, `zh-Hans`, `zh-Hant`, `ko`, `ja`): an object keyed by the `moves` string of a position or a branch of the list, with `{ name, short }` per language (a branch has only `name`). A position or branch added to the list needs its translations there: `packages/server/src/starts/shipped-names.test.ts` fails when one is missing, or when the file names something that is not on the list. If the `moves` of an entry change, change its key too. A missing translation falls back to English, then to the Russian name, with a log line.
+
+The scripts that build the list (`chapters.mjs` and the others in the `joseki-dojo-starts` folder, which the maintainer keeps next to the repository) are not part of the repository. When you change a name in `starts-list.json`, make the same change in `chapters.mjs`, or the next rebuild brings the old name back.
 
 ```bash
 npm run jdb:dump -- packages/server/bases/starts.jdb

@@ -205,10 +205,10 @@ describe('SessionService', () => {
 
   it('reports a failed bot move and retries it on resync', async () => {
     const { service, engine, errors } = setup()
-    engine.fail = { when: isHumanQuery, error: new EngineError('boom', 'query_error') }
+    engine.fail = { when: isHumanQuery, error: new EngineError({ key: 'error.internal', params: { detail: 'boom' } }, 'query_error') }
     const v = service.start(settings())
     service.playUserMove(v.id, [15, 3])
-    await vi.waitFor(() => expect(errors()).toEqual([{ type: 'error', code: 'engine_error', message: 'boom' }]))
+    await vi.waitFor(() => expect(errors()).toEqual([{ type: 'error', code: 'engine_error', text: { key: 'error.internal', params: { detail: 'boom' } } }]))
     expect(service.view(v.id).botThinking).toBe(false)
     expect(service.view(v.id).moves).toHaveLength(1)
     service.resync(v.id)

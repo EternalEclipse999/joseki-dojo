@@ -4,6 +4,8 @@ import { basename, dirname, join, relative, resolve } from 'node:path'
 import { Readable, Transform, Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web'
+import type { LocalizedText } from '@joseki-dojo/shared'
+import { TextError } from '../text-error'
 import { unzip } from './unzip'
 
 /** Windows: antivirus or a just-closed process may hold a file for a moment, so removal and rename are retried. */
@@ -51,7 +53,7 @@ export interface DownloadOptions {
   fetch?: typeof fetch
 }
 
-export const OFFLINE_MESSAGE = 'Нет подключения к интернету или сервер недоступен'
+export const OFFLINE: LocalizedText = { key: 'install.error.offline' }
 const NETWORK_CODES = /(ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|UND_ERR_CONNECT_TIMEOUT|ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_CONNECTION_CLOSED|ERR_CONNECTION_TIMED_OUT|ERR_NETWORK_CHANGED|ERR_NETWORK_ACCESS_DENIED|ERR_PROXY_CONNECTION_FAILED|ERR_TIMED_OUT)/
 
 /** The technical cause of a failed fetch (undici hides it in `cause`), for the log. */
@@ -105,15 +107,16 @@ export async function download(url: string, dest: string, sha256: string, option
     }, stallTimeoutMs)
   }
   const fail = (cause: unknown): Error => {
-    if (signal?.aborted) return new Error(`Загрузка ${url} остановлена`)
-    if (stalled) return new Error(`Не удалось скачать ${url}: загрузка зависла, нет данных ${Math.round(stallTimeoutMs / 1000)} с`)
-    if (cause instanceof Error && cause.message.startsWith('Не удалось скачать')) return cause
+    const options = cause === undefined ? undefined : { cause }
+    if (signal?.aborted) return new TextError({ key: 'install.error.aborted', params: { url } }, options)
+    if (stalled) return new TextError({ key: 'install.error.stalled', params: { url, seconds: Math.round(stallTimeoutMs / 1000) } }, options)
+    if (cause instanceof TextError && cause.text.key === 'install.error.download') return cause
     const detail = causeText(cause)
     if (isNetworkFailure(cause)) {
       log(`Не удалось скачать ${url}: ${detail}`)
-      return new Error(OFFLINE_MESSAGE)
+      return new TextError(OFFLINE, options)
     }
-    return new Error(`Не удалось скачать ${url}: ${detail}`)
+    return new TextError({ key: 'install.error.download', params: { url, detail } }, options)
   }
   try {
     if (signal?.aborted) throw fail(undefined)
@@ -124,7 +127,7 @@ export async function download(url: string, dest: string, sha256: string, option
     } catch (err) {
       throw fail(err)
     }
-    if (!res.ok || !res.body) throw new Error(`Не удалось скачать ${url}: HTTP ${res.status}`)
+    if (!res.ok || !res.body) throw new TextError({ key: 'install.error.download', params: { url, detail: `HTTP ${res.status}` } })
     const total = Number(res.headers.get('content-length') ?? 0)
     const hash = createHash('sha256')
     let received = 0
@@ -150,7 +153,7 @@ export async function download(url: string, dest: string, sha256: string, option
       throw fail(err)
     }
     const actual = hash.digest('hex')
-    if (actual !== expected) throw new Error(`${name}: SHA-256 ${actual} не совпадает с katago.lock.json (${expected})`)
+    if (actual !== expected) throw new TextError({ key: 'install.error.sha', params: { name, actual, expected } })
     renameSync(partial, dest)
   } catch (err) {
     rmSync(partial, { force: true })
@@ -188,7 +191,7 @@ export async function extractBuild(zipFile: string, dir: string): Promise<string
   try {
     await unzip(zipFile, partial)
     const found = findKatagoBinary(partial)
-    if (!found) throw new Error(`В архиве нет исполняемого файла KataGo: ${basename(zipFile)}`)
+    if (!found) throw new TextError({ key: 'install.error.noExecutable', params: { name: basename(zipFile) } })
     rmSync(dir, { recursive: true, force: true, ...RETRY })
     await renameRetrying(partial, dir)
     const bin = join(dir, relative(partial, found))

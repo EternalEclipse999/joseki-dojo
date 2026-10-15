@@ -1,4 +1,4 @@
-import type { AppUpdateState } from '@joseki-dojo/shared'
+import type { AppUpdateState, MessageKey } from '@joseki-dojo/shared'
 
 /** What the controller asks electron-updater (or a test) to do. */
 export interface UpdateActions {
@@ -10,11 +10,7 @@ export interface UpdateActions {
 
 type Phase = 'check' | 'download' | 'install'
 
-const FAILED: Record<Phase, string> = {
-  check: 'Не удалось проверить обновления',
-  download: 'Не удалось скачать обновление',
-  install: 'Не удалось установить обновление',
-}
+const FAILED: Record<Phase, MessageKey> = { check: 'update.error.check', download: 'update.error.download', install: 'update.error.install' }
 
 /** First line of an updater error, short enough for the update bar. */
 function shortMessage(err: unknown): string {
@@ -112,10 +108,11 @@ export class UpdateController {
     if (this.state.status === 'installing' && !fromAction) return
     // A failed background check must not hide a version that is already on offer.
     if (this.phase === 'check' && this.version) return
-    const message = `${FAILED[this.phase]}: ${shortMessage(err)}`
-    if (this.state.status === 'error' && this.state.message === message) return
+    const key = FAILED[this.phase]
+    const detail = shortMessage(err)
+    if (this.state.status === 'error' && this.state.text.key === key && this.state.text.params?.detail === detail) return
     this.errorPhase = this.phase
-    this.set({ status: 'error', message })
+    this.set({ status: 'error', text: { key, params: { detail } } })
   }
 
   private set(state: AppUpdateState): void {

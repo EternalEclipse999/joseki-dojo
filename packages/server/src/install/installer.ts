@@ -1,12 +1,13 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
 import { basename, join } from 'node:path'
-import type { InstallFile, InstallStatus, InstallStep } from '@joseki-dojo/shared'
+import type { InstallFile, InstallStatus, InstallStep, LocalizedText } from '@joseki-dojo/shared'
 import { variationVisitsFor, type AppConfig } from '../config'
 import { KataGoEngine, type EngineCommand } from '../engine/engine'
 import { compareVersions, missingFiles, MIN_KATAGO_VERSION, type HealthMonitor } from '../engine/health'
 import { buildsFor, lockId, type KataGoLock, type LockedBuild } from '../engine/lock'
 import type { SettingsService } from '../settings/service'
+import { TextError, textOf } from '../text-error'
 import { measureVisitsPerSecond, visitsForBudget } from './calibrate'
 import { download, extractBuild } from './download'
 import { analysisConfigText, searchThreadsFor } from './katago-config'
@@ -44,7 +45,7 @@ interface PlannedDownload {
   url: string
   sha256: string
   dest: string
-  label: string
+  label: LocalizedText
   size: number
 }
 
@@ -70,9 +71,9 @@ export function engineUpdateAvailable(config: AppConfig, lock: KataGoLock): bool
 export class InstallerService {
   private step: InstallStep = 'idle'
   private files: InstallFile[] = []
-  private error: string | null = null
+  private error: LocalizedText | null = null
   private kind: BuildKind | null = null
-  private note: string | null = null
+  private note: LocalizedText | null = null
   private running: Promise<void> | null = null
   private bench: KataGoEngine | null = null
   private closed = false
@@ -138,11 +139,11 @@ export class InstallerService {
     const builds = buildsFor(this.d.lock, platform)
     const cpu = builds.find((b) => b.kind === 'cpu')
     const gpu = builds.find((b) => b.id === 'opencl')
-    if (!cpu) throw new Error(`Для этой системы (${platform}) нет готовых сборок KataGo`)
+    if (!cpu) throw new TextError({ key: 'install.error.noBuild', params: { platform } })
     const { version } = this.d.lock.katago
     const dir = this.d.enginesDir
-    const chosen: [LockedBuild, string][] = [[cpu, 'KataGo для процессора']]
-    if (gpu) chosen.push([gpu, 'KataGo для видеокарты (OpenCL)'])
+    const chosen: [LockedBuild, LocalizedText][] = [[cpu, { key: 'install.file.cpu' }]]
+    if (gpu) chosen.push([gpu, { key: 'install.file.gpu' }])
     const plan: Plan = {
       downloads: [],
       builds: [],
@@ -155,8 +156,8 @@ export class InstallerService {
       plan.builds.push({ kind: b.kind, zip, dir: join(dir, `katago-${version}-${b.id}`) })
     }
     const { main, human } = this.d.lock.models
-    plan.downloads.push({ url: main.url, sha256: main.sha256, dest: plan.mainModel, label: 'Основная сеть', size: main.size })
-    plan.downloads.push({ url: human.url, sha256: human.sha256, dest: plan.humanModel, label: 'Human-сеть', size: human.size })
+    plan.downloads.push({ url: main.url, sha256: main.sha256, dest: plan.mainModel, label: { key: 'install.file.mainNet' }, size: main.size })
+    plan.downloads.push({ url: human.url, sha256: human.sha256, dest: plan.humanModel, label: { key: 'install.file.humanNet' }, size: human.size })
     return plan
   }
 
@@ -195,7 +196,7 @@ export class InstallerService {
       }
 
       const speeds = new Map<BuildKind, number>()
-      const errors: string[] = []
+      const failures: unknown[] = []
       for (const kind of ['cpu', 'gpu'] as const) {
         const bin = binaries.get(kind)
         if (!bin) continue
@@ -207,12 +208,16 @@ export class InstallerService {
           this.log(`[install] ${kind}: ${Math.round(vps)} визитов/с`)
         } catch (err) {
           // Spec 5.2: a GPU that does not start (no card, no driver) only means the CPU build is used.
-          errors.push(message(err))
+          failures.push(err)
           this.log(`[install] ${kind}: ${message(err)}`)
         }
       }
       const ranked = [...speeds].sort((a, b) => b[1] - a[1])
-      if (ranked.length === 0) throw new Error(`KataGo не запустился: ${errors[0] ?? 'нет подходящей сборки'}`)
+      if (ranked.length === 0) {
+        const [first] = failures
+        const detail = failures.length > 0 ? textOf(first) : { key: 'install.error.noSuitableBuild' as const }
+        throw new TextError({ key: 'install.error.notStarted', params: { detail } }, failures.length > 0 ? { cause: first } : undefined)
+      }
       const [kind, vps] = ranked[0]
 
       this.alive()
@@ -220,9 +225,9 @@ export class InstallerService {
       const katago = { path: binaries.get(kind)!, analysisConfig: this.analysisConfig(kind), mainModel: plan.mainModel, humanModel: plan.humanModel }
       const visits = visitsForBudget(vps)
       const r = await this.d.settings.switchTo(katago, { ...visits, variationVisits: variationVisitsFor(visits.reviewVisits) }, { kind, lockId: lockId(this.d.lock) })
-      if (!r.ok) throw new Error(r.reason)
+      if (!r.ok) throw new TextError(r.reason)
       this.kind = kind
-      if (binaries.has('gpu') && !speeds.has('gpu')) this.note = 'Используется процессор: видеокарта не запустилась.'
+      if (binaries.has('gpu') && !speeds.has('gpu')) this.note = { key: 'install.note.cpuFallback' }
       this.step = 'done'
     } catch (err) {
       this.fail(err)
@@ -256,7 +261,7 @@ export class InstallerService {
     try {
       engine.start()
       const version = await engine.version()
-      if (compareVersions(version, MIN_KATAGO_VERSION) < 0) throw new Error(`нужна KataGo ${MIN_KATAGO_VERSION} или новее, а запущена ${version}`)
+      if (compareVersions(version, MIN_KATAGO_VERSION) < 0) throw new TextError({ key: 'install.error.versionTooOld', params: { min: MIN_KATAGO_VERSION, version } })
       return await measureVisitsPerSecond(engine, this.d.benchmarkVisits)
     } finally {
       this.bench = null
@@ -269,12 +274,12 @@ export class InstallerService {
   }
 
   private alive(): void {
-    if (this.closed) throw new Error('Сервер остановлен')
+    if (this.closed) throw new TextError({ key: 'install.error.serverStopped' })
   }
 
   private fail(err: unknown): void {
-    this.error = message(err)
+    this.error = textOf(err)
     this.step = 'failed'
-    this.log(`[install] ${this.error}`)
+    this.log(`[install] ${message(err)}`)
   }
 }

@@ -83,9 +83,9 @@ describe('SettingsService', () => {
 
   it('rejects invalid input without touching the engine', async () => {
     const { settings, update, inst } = await setup()
-    expect(await settings.apply(update(inst.main, { reviewVisits: 0 }))).toEqual({ ok: false, reason: 'Число визитов должно быть целым от 1 до 100000' })
+    expect(await settings.apply(update(inst.main, { reviewVisits: 0 }))).toEqual({ ok: false, reason: { key: 'settings.error.visits', params: { max: 100000 } } })
     const missing = join(inst.models, 'missing.bin.gz')
-    expect(await settings.apply(update(missing))).toEqual({ ok: false, reason: `Нет основной сети KataGo: ${missing}` })
+    expect(await settings.apply(update(missing))).toEqual({ ok: false, reason: { key: 'health.missing.mainModel', params: { path: missing } } })
   })
 
   it('switches KataGo, saves the config and warns about an unverified version', async () => {
@@ -94,7 +94,7 @@ describe('SettingsService', () => {
     expect(r.ok).toBe(true)
     if (!r.ok) return
     expect(r.settings.runningVersion).toBe('1.18.2')
-    expect(r.settings.versionWarning).toContain('1.18.2')
+    expect(r.settings.versionWarning).toEqual({ key: 'settings.versionWarning', params: { running: '1.18.2', locked: '1.18.1' } })
     expect(config.katago.mainModel).toBe(inst.next)
     expect(config.katago.commandOverride).toBeUndefined()
     expect(config.analysis).toEqual({ reviewVisits: 40, endVisits: 20, variationVisits: 400 })
@@ -109,7 +109,7 @@ describe('SettingsService', () => {
     const r = await settings.apply(update(inst.broken))
     expect(r.ok).toBe(false)
     if (r.ok) return
-    expect(r.reason).toContain('human')
+    expect(r.reason).toEqual({ key: 'health.noHumanNet' })
     expect(config.katago.mainModel).toBe(before)
     expect(existsSync(configFile)).toBe(false)
     expect(health.get().state).toBe('ready')
@@ -125,7 +125,7 @@ describe('SettingsService', () => {
     const r = await settings.apply(update(inst.next))
     expect(r.ok).toBe(false)
     if (r.ok) return
-    expect(r.reason).toContain('Не удалось сохранить')
+    expect(r.reason).toMatchObject({ key: 'settings.error.saveFailed' })
     expect(config.katago.mainModel).toBe(before)
     expect(config.analysis).toBe(analysisObj)
     expect(config.analysis).toEqual(analysisBefore)
@@ -173,7 +173,7 @@ describe('SettingsService', () => {
 
   it('refuses a variations limit outside 1..100000', async () => {
     const { settings, inst, update } = await setup()
-    const reason = 'Число визитов должно быть целым от 1 до 100000'
+    const reason = { key: 'settings.error.visits', params: { max: 100000 } }
     expect(await settings.apply(update(inst.main, { variationVisits: 0 }))).toEqual({ ok: false, reason })
     expect(await settings.apply(update(inst.main, { variationVisits: 100001 }))).toEqual({ ok: false, reason })
   })

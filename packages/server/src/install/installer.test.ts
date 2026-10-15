@@ -53,7 +53,7 @@ describe('InstallerService', () => {
 
     expect(s.error).toBeNull()
     expect(s).toMatchObject({ step: 'done', kind: 'gpu', installed: true, updateAvailable: false })
-    expect(s.files.map((f) => f.label)).toEqual(['KataGo для процессора', 'KataGo для видеокарты (OpenCL)', 'Основная сеть', 'Human-сеть'])
+    expect(s.files.map((f) => f.label.key)).toEqual(['install.file.cpu', 'install.file.gpu', 'install.file.mainNet', 'install.file.humanNet'])
     for (const f of s.files) expect(f.done && f.total > 0 && f.received === f.total).toBe(true)
     expect(fixture.requests.some((p) => p.includes('cuda'))).toBe(false)
 
@@ -88,7 +88,7 @@ describe('InstallerService', () => {
       step: 'done',
       kind: 'cpu',
       error: null,
-      note: 'Используется процессор: видеокарта не запустилась.',
+      note: { key: 'install.note.cpuFallback' },
     })
     expect(JSON.parse(readFileSync(configFile, 'utf8')).setup.kind).toBe('cpu')
   })
@@ -116,7 +116,7 @@ describe('InstallerService', () => {
     installer.start()
     const s = await installer.settled()
     expect(s.step).toBe('failed')
-    expect(s.error).toMatch(/^KataGo не запустился: KataGo аварийно завершился/)
+    expect(s.error).toMatchObject({ key: 'install.error.notStarted', params: { detail: { key: 'error.engine.crashed' } } })
     expect(s.installed).toBe(false)
     expect(existsSync(configFile)).toBe(false)
     expect(health.get().state).toBe('failed')
@@ -128,7 +128,7 @@ describe('InstallerService', () => {
     installer.start()
     const failed = await installer.settled()
     expect(failed.step).toBe('failed')
-    expect(failed.error).toBe(`Не удалось скачать ${fixture.lock.models.human.url}: HTTP 500`)
+    expect(failed.error).toEqual({ key: 'install.error.download', params: { url: fixture.lock.models.human.url, detail: 'HTTP 500' } })
     expect(failed.files.map((f) => f.done)).toEqual([true, true, true, false])
     expect(existsSync(join(enginesDir, 'models', 'main.bin.gz'))).toBe(true)
     expect(existsSync(join(enginesDir, 'models', 'human.bin.gz.part'))).toBe(false)
@@ -149,7 +149,7 @@ describe('InstallerService', () => {
     installer.start()
     const s = await installer.settled()
     expect(s.step).toBe('failed')
-    expect(s.error).toMatch(/^main\.bin\.gz: SHA-256 [0-9a-f]{64} не совпадает с katago\.lock\.json/)
+    expect(s.error).toEqual({ key: 'install.error.sha', params: { name: 'main.bin.gz', actual: expect.stringMatching(/^[0-9a-f]{64}$/), expected: '0'.repeat(64) } })
   })
 
   it('ignores a second start while installing', async () => {
@@ -163,7 +163,7 @@ describe('InstallerService', () => {
   it('fails at once on a system without KataGo builds', async () => {
     const { deps } = await setup()
     const mac = new InstallerService({ ...deps, platform: 'darwin' })
-    expect(mac.start()).toMatchObject({ step: 'failed', error: 'Для этой системы (darwin) нет готовых сборок KataGo' })
+    expect(mac.start()).toMatchObject({ step: 'failed', error: { key: 'install.error.noBuild', params: { platform: 'darwin' } } })
   })
 
   it('stops a running download on close, removes the partial file and never restarts KataGo', async () => {
@@ -240,10 +240,10 @@ describe('InstallerService', () => {
   it('reports the reason when KataGo rejects the chosen build and leaves the config alone', async () => {
     const { installer, configFile, config, deps, health } = await setup()
     const before = { ...config.katago }
-    vi.spyOn(deps.settings, 'switchTo').mockResolvedValue({ ok: false, reason: 'не прошла проверка' })
+    vi.spyOn(deps.settings, 'switchTo').mockResolvedValue({ ok: false, reason: { key: 'settings.error.notStarted' } })
     installer.start()
     const s = await installer.settled()
-    expect(s).toMatchObject({ step: 'failed', error: 'не прошла проверка', kind: null })
+    expect(s).toMatchObject({ step: 'failed', error: { key: 'settings.error.notStarted' }, kind: null })
     expect(existsSync(configFile)).toBe(false)
     expect(config.katago).toEqual(before)
     expect(health.get().state).toBe('failed')
@@ -300,10 +300,10 @@ describe('InstallerService: re-pick in update mode', () => {
   it('restores the live engine on its previous command when the re-pick fails', async () => {
     const { installer, live, health, deps, config } = await installed()
     const before = { ...config.katago }
-    vi.spyOn(deps.settings, 'switchTo').mockResolvedValue({ ok: false, reason: 'не прошла проверка' })
+    vi.spyOn(deps.settings, 'switchTo').mockResolvedValue({ ok: false, reason: { key: 'settings.error.notStarted' } })
     installer.start()
     const s = await installer.settled()
-    expect(s).toMatchObject({ step: 'failed', error: 'не прошла проверка' })
+    expect(s).toMatchObject({ step: 'failed', error: { key: 'settings.error.notStarted' } })
     expect(stopped(live)).toBe(false)
     expect(health.get().state).toBe('ready')
     expect(await live.version()).toBe('1.18.1')

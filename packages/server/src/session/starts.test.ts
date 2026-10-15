@@ -106,10 +106,10 @@ describe('start position sessions', () => {
 
   it('refuses the start modes without a base and a list id that is not on the list', () => {
     const { service } = setup(StartBook.empty())
-    expect(() => service.start(settings({ mode: 'random', startId: undefined }))).toThrow('Стартовые позиции недоступны')
+    expect(() => service.start(settings({ mode: 'random', startId: undefined }))).toThrow(expect.objectContaining({ text: { key: 'error.starts.unavailable' } }))
     const listed = setup().service
-    expect(() => listed.start(settings({ startId: 'nope' }))).toThrow('Такой позиции нет в списке')
-    expect(() => listed.start(settings({ startId: undefined }))).toThrow('Некорректные настройки тренировки')
+    expect(() => listed.start(settings({ startId: 'nope' }))).toThrow(expect.objectContaining({ text: { key: 'error.starts.notOnList' } }))
+    expect(() => listed.start(settings({ startId: undefined }))).toThrow(expect.objectContaining({ text: { key: 'error.settings.invalid' } }))
   })
 
   it('counts a finished session as a show', () => {
@@ -134,7 +134,7 @@ describe('start position sessions', () => {
   it('lets a dubious id through neither the list mode', () => {
     const dubiousId = trapId(['Q16', 'O17', 'O16'].map(V))
     const { service } = setup(StartBook.fromBase(decodeJdb(encodeJdb(testDubiousStartsTree()))).withList(JSON.stringify(TEST_STARTS_LIST), () => {}))
-    expect(() => service.start(settings({ startId: dubiousId }))).toThrow('Такой позиции нет в списке')
+    expect(() => service.start(settings({ startId: dubiousId }))).toThrow(expect.objectContaining({ text: { key: 'error.starts.notOnList' } }))
   })
 })
 

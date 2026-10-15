@@ -1,6 +1,6 @@
-// Writes e2e/starts.test.jdb and e2e/starts-list.test.json: «Тестовое начало» — Q16 R17, on the corner's diagonal, so
-// its coordinates do not depend on the random mirror, Black (the user) to move — and «Тестовое продолжение», one more
-// Black move, under it in the tree.
+// Writes e2e/starts.test.jdb, e2e/starts-list.test.json and its translations e2e/starts-i18n.test.json: «Тестовое
+// начало» — Q16 R17, on the corner's diagonal, so its coordinates do not depend on the random mirror, Black (the user)
+// to move — and «Тестовое продолжение», one more Black move, under it in the tree.
 import { writeFileSync } from 'node:fs'
 import { canonicalize, encodeJdb, moveText, type CanonicalMove, type JdbNode } from '../packages/server/src/jdb'
 
@@ -14,3 +14,20 @@ const positions = [
   { group: '4-4', name: 'Тестовое продолжение', short: 'Продолжение', moves: [a, b, c].map(moveText).join(' ') },
 ]
 writeFileSync('e2e/starts-list.test.json', JSON.stringify({ branches: [], positions }))
+const names = {
+  [positions[0].moves]: {
+    en: { name: 'Test start', short: 'Start' },
+    'zh-Hans': { name: '测试起始', short: '起始' },
+    'zh-Hant': { name: '測試起始', short: '起始' },
+    ko: { name: '테스트 시작', short: '시작' },
+    ja: { name: 'テスト開始', short: '開始' },
+  },
+  [positions[1].moves]: {
+    en: { name: 'Test continuation', short: 'Continuation' },
+    'zh-Hans': { name: '测试后续', short: '后续' },
+    'zh-Hant': { name: '測試後續', short: '後續' },
+    ko: { name: '테스트 계속', short: '계속' },
+    ja: { name: 'テスト続き', short: '続き' },
+  },
+}
+writeFileSync('e2e/starts-i18n.test.json', JSON.stringify(names, null, 2))

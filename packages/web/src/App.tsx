@@ -1,9 +1,11 @@
 import type { JSX } from 'preact'
-import { useEffect, useMemo, useState } from 'preact/hooks'
-import type { AnalysisSettings, ClientMessage, HealthResponse, InstallStatus, ResolvedSettings, ReviewData, SessionSettings, SessionView, StartsInfo, TrapsInfo } from '@joseki-dojo/shared'
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { localize, translator, type AnalysisSettings, type ClientMessage, type HealthResponse, type InstallStatus, type Language, type LocalizedText, type ResolvedSettings, type ReviewData, type SessionSettings, type SessionView, type StartsInfo, type TrapsInfo } from '@joseki-dojo/shared'
 import { LoaderCircle, RefreshCw } from 'lucide-preact'
 import { buildStartTree } from './start-tree'
-import { DojoSocket, fetchHealth, fetchInstall, fetchReview, fetchSettings, fetchStarts, fetchTraps, fetchUi, recheckHealth } from './api'
+import { DojoSocket, failureText, fetchHealth, fetchInstall, fetchReview, fetchSettings, fetchStarts, fetchTraps, fetchUi, recheckHealth, saveLanguage } from './api'
+import { I18nContext, pickLanguage, rememberLanguage, storedLanguage, type I18n } from './i18n'
+import { needsLanguageScreen } from './language-gate'
 import { AppHeader } from './components/AppHeader'
 import { AppUpdateBanner } from './components/AppUpdateBanner'
 import { Bar } from './components/Bar'
@@ -11,11 +13,12 @@ import { ErrorBanner } from './components/ErrorBanner'
 import { EngineScreen } from './screens/EngineScreen'
 import { GameScreen } from './screens/GameScreen'
 import { InstallScreen } from './screens/InstallScreen'
+import { LanguageScreen } from './screens/LanguageScreen'
 import { ReviewScreen } from './screens/ReviewScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { StartScreen } from './screens/StartScreen'
 import { SessionFollow } from './session-follow'
-import { reviewLabels, reviewTitle, sessionTitle } from './session-title'
+import { listedName, reviewLabels, reviewTitle, sessionTitle } from './session-title'
 import { applyTheme } from './theme'
 import type { VariationUpdate } from './variation'
 
@@ -30,11 +33,11 @@ export function App() {
   const [session, setSession] = useState<SessionView | null>(null)
   const [review, setReview] = useState<ReviewData | null>(null)
   const [progress, setProgress] = useState<Progress | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<LocalizedText | null>(null)
   const [errorSeq, setErrorSeq] = useState(0)
   const [connected, setConnected] = useState(true)
   const [showSettings, setShowSettings] = useState(false)
-  const [versionWarning, setVersionWarning] = useState<string | null>(null)
+  const [versionWarning, setVersionWarning] = useState<LocalizedText | null>(null)
   const [defaultRank, setDefaultRank] = useState<string | undefined>(undefined)
   // True from sending startSession/replayFrom until the server answers (sessionState/error) or the link drops.
   const [starting, setStarting] = useState(false)
@@ -50,7 +53,10 @@ export function App() {
   const [variationUpdate, setVariationUpdate] = useState<VariationUpdate | null>(null)
   const [analysisSettings, setAnalysisSettings] = useState<AnalysisSettings | null>(null)
   const [starts, setStarts] = useState<StartsInfo | null>(null)
-  const startTree = useMemo(() => buildStartTree(starts?.list ?? [], starts?.branches ?? [], starts?.groups ?? []), [starts])
+  const [language, setLanguageState] = useState<Language>(storedLanguage)
+  const [languageChosen, setLanguageChosen] = useState<boolean | null>(null)
+  // The player picked a language (globe, settings, first screen): a late /api/ui answer must not undo it.
+  const pickedByPlayer = useRef(false)
 
   const follow = useMemo(() => new SessionFollow(), [])
   const socket = useMemo(
@@ -77,13 +83,13 @@ export function App() {
             if (!follow.concerns(msg.sessionId)) break
             fetchReview(msg.sessionId)
               .then((r) => r && follow.concerns(r.sessionId) && setReview(r))
-              .catch((e: Error) => {
-                setError(e.message)
+              .catch((e: unknown) => {
+                setError(failureText(e))
                 setErrorSeq((n) => n + 1)
               })
             break
           case 'error':
-            setError(msg.message)
+            setError(msg.text)
             setStarting(false)
             setErrorSeq((n) => n + 1)
             break
@@ -100,12 +106,47 @@ export function App() {
     setVariationUpdate(null)
   }, [socket, session?.id])
 
-  // The saved colour theme; without the server the page keeps the system colours set by index.html.
+  // <html lang> follows the language from the first render: it picks the shapes of the Chinese, Japanese and Korean characters.
+  useEffect(() => {
+    document.documentElement.lang = language
+  }, [language])
+
+  // The saved colour theme and language; without the server the page keeps the system colours and the remembered language.
   useEffect(() => {
     fetchUi()
-      .then((u) => applyTheme(u.theme))
+      .then((u) => {
+        // The language first: a failing desktop theme call must not leave the page in the wrong language.
+        // Chosen while the request was on its way: the choice stays, the first screen does not come back.
+        if (!pickedByPlayer.current) {
+          const picked = pickLanguage(u, storedLanguage())
+          setLanguageState(picked.language)
+          rememberLanguage(picked.language)
+          setLanguageChosen(picked.chosen)
+        }
+        applyTheme(u.theme)
+      })
       .catch(() => undefined)
   }, [])
+
+  const i18n = useMemo<I18n>(
+    () => ({
+      language,
+      t: translator(language),
+      chosen: languageChosen,
+      setLanguage: (lang) => {
+        pickedByPlayer.current = true
+        setLanguageState(lang)
+        rememberLanguage(lang)
+        setLanguageChosen(true)
+        saveLanguage(lang).catch((e: unknown) => setError(failureText(e))) // the page already shows the choice; the banner tells that it was not saved
+      },
+    }),
+    [language, languageChosen],
+  )
+  // The App renders the provider, so it takes its texts from `i18n` itself rather than from the context.
+  const t = i18n.t
+  const rootName = t('tree.root')
+  const startTree = useMemo(() => buildStartTree(starts?.list ?? [], starts?.branches ?? [], starts?.groups ?? [], rootName, language), [starts, rootName, language])
 
   useEffect(() => {
     let cancelled = false
@@ -248,25 +289,30 @@ export function App() {
 
   let screen: JSX.Element
   let crumb: string | undefined
-  // The install screen comes first: a re-pick from Settings returns to Settings when it is done.
-  if (engineUpdate) {
-    crumb = repick ? 'Подбор движка' : 'Обновление KataGo'
+  // Spec (languages) 8.2: the language screen comes before everything else, the installer included.
+  // The install screen comes next: a re-pick from Settings returns to Settings when it is done.
+  const languageGate = needsLanguageScreen(languageChosen)
+  if (languageGate) {
+    crumb = undefined
+    screen = <LanguageScreen />
+  } else if (engineUpdate) {
+    crumb = t(repick ? 'app.crumb.repick' : 'app.crumb.engineUpdate')
     screen = <InstallScreen update repick={repick} onDone={() => void afterInstall()} onClose={closeUpdate} />
   } else if (showSettings) {
-    crumb = 'Настройки'
+    crumb = t('app.crumb.settings')
     screen = <SettingsScreen onClose={() => setShowSettings(false)} onSaved={() => setHealthTick((n) => n + 1)} onRepick={startRepick} />
   } else if (!health || (health.state !== 'ready' && !installChecked)) {
     screen = (
       <main class="loading">
         <LoaderCircle class="spin" aria-hidden="true" />
-        Загрузка…
+        {t('app.loading')}
       </main>
     )
   } else if (health.state !== 'ready' && install && !install.installed) {
-    crumb = 'Установка KataGo'
+    crumb = t('app.crumb.install')
     screen = <InstallScreen update={false} onDone={() => void afterInstall()} />
   } else if (health.state !== 'ready') {
-    crumb = health.state === 'starting' ? 'Запуск KataGo' : 'KataGo не готов'
+    crumb = t(health.state === 'starting' ? 'app.crumb.engineStarting' : 'app.crumb.engineNotReady')
     screen = (
       <EngineScreen
         health={health}
@@ -276,7 +322,7 @@ export function App() {
       />
     )
   } else if (!session) {
-    crumb = 'Новая тренировка'
+    crumb = t('app.crumb.newTraining')
     screen = (
       <StartScreen
         key={defaultRank}
@@ -290,10 +336,10 @@ export function App() {
       />
     )
   } else if (session.status === 'playing') {
-    crumb = sessionTitle(session.settings)
+    crumb = sessionTitle(session.settings, t, listedName(startTree, session.settings.start))
     screen = <GameScreen session={session} errorSeq={errorSeq} send={send} />
   } else {
-    crumb = reviewTitle(session.settings)
+    crumb = reviewTitle(session.settings, t, listedName(startTree, session.settings.start))
     screen = (
       <ReviewScreen
         review={review}
@@ -302,7 +348,7 @@ export function App() {
         onReplay={(turn) => sendStarting({ type: 'replayFrom', sessionId: session.id, turn })}
         onNew={resetToStart}
         onNext={lastSettings ? () => startWith(lastSettings) : null}
-        labels={reviewLabels(session.settings.mode)}
+        labels={reviewLabels(session.settings.mode, t)}
         variations={{
           update: variationUpdate,
           analyze: (fromTurn, moves) => send({ type: 'analyzeVariation', sessionId: session.id, fromTurn, moves }),
@@ -316,7 +362,7 @@ export function App() {
   }
 
   const inGame = session?.status === 'playing'
-  const bannerText = connected ? error : 'Нет связи с сервером, переподключаюсь…'
+  const bannerText: LocalizedText | null = connected ? error : { key: 'app.disconnected' }
   const retry =
     connected && session
       ? () => {
@@ -327,21 +373,21 @@ export function App() {
   // Spec 5.1: offered outside a game, when the installer's KataGo is not the one pinned in katago.lock.json.
   // Not while a review is being prepared: the update stops KataGo, and the review needs it.
   const reviewPending = session?.status === 'finished' && review === null
-  const offerEngineUpdate = ready && install?.updateAvailable === true && !engineUpdate && !inGame && !showSettings && !reviewPending
-  const nav = !inGame && !engineUpdate ? { settings: showSettings, onGame: () => setShowSettings(false), onSettings: () => setShowSettings(true) } : undefined
+  const offerEngineUpdate = ready && install?.updateAvailable === true && !engineUpdate && !inGame && !showSettings && !reviewPending && !languageGate
+  const nav = !inGame && !engineUpdate && !languageGate ? { settings: showSettings, onGame: () => setShowSettings(false), onSettings: () => setShowSettings(true) } : undefined
 
   return (
-    <>
+    <I18nContext.Provider value={i18n}>
       <AppHeader crumb={crumb} nav={nav} />
       <AppUpdateBanner />
-      {bannerText && <ErrorBanner message={bannerText} onRetry={retry} />}
+      {bannerText && <ErrorBanner error={bannerText} onRetry={retry} />}
       {offerEngineUpdate && (
-        <Bar icon={RefreshCw} action={{ label: 'Обновить движок', onClick: () => setEngineUpdate(true), primary: true }}>
-          Доступна новая проверенная версия KataGo
+        <Bar icon={RefreshCw} action={{ label: t('app.engineUpdate.action'), onClick: () => setEngineUpdate(true), primary: true }}>
+          {t('app.engineUpdate.offer')}
         </Bar>
       )}
-      {versionWarning && !showSettings && <Bar tone="warning">{versionWarning}</Bar>}
+      {versionWarning && !showSettings && <Bar tone="warning">{localize(language, versionWarning)}</Bar>}
       {screen}
-    </>
+    </I18nContext.Provider>
   )
 }

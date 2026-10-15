@@ -1,12 +1,16 @@
-import { inZone, nextColor, Position, type Actor, type Color, type Corner, type Move, type MoveVertex, type PlayedMove, type SessionView } from '@joseki-dojo/shared'
+import { inZone, nextColor, Position, type Actor, type Color, type Corner, type LocalizedText, type Move, type MoveVertex, type PlayedMove, type SessionView } from '@joseki-dojo/shared'
 import { movesBefore, type SessionRecord } from '../store/records'
+import { TextError } from '../text-error'
 import { josekiStartedIn } from './joseki-start'
 
 export type SessionErrorCode = 'bad_request' | 'outside_zone' | 'not_your_turn' | 'session_not_found' | 'session_finished' | 'illegal_move'
 
-export class SessionError extends Error {
-  constructor(message: string, readonly code: SessionErrorCode) {
-    super(message)
+export class SessionError extends TextError {
+  constructor(
+    text: LocalizedText,
+    readonly code: SessionErrorCode,
+  ) {
+    super(text)
     this.name = 'SessionError'
   }
 }
@@ -74,7 +78,7 @@ export class Session {
 
   /** Plays `vertex` for the side to move. Throws IllegalMoveError or SessionError and leaves state unchanged. */
   apply(vertex: MoveVertex, actor: Actor): PlayedMove {
-    if (!this.isPlaying) throw new SessionError('Тренировка уже закончена', 'session_finished')
+    if (!this.isPlaying) throw new SessionError({ key: 'error.session.finished' }, 'session_finished')
     const color = this.toMove
     const next = this.pos.play({ color, vertex })
     const played: PlayedMove = { color, vertex, actor, inZone: inZone(this.corner, vertex) }

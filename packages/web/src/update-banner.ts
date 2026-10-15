@@ -1,8 +1,8 @@
-import type { AppUpdateState } from '@joseki-dojo/shared'
+import type { AppUpdateState, LocalizedText, MessageKey } from '@joseki-dojo/shared'
 
 export interface UpdateBannerView {
-  text: string
-  button: { label: string; action: 'download' | 'retry' } | null
+  text: LocalizedText
+  button: { label: MessageKey; action: 'download' | 'retry' } | null
   error: boolean
 }
 
@@ -12,12 +12,12 @@ export function updateBannerView(state: AppUpdateState): UpdateBannerView | null
     case 'idle':
       return null
     case 'available':
-      return { text: `Доступна версия ${state.version}`, button: { label: 'Обновить', action: 'download' }, error: false }
+      return { text: { key: 'update.available', params: { version: state.version } }, button: { label: 'update.action', action: 'download' }, error: false }
     case 'downloading':
-      return { text: `Скачиваю версию ${state.version}: ${state.percent}%`, button: null, error: false }
+      return { text: { key: 'update.downloading', params: { version: state.version, percent: state.percent } }, button: null, error: false }
     case 'installing':
-      return { text: `Устанавливаю версию ${state.version}, приложение перезапустится…`, button: null, error: false }
+      return { text: { key: 'update.installing', params: { version: state.version } }, button: null, error: false }
     case 'error':
-      return { text: state.message, button: { label: 'Повторить', action: 'retry' }, error: true }
+      return { text: state.text, button: { label: 'common.retry', action: 'retry' }, error: true }
   }
 }

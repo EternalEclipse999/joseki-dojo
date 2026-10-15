@@ -188,10 +188,10 @@ describe('completeCandidates', () => {
     const engine = fakeEngine({
       after: { Q13: 5, S13: 2 },
       human: { '10k': { S13: 0.5 } },
-      fail: (q) => (q.allowMoves && q.moves.at(-1)?.[1] === 'R13' ? new EngineError('bad query', 'query_error') : null),
+      fail: (q) => (q.allowMoves && q.moves.at(-1)?.[1] === 'R13' ? new EngineError({ key: 'error.engine.query', params: { detail: 'bad query' } }, 'query_error') : null),
     })
     const out = await completeCandidates(base, engine, OPTS, () => {})
-    expect(out.rejected).toEqual([{ id: ID, path: PATH.map(mv), reason: 'error: bad query' }])
+    expect(out.rejected).toEqual([{ id: ID, path: PATH.map(mv), reason: 'error: KataGo rejected the query: bad query' }])
     expect(out.accepted.map((t) => t.id)).toEqual([trapId(['Q16', 'O17', 'R14', 'R12'].map(mv))])
   })
 
@@ -200,11 +200,11 @@ describe('completeCandidates', () => {
     const flaky = fakeEngine({
       after: { Q13: 5, S13: 2 },
       human: { '10k': { S13: 0.5 } },
-      fail: () => (failures++ === 0 ? new EngineError('restarting', 'engine_failed') : null),
+      fail: () => (failures++ === 0 ? new EngineError({ key: 'error.engine.restarted' }, 'engine_failed') : null),
     })
     expect((await completeCandidates(one(answer('Q13', 'good')), flaky, OPTS, () => {})).accepted).toHaveLength(1)
-    const dead = fakeEngine({ fail: () => new EngineError('gone', 'engine_failed') })
-    await expect(completeCandidates(one(answer('Q13', 'good')), dead, OPTS, () => {})).rejects.toThrow('gone')
+    const dead = fakeEngine({ fail: () => new EngineError({ key: 'error.engine.stopped' }, 'engine_failed') })
+    await expect(completeCandidates(one(answer('Q13', 'good')), dead, OPTS, () => {})).rejects.toThrow('KataGo was stopped')
   })
 
   it('logs progress', async () => {

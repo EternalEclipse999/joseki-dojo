@@ -30,7 +30,7 @@ describe('missingFiles', () => {
     const dir = tempDir()
     const katago = { path: join(dir, 'katago'), analysisConfig: join(dir, 'a.cfg'), mainModel: join(dir, 'm.bin.gz'), humanModel: join(dir, 'h.bin.gz') }
     writeFileSync(katago.path, '')
-    expect(missingFiles({ ...DEFAULT_CONFIG, katago })).toBe(`Нет конфига анализа KataGo: ${katago.analysisConfig}`)
+    expect(missingFiles({ ...DEFAULT_CONFIG, katago })).toEqual({ key: 'health.missing.analysisConfig', params: { path: katago.analysisConfig } })
   })
 
   it('skips file checks for a command override', () => {
@@ -39,7 +39,7 @@ describe('missingFiles', () => {
 
   it('does not skip the file checks for an empty command override', () => {
     const katago = { ...DEFAULT_CONFIG.katago, path: join(tempDir(), 'nope.exe'), commandOverride: [] }
-    expect(missingFiles({ ...DEFAULT_CONFIG, katago })).toBe(`KataGo не найден: ${katago.path}`)
+    expect(missingFiles({ ...DEFAULT_CONFIG, katago })).toEqual({ key: 'health.missing.katago', params: { path: katago.path } })
   })
 })
 
@@ -50,19 +50,18 @@ describe('checkEngine', () => {
 
   it('fails for an old KataGo', async () => {
     const h = await checkEngine(testConfig(), engine({ FAKE_KATAGO_VERSION: '1.14.1' }))
-    expect(h).toEqual({ state: 'failed', reason: 'Версия KataGo 1.14.1 старше 1.15.0' })
+    expect(h).toEqual({ state: 'failed', reason: { key: 'health.versionTooOld', params: { version: '1.14.1', min: '1.15.0' } } })
   })
 
   it('fails without the human model', async () => {
     const h = await checkEngine(testConfig(), engine({ FAKE_KATAGO_NO_HUMAN: '1' }))
-    expect(h.state).toBe('failed')
-    expect(h.reason).toContain('human')
+    expect(h).toEqual({ state: 'failed', reason: { key: 'health.noHumanNet' } })
   })
 
   it('fails when KataGo keeps crashing', async () => {
     const h = await checkEngine(testConfig(), engine({ FAKE_KATAGO_ALWAYS_CRASH: '1' }))
     expect(h.state).toBe('failed')
-    expect(h.reason).toContain('аварийно')
+    expect(h.reason).toMatchObject({ key: 'error.engine.crashed' })
   })
 })
 

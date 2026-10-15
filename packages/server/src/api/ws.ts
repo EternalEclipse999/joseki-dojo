@@ -67,5 +67,5 @@ export function handleSocket(socket: WebSocket, deps: SocketDeps): void {
 
 function requireReady(deps: SocketDeps): void {
   const h = deps.health.get()
-  if (h.state !== 'ready') throw new EngineError(`KataGo не готов: ${h.reason ?? h.state}`, 'engine_failed')
+  if (h.state !== 'ready') throw new EngineError({ key: 'error.engine.notReady', params: { reason: h.reason ?? { key: 'health.starting' } } }, 'engine_failed')
 }

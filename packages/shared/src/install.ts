@@ -1,3 +1,5 @@
+import type { LocalizedText } from './i18n'
+
 /** Spec 5.3: the built-in KataGo installer's steps; `failed` keeps the reason in `InstallStatus.error`. */
 export type InstallStep =
   | 'idle'
@@ -13,7 +15,7 @@ export interface InstallFile {
   /** File name on disk, e.g. `b18c384nbt-humanv0.bin.gz`. */
   name: string
   /** What the file is, for the install screen. */
-  label: string
+  label: LocalizedText
   received: number
   /** Expected size in bytes; 0 while unknown. */
   total: number
@@ -24,7 +26,7 @@ export interface InstallFile {
 export interface InstallStatus {
   step: InstallStep
   files: InstallFile[]
-  error: string | null
+  error: LocalizedText | null
   /** The KataGo files named in the settings exist. */
   installed: boolean
   /** Spec 5.1: the installer set KataGo up from a different katago.lock.json. */
@@ -32,5 +34,5 @@ export interface InstallStatus {
   /** The build chosen by the last successful installation. */
   kind: 'cpu' | 'gpu' | null
   /** A thing the player should know after a successful installation (e.g. the video card did not start), or null. */
-  note: string | null
+  note: LocalizedText | null
 }

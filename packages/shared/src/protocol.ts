@@ -1,3 +1,4 @@
+import type { LocalizedText } from './i18n'
 import type { PositionReview, SessionSettings, SessionView, Vertex } from './types'
 
 export type ClientMessage =
@@ -28,4 +29,4 @@ export type ServerMessage =
   | { type: 'reviewReady'; sessionId: string }
   /** Variations spec 6.2: the analysis of a variation position (or of a game position for «Глубже», with no moves). */
   | { type: 'variationAnalysis'; sessionId: string; fromTurn: number; moves: Vertex[]; visits: number; done: boolean; position: PositionReview }
-  | { type: 'error'; code: ErrorCode; message: string }
+  | { type: 'error'; code: ErrorCode; text: LocalizedText }
