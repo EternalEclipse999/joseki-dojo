@@ -107,7 +107,7 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
     },
   })
   const reviews = new ReviewService({ repo, analysis, config, publish, traps, thresholds: options.thresholds ?? null, cards, log: options.log })
-  const variations = new VariationService({ repo, engine, config })
+  const variations = new VariationService({ repo, engine, config, problems: (id) => cards.problemBase(id) })
   const sessions = new SessionService({
     repo,
     analysis,

@@ -43,6 +43,7 @@ export const ko: Catalog = {
   'error.session.finished': '이미 끝난 연습입니다',
   'error.variation.reviewOnly': '변화는 복기에서만 사용할 수 있습니다',
   'error.variation.illegal': '변화에 둘 수 없는 수가 있습니다',
+  'error.card.notFound': '이 문제는 더 이상 없습니다',
   'error.engine.notReady': 'KataGo가 준비되지 않았습니다: {reason}',
   'error.engine.noHumanPolicy': 'KataGo가 humanPolicy를 반환하지 않았습니다: human 네트워크가 로드되지 않았습니다',
   'error.engine.stopped': 'KataGo가 중지되었습니다',
@@ -369,6 +370,10 @@ export const ko: Catalog = {
   'problem.kataGoBest': 'KataGo의 최선의 수: {move}',
   'problem.inGame': '대국에서: {move}, −{loss}',
   'problem.illegal': '여기에는 둘 수 없습니다',
+  'problem.view.start': '문제 시작 국면',
+  'problem.view.answer': '내 답: {move}',
+  'problem.explore': '바둑판을 클릭해 국면을 살펴보세요',
+  'problem.backToProblem': '문제로 돌아가기',
   'problem.repetition.title': '문제 반복',
   'problem.repetition.locked': '평가는 문제의 마지막 반복에서만 바꿀 수 있습니다.',
 }

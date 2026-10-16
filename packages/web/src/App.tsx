@@ -23,7 +23,7 @@ import { StartScreen } from './screens/StartScreen'
 import { SessionFollow } from './session-follow'
 import { listedName, reviewLabels, reviewTitle, sessionTitle } from './session-title'
 import { applyTheme } from './theme'
-import type { VariationUpdate } from './variation'
+import type { VariationUpdate, VariationUpdateLike } from './variation'
 
 interface Progress {
   done: number
@@ -86,6 +86,11 @@ export function App() {
   // Bumped whenever the shown problem changes: a late verdict for an earlier one is dropped, and the screen starts afresh
   // (the same card can come back at once after «Снова»).
   const problemSeq = useRef(0)
+  // Problem variations 3.2: the latest analysis of a variation position of the answered problem on screen; the card
+  // whose answer is explored (none before the verdict), read by the socket handler.
+  const [problemVariationUpdate, setProblemVariationUpdate] = useState<VariationUpdateLike | null>(null)
+  const exploredCard = useRef<string | null>(null)
+  exploredCard.current = problem && problemAnswer ? problem.id : null
   const [language, setLanguageState] = useState<Language>(storedLanguage)
   const [languageChosen, setLanguageChosen] = useState<boolean | null>(null)
   // The player picked a language (globe, settings, first screen): a late /api/ui answer must not undo it.
@@ -126,6 +131,9 @@ export function App() {
             break
           case 'variationAnalysis':
             if (follow.concerns(msg.sessionId)) setVariationUpdate(msg)
+            break
+          case 'problemVariationAnalysis':
+            if (msg.cardId === exploredCard.current) setProblemVariationUpdate(msg)
             break
           case 'reviewReady':
             if (!follow.concerns(msg.sessionId)) break
@@ -359,6 +367,8 @@ export function App() {
   }
   /** Shows a problem of the queue, or none: the previous one's verdict, pending answer and rating error go with it. */
   const openProblem = (next: { id: string; view: ProblemView } | null): void => {
+    // Problem variations 3.2: leaving an answered problem ends its variation search.
+    if (problem && problemAnswer) send({ type: 'stopProblemVariation', cardId: problem.id })
     problemSeq.current++
     rateSeq.current++
     setProblem(next)
@@ -367,6 +377,7 @@ export function App() {
     setProblemUnavailable(false)
     setAnswerFailed(false)
     setRatingError(null)
+    setProblemVariationUpdate(null)
   }
   // Spec (repetition) 5.2: the next due card of the queue, or back to the tab with «На сегодня всё». `starting` covers the
   // card's lookup too, so a second click (the tab's button, the review's or the problem's «Дальше») cannot start a second
@@ -530,6 +541,16 @@ export function App() {
             error: ratingError && localize(language, ratingError),
           }}
           busy={starting}
+          variations={{
+            update: problemVariationUpdate,
+            analyze: (fromTurn, moves) => {
+              if (problemAnswer) send({ type: 'analyzeProblemVariation', cardId: problem.id, answer: problemAnswer.vertex, fromTurn, moves })
+            },
+            stop: () => send({ type: 'stopProblemVariation', cardId: problem.id }),
+            connected,
+            errorSeq,
+            visits: analysisSettings,
+          }}
         />
       )
     } else {

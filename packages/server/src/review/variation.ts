@@ -1,4 +1,4 @@
-import { IllegalMoveError, moveToGtp, nextColor, otherColor, Position, type Move, type PositionReview, type ServerMessage, type Vertex } from '@joseki-dojo/shared'
+import { IllegalMoveError, moveToGtp, nextColor, otherColor, Position, type Color, type Move, type PositionReview, type ServerMessage, type Vertex } from '@joseki-dojo/shared'
 import { compactAnalysis } from '../analysis/compact'
 import type { AppConfig } from '../config'
 import { EngineError, type AnalysisStream, type StreamingEngine } from '../engine/engine'
@@ -17,6 +17,16 @@ export interface VariationRequest {
   moves: Vertex[]
 }
 
+/** Spec (problem variations) 3.1: a variation on a problem card. */
+export interface ProblemVariationRequest {
+  cardId: string
+  /** The answer the variation follows when `fromTurn` is 1. */
+  answer: Vertex
+  /** 0: instead of the answer; 1: after it. */
+  fromTurn: number
+  moves: Vertex[]
+}
+
 type Analysed = Omit<PositionReview, 'turn'>
 interface CacheEntry {
   visits: number
@@ -27,12 +37,27 @@ interface CacheEntry {
 /** Spec 4: results kept in memory, least recently used out. */
 const CACHE_SIZE = 500
 
-/** Spec 6.2: one deepening search per owner (a socket); results cached per position; partial results sent as they come. */
+type Reply = (visits: number, done: boolean, position: Analysed) => void
+
+/**
+ * Spec 6.2: one deepening search per owner (a socket), for a review or a problem variation alike; results cached per
+ * position, shared by both; partial results sent as they come.
+ */
 export class VariationService {
   private readonly running = new Map<object, AnalysisStream>()
   private readonly cache = new Map<string, CacheEntry>()
 
-  constructor(private readonly d: { repo: SessionRepo; engine: StreamingEngine; config: AppConfig; everySec?: number; log?: (line: string) => void }) {}
+  constructor(
+    private readonly d: {
+      repo: SessionRepo
+      engine: StreamingEngine
+      config: AppConfig
+      /** Spec (problem variations) 3.1: the moves and the side to move of a problem card; null for anything else. */
+      problems?: (cardId: string) => { moves: Move[]; toMove: Color } | null
+      everySec?: number
+      log?: (line: string) => void
+    },
+  ) {}
 
   start(owner: object, req: VariationRequest, send: (msg: ServerMessage) => void): void {
     const rec = this.d.repo.getSession(req.sessionId)
@@ -45,6 +70,37 @@ export class VariationService {
       moves.push({ color, vertex })
       color = otherColor(color)
     }
+    this.run(
+      owner,
+      moves,
+      (visits, done, position) =>
+        send({ type: 'variationAnalysis', sessionId: req.sessionId, fromTurn: req.fromTurn, moves: req.moves, visits, done, position: { turn: req.fromTurn + req.moves.length, ...position } }),
+      send,
+    )
+  }
+
+  /** Spec (problem variations) 3.1: a variation over a problem position — instead of the answer or after it. */
+  startProblem(owner: object, req: ProblemVariationRequest, send: (msg: ServerMessage) => void): void {
+    const base = this.d.problems?.(req.cardId) ?? null
+    if (!base) throw new SessionError({ key: 'error.card.notFound' }, 'card_not_found')
+    if (req.fromTurn !== 0 && req.fromTurn !== 1) throw new SessionError({ key: 'error.turn.notFound' }, 'bad_request')
+    const moves: Move[] = [...base.moves]
+    let color = base.toMove
+    for (const vertex of req.fromTurn === 1 ? [req.answer, ...req.moves] : req.moves) {
+      moves.push({ color, vertex })
+      color = otherColor(color)
+    }
+    this.run(
+      owner,
+      moves,
+      (visits, done, position) =>
+        send({ type: 'problemVariationAnalysis', cardId: req.cardId, fromTurn: req.fromTurn, moves: req.moves, visits, done, position: { turn: req.fromTurn + req.moves.length, ...position } }),
+      send,
+    )
+  }
+
+  /** Checks the moves, then answers the position from the cache and searches it unless the cached result is complete. */
+  private run(owner: object, moves: Move[], reply: Reply, send: (msg: ServerMessage) => void): void {
     try {
       Position.fromMoves(moves)
     } catch (err) {
@@ -54,9 +110,6 @@ export class VariationService {
     // The request is valid: only now the owner's previous search is given up.
     this.stop(owner)
     const key = moves.map((m) => `${m.color}${moveToGtp(m.vertex)}`).join(' ')
-    const reply = (visits: number, done: boolean, position: Analysed): void =>
-      send({ type: 'variationAnalysis', sessionId: req.sessionId, fromTurn: req.fromTurn, moves: req.moves, visits, done, position: { turn: req.fromTurn + req.moves.length, ...position } })
-
     const cached = this.recall(key)
     if (cached) {
       reply(cached.visits, cached.complete, cached.position)
@@ -74,7 +127,7 @@ export class VariationService {
    * Starts the search. Spec 6.1: a stream rejected because KataGo restarted is asked again once, by the service itself;
    * a second failure, or an engine that has failed for good, goes to the client.
    */
-  private launch(owner: object, key: string, moves: Move[], reply: (visits: number, done: boolean, position: Analysed) => void, send: (msg: ServerMessage) => void, retried: boolean): void {
+  private launch(owner: object, key: string, moves: Move[], reply: Reply, send: (msg: ServerMessage) => void, retried: boolean): void {
     // Declared before the call: a synchronous update must not hit the temporal dead zone.
     let stream: AnalysisStream | undefined
     stream = this.d.engine.analyzeStream(

@@ -136,6 +136,26 @@ describe('API', () => {
     expect(c.messages.some((m) => m.type === 'variationAnalysis' && m.done)).toBe(false)
   })
 
+  it('analyses a problem variation over the socket, and answers card_not_found for an unknown card', async () => {
+    const now = new Date()
+    const data = {
+      source: 'mistake', corner: 'TR', userColor: 'B', toMove: 'B', moveNumber: 3, group: '4-4', userMove: [13, 2], userLoss: 2.4,
+      moves: [{ color: 'B', vertex: [15, 3] }, { color: 'W', vertex: [16, 2] }],
+      analysis: { scoreLeadBlack: 0, visits: 10, candidates: [{ vertex: [15, 2], loss: 0, pv: [] }] },
+    }
+    new CardRepo(services.db).insertCard({ id: 'p1', kind: 'move', key: 'move:test', data, state: newState(now), createdAt: now.toISOString() })
+    const c = await connect()
+    c.send({ type: 'analyzeProblemVariation', cardId: 'p1', answer: [15, 2], fromTurn: 1, moves: [[14, 2]] })
+    const done = await c.next((m) => m.type === 'problemVariationAnalysis' && m.done)
+    expect(done).toMatchObject({ cardId: 'p1', fromTurn: 1, moves: [[14, 2]], visits: services.config.analysis.variationVisits, position: { turn: 2 } })
+    c.send({ type: 'analyzeProblemVariation', cardId: 'nope', answer: [15, 2], fromTurn: 0, moves: [] })
+    expect(await c.next((m) => m.type === 'error')).toMatchObject({ code: 'card_not_found', text: { key: 'error.card.notFound' } })
+
+    const stop = vi.spyOn(services.variations, 'stop')
+    c.send({ type: 'stopProblemVariation', cardId: 'p1' })
+    await vi.waitFor(() => expect(stop).toHaveBeenCalledTimes(1))
+  })
+
   it('plays, finishes and serves the review', async () => {
     const c = await connect()
     const id = await startSession(c)

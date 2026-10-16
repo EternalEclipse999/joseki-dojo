@@ -43,6 +43,7 @@ export const en: Catalog = {
   'error.session.finished': 'The training session has already ended',
   'error.variation.reviewOnly': 'Variations are only available in the review',
   'error.variation.illegal': 'Illegal move in the variation',
+  'error.card.notFound': 'The problem no longer exists',
   'error.engine.notReady': 'KataGo is not ready: {reason}',
   'error.engine.noHumanPolicy': 'KataGo returned no humanPolicy: the human net is not loaded',
   'error.engine.stopped': 'KataGo was stopped',
@@ -372,6 +373,10 @@ export const en: Catalog = {
   'problem.kataGoBest': "KataGo's best move: {move}",
   'problem.inGame': 'In the game: {move}, −{loss}',
   'problem.illegal': 'You cannot play here',
+  'problem.view.start': 'Start of the problem',
+  'problem.view.answer': 'Your answer: {move}',
+  'problem.explore': 'Click the board to explore the position',
+  'problem.backToProblem': 'Back to the problem',
   'problem.repetition.title': 'Problem repetition',
   'problem.repetition.locked': 'Only the latest repetition of a problem can be re-rated.',
 }

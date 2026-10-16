@@ -1,66 +1,19 @@
 import type { JSX } from 'preact'
-import type { Marker } from '@sabaki/shudan'
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { ChevronLeft, ChevronRight, FolderOpen, GitBranch, LoaderCircle, Map as MapIcon, Play, RotateCcw, Swords, Telescope } from 'lucide-preact'
-import {
-  nextColor,
-  Position,
-  type Actor,
-  type AnalysisSettings,
-  type MessageKey,
-  type Move,
-  type MoveVertex,
-  type ReviewData,
-  type Translate,
-  type TrapVerdict,
-  type Vertex,
-} from '@joseki-dojo/shared'
-import { emptyMap, isVertex, ownershipMap, pvMoves, sameVertex } from '../board-maps'
+import { useState } from 'preact/hooks'
+import { FolderOpen, GitBranch, LoaderCircle, Map as MapIcon, Play, RotateCcw, Swords } from 'lucide-preact'
+import type { Actor, MessageKey, ReviewData, Translate, TrapVerdict } from '@joseki-dojo/shared'
+import { ownershipMap } from '../board-maps'
 import { Board } from '../components/Board'
-import { CandidateList, LABELS } from '../components/CandidateList'
 import { LossBar } from '../components/LossBar'
 import { RepetitionPanel, type RepetitionLink } from '../components/RepetitionPanel'
-import { VariationBar } from '../components/VariationBar'
-import { CATEGORY_LABEL, formatCount, formatPoints, moveLabel, ZERO_LOSS } from '../format'
+import { BranchSteps, DeeperControls, VariationCandidates, VariationHead } from '../components/VariationAside'
+import { CATEGORY_LABEL, formatPoints, moveLabel, ZERO_LOSS } from '../format'
 import { useI18n, useT } from '../i18n'
 import { summaryTiles } from '../review-summary'
 import { richText } from '../rich-text'
 import type { ReviewLabels } from '../session-title'
-import {
-  bestIsPass,
-  candidateIndex,
-  candidateLeft,
-  exitTurn,
-  isLegalNext,
-  mergeResult,
-  moveLoss,
-  playInVariation,
-  positionKey,
-  replyVertex,
-  shouldReply,
-  shownMoves,
-  startAfterTurn,
-  startVariation,
-  stepVariation,
-  variationMoves,
-  type Variation,
-  type VariationResult,
-  type VariationUpdate,
-} from '../variation'
-
-/** Variations spec 3–6: the review's link to the deepening search on the server, and the visits settings. */
-export interface VariationLink {
-  /** The last `variationAnalysis` message, or null. */
-  update: VariationUpdate | null
-  analyze: (fromTurn: number, moves: Vertex[]) => void
-  stop: () => void
-  /** A search ends with its socket: the shown position is asked for again when the link is back. */
-  connected: boolean
-  /** Increments on every server error: a pending KataGo reply is given up. */
-  errorSeq: number
-  /** The visits of the stored review and the limit of a variation search; null until the settings are loaded. */
-  visits: AnalysisSettings | null
-}
+import { useVariations, type VariationLink } from '../use-variations'
+import { variationNumbers, type VariationUpdate } from '../variation'
 
 export interface ReviewScreenProps {
   review: ReviewData | null
@@ -73,7 +26,8 @@ export interface ReviewScreenProps {
   /** The captions of `onNext` and `onNew`, which depend on the mode. */
   labels: ReviewLabels
   busy?: boolean
-  variations: VariationLink
+  /** Variations spec 3–6: an update names the session it belongs to; the review keeps only its own. */
+  variations: VariationLink<VariationUpdate>
   repetition?: RepetitionLink
 }
 
@@ -186,23 +140,6 @@ function trapNote(review: ReviewData, turn: number, t: Translate): JSX.Element |
   )
 }
 
-/** ← and → step through the moves unless the focus is in a text field (a checkbox does not take the arrows). */
-function useArrowKeys(onStep: (delta: number) => void): void {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
-      const target = e.target as HTMLElement | null
-      if (target && (target.isContentEditable || (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) && !target.matches('input[type=checkbox]')))) return
-      if (e.key === 'ArrowLeft') onStep(-1)
-      else if (e.key === 'ArrowRight') onStep(1)
-      else return
-      e.preventDefault()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onStep])
-}
-
 interface ReviewLoadedProps {
   review: ReviewData
   onReplay: (turn: number) => void
@@ -210,7 +147,7 @@ interface ReviewLoadedProps {
   onNext: (() => void) | null
   labels: ReviewLabels
   busy?: boolean
-  variations: VariationLink
+  variations: VariationLink<VariationUpdate>
   repetition?: RepetitionLink
 }
 
@@ -221,179 +158,16 @@ interface ReviewLoadedProps {
  */
 function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variations, repetition }: ReviewLoadedProps) {
   const { t, language } = useI18n()
-  const [turn, setTurn] = useState(0)
-  const [pvStep, setPvStep] = useState<number | null>(null)
   const [showOwnership, setShowOwnership] = useState(false)
-  // Candidates are chosen by their vertex: a deeper analysis may reorder the list.
-  const [hotVertex, setHotVertex] = useState<MoveVertex | null>(null)
-  const [selectedVertex, setSelectedVertex] = useState<MoveVertex | null>(null)
-  const [variation, setVariation] = useState<Variation | null>(null)
-  const [results, setResults] = useState<ReadonlyMap<string, VariationResult>>(() => new Map())
-  const [autoReply, setAutoReply] = useState(true)
-  // The key of the position KataGo is to answer; board clicks wait meanwhile.
-  const [awaiting, setAwaiting] = useState<string | null>(null)
-  // «Глубже» is on for one game move.
-  const [deeperTurn, setDeeperTurn] = useState<number | null>(null)
-  // The key of the position where KataGo's best reply was a pass.
-  const [passedKey, setPassedKey] = useState<string | null>(null)
-
-  const { update, connected, errorSeq } = variations
-  const replyVisits = variations.visits?.reviewVisits ?? null
-  const deeper = deeperTurn === turn
-  const link = useRef(variations)
-  link.current = variations
-  useEffect(() => {
-    if (update && update.sessionId === review.sessionId) setResults((r) => mergeResult(r, update))
-  }, [update, review.sessionId])
-  useEffect(() => setAwaiting(null), [errorSeq])
-
-  // The position the candidates belong to: before game move `turn`, or after the shown moves of the variation.
-  const fromTurn = variation?.fromTurn ?? turn
-  const vMoves = useMemo(() => (variation ? shownMoves(variation) : []), [variation])
-  const key = positionKey(fromTurn, vMoves)
-  const base = useMemo(() => variationMoves([...review.initialMoves, ...review.moves.slice(0, fromTurn)], vMoves), [review, fromTurn, vMoves])
-  const result = results.get(key)
-  useEffect(() => {
-    setPvStep(null)
-    setHotVertex(null)
-    setSelectedVertex(null)
-  }, [key])
-
-  // Spec 4: the shown variation position (or a deepened game position) is searched until it is done or left.
-  const live = variation !== null || deeper
-  const finished = result?.done === true
-  useEffect(() => {
-    if (!live || finished || !connected) return
-    link.current.analyze(fromTurn, vMoves)
-    return () => link.current.stop()
-  }, [live, key, finished, connected])
-
-  const lastTurn = review.moves.length - 1
-  const step = useMemo(
-    () => (delta: number) => {
-      if (variation) {
-        // Spec 8: «←» on the first variation move leaves the variation for the game position it started from.
-        if (delta < 0 && variation.step <= 1) {
-          setTurn(exitTurn(variation))
-          setVariation(null)
-        } else setVariation(stepVariation(variation, delta))
-        setAwaiting(null)
-      } else setTurn((shown) => Math.min(lastTurn, Math.max(0, shown + delta)))
-    },
-    [variation, lastTurn],
-  )
-  useArrowKeys(step)
+  // The hook is given only the analyses of this review's session.
+  const link: VariationLink = { ...variations, update: variations.update?.sessionId === review.sessionId ? variations.update : null }
+  const v = useVariations({ setup: review.initialMoves, moves: review.moves, positions: review.positions, startView: false }, link)
+  const { turn, selectTurn, variation, result, sel, branchStep, setPvStep, signMap, markers, dimmed, highlighted, last, awaiting, onBoardClick } = v
+  const { connected } = variations
 
   const move = review.moveReviews[turn]
-  // «Глубже»: the deepened candidates replace the stored ones once they rest on more visits.
-  const deepResult = !variation && deeper && result && result.visits > review.positions[turn].visits ? result : null
-  const shown = variation ? (result?.position ?? null) : (deepResult?.position ?? review.positions[turn])
-  const candidates = shown?.candidates ?? []
-  const selIndex = candidateIndex(candidates, selectedVertex)
-  const hot = hotVertex === null ? -1 : candidates.findIndex((c) => sameVertex(c.vertex, hotVertex))
-  const sel = candidates[selIndex] ?? null
-  // The chosen candidate left the list: back to the best one, and its branch is gone.
-  useEffect(() => {
-    if (!candidateLeft(candidates, selectedVertex)) return
-    setSelectedVertex(null)
-    setPvStep(null)
-  }, [candidates, selectedVertex])
-  const branchStep = sel && pvStep !== null ? Math.max(1, Math.min(pvStep, sel.pv.length)) : null
-  const toMove = variation ? nextColor(base) : move.color
-  const branch = useMemo(() => (sel && branchStep !== null ? pvMoves(toMove, sel.pv, branchStep) : []), [sel, branchStep, toMove])
-  // The board shows the position after the selected move (or the variation's last shown move); a branch continues from
-  // the position the candidates belong to.
-  const signMap = useMemo(() => {
-    const onBoard = branchStep !== null ? [...base, ...branch] : variation ? base : [...base, review.moves[turn]]
-    try {
-      return Position.fromMoves(onBoard).signMap()
-    } catch {
-      return Position.fromMoves(base).signMap()
-    }
-  }, [review, turn, variation, base, branch, branchStep])
-
-  // Spec 5: KataGo plays the best move of the latest result for the awaited position.
-  const answer = (): void => {
-    const r = results.get(key)
-    const v = replyVertex(r)
-    setAwaiting(null)
-    if (bestIsPass(r)) setPassedKey(key)
-    if (variation && v && isLegalNext(base, v)) setVariation(playInVariation(variation, v))
-  }
-  useEffect(() => {
-    if (awaiting === null) return
-    if (awaiting !== key || !variation) setAwaiting(null)
-    else if (shouldReply(results.get(awaiting), replyVisits)) answer()
-  }, [awaiting, key, results, replyVisits])
-
-  /** The user's moves from the shown position: a variation instead of game move `turn`, or more of the open one. */
-  const play = (vertices: Vertex[], afterTurn = false): void => {
-    if (awaiting !== null) return
-    let next: Variation | null = variation
-    for (const v of vertices) next = next ? playInVariation(next, v) : afterTurn ? startAfterTurn(turn, v) : startVariation(turn, v)
-    if (!next) return
-    setVariation(next)
-    setPassedKey(null)
-    setAwaiting(autoReply ? positionKey(next.fromTurn, shownMoves(next)) : null)
-  }
-  // A click plays after the shown game move, or in the open variation, or after the shown branch.
-  const onBoardClick = (v: Vertex): void => {
-    if (awaiting !== null) return
-    const pv = branch.map((m) => m.vertex)
-    // Spec 8: in the game, a click plays after the shown move (the letters are only hints); a shown branch is continued.
-    const plain = !variation && branchStep === null
-    if (plain) {
-      if (isLegalNext([...base, review.moves[turn]], v)) play([v], true)
-      return
-    }
-    if (!pv.every(isVertex) || !isLegalNext([...base, ...branch], v)) return
-    play([...pv, v])
-  }
-  const backToGame = (): void => {
-    if (variation) setTurn(exitTurn(variation))
-    setVariation(null)
-    setAwaiting(null)
-  }
-  const selectTurn = (n: number): void => {
-    setVariation(null)
-    setAwaiting(null)
-    setTurn(n)
-  }
-  const switchAutoReply = (on: boolean): void => {
-    setAutoReply(on)
-    if (!on) setAwaiting(null)
-  }
-
-  const last: Move | null = variation ? (base.at(-1) ?? null) : review.moves[turn]
-  const markers = emptyMap<Marker | null>(null)
-  const dimmed: Vertex[] = []
-  let highlighted: Vertex[] = []
-  if (branchStep === null) {
-    // The letters show where to play next; in the game, a candidate that is the move itself keeps its dot.
-    candidates.forEach((c, i) => {
-      if (!isVertex(c.vertex)) return
-      if (i === hot) highlighted = [c.vertex]
-      if (last && sameVertex(c.vertex, last.vertex)) return
-      markers[c.vertex[1]][c.vertex[0]] = { type: 'label', label: LABELS[i] }
-      if (i > 0) dimmed.push(c.vertex)
-    })
-    if (last && isVertex(last.vertex)) markers[last.vertex[1]][last.vertex[0]] = { type: 'point' }
-  } else {
-    branch.forEach((m, i) => {
-      if (isVertex(m.vertex)) markers[m.vertex[1]][m.vertex[0]] = { type: 'label', label: String(i + 1) }
-    })
-  }
   const ownership = variation ? (result?.position.ownership ?? null) : review.positions[turn + 1].ownership
   const paint = showOwnership ? ownershipMap(ownership) : null
-
-  // Spec 3: the last variation move loses against the best move of the position before it, once both are analysed.
-  let lastLoss: number | null = null
-  if (variation && last && result) {
-    const prevMoves = vMoves.slice(0, -1)
-    const prev = results.get(positionKey(fromTurn, prevMoves))
-    const before = prevMoves.length > 0 ? prev?.position : prev && prev.visits > review.positions[fromTurn].visits ? prev.position : review.positions[fromTurn]
-    if (before) lastLoss = moveLoss(last.color, before.scoreLeadBlack, result.position.scoreLeadBlack)
-  }
 
   const punishment = review.punishments.find((e) => e.turn === turn || e.turn + 1 === turn) ?? null
 
@@ -425,25 +199,7 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variation
         <LossBar moves={review.moveReviews} userColor={review.settings.userColor} selected={turn} onSelect={selectTurn} />
 
         {variation && last ? (
-          <>
-            <VariationBar
-              variation={variation}
-              onStep={step}
-              onClose={backToGame}
-              autoReply={autoReply}
-              onAutoReply={switchAutoReply}
-              visits={result?.visits ?? null}
-              thinking={awaiting !== null}
-              limit={replyVisits}
-              passed={passedKey === key}
-              onAnswer={replyVertex(result) ? answer : null}
-            />
-            <div class="move-line">
-              <span class={last.color === 'B' ? 'stone black' : 'stone white'} />
-              <span>{richText(t('review.variationMove', { n: fromTurn + variation.step }), { move: <b>{moveLabel(last.vertex, t)}</b> })}</span>
-              {lastLoss !== null && <span class="loss">{lastLoss > ZERO_LOSS ? `−${formatPoints(lastLoss, language)}` : formatPoints(0, language)}</span>}
-            </div>
-          </>
+          <VariationHead v={v} numbers={variationNumbers(variation)} />
         ) : (
           <>
             <div class="navigator">
@@ -485,19 +241,7 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variation
           </>
         )}
 
-        <CandidateList
-          candidates={candidates}
-          selected={selIndex}
-          hot={hot < 0 ? null : hot}
-          onHot={(i) => setHotVertex(i === null ? null : (candidates[i]?.vertex ?? null))}
-          onBranch={(i) => {
-            setSelectedVertex(candidates[i]?.vertex ?? null)
-            setPvStep(1)
-          }}
-          onPlay={awaiting === null ? (v) => play([v]) : null}
-          gameMove={variation ? null : move.vertex}
-          pending={variation !== null && !result && connected}
-        />
+        <VariationCandidates v={v} gameMove={move.vertex} connected={connected} />
 
         <div class="branch">
           {sel && sel.pv.length > 0 && branchStep === null && (
@@ -506,39 +250,12 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variation
               {t('review.branch.show')}
             </button>
           )}
-          {sel && branchStep !== null && (
-            <>
-              <button class="icon" disabled={branchStep <= 1} onClick={() => setPvStep(branchStep - 1)} aria-label={t('review.branch.back')}>
-                <ChevronLeft aria-hidden="true" />
-              </button>
-              <span class="where">{t('review.branch.step', { step: branchStep, total: sel.pv.length })}</span>
-              <button class="icon" disabled={branchStep >= sel.pv.length} onClick={() => setPvStep(branchStep + 1)} aria-label={t('review.branch.forward')}>
-                <ChevronRight aria-hidden="true" />
-              </button>
-              <button class="ghost" onClick={() => setPvStep(null)}>
-                {t('review.branch.hide')}
-              </button>
-            </>
-          )}
+          <BranchSteps v={v} />
           <button aria-pressed={showOwnership} onClick={() => setShowOwnership(!showOwnership)}>
             <MapIcon aria-hidden="true" />
             {t('review.territory')}
           </button>
-          {!variation && (
-            <button aria-pressed={deeper} onClick={() => setDeeperTurn(deeper ? null : turn)}>
-              <Telescope aria-hidden="true" />
-              {t('review.deeper')}
-            </button>
-          )}
-          {!variation && deeper && (
-            <span class="where" aria-live="polite">
-              {deepResult
-                ? t('common.visits', { value: formatCount(deepResult.visits, language) })
-                : !result && connected
-                  ? t('review.katagoCalculating')
-                  : ''}
-            </span>
-          )}
+          <DeeperControls v={v} connected={connected} />
         </div>
 
         <hr class="divider" />

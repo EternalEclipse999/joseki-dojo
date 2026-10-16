@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { Position, type CardKind, type CardListItem, type CardSummary, type DueCard, type ProblemAnswer, type Rating, type RepetitionInfo, type ReviewData, type StartCardState, type Vertex } from '@joseki-dojo/shared'
+import { colorSign, Position, type CardKind, type CardListItem, type CardSummary, type Color, type DueCard, type Move, type ProblemAnswer, type Rating, type RepetitionInfo, type ReviewData, type StartCardState, type Vertex } from '@joseki-dojo/shared'
 import { DEFAULT_CONFIG, type Thresholds } from '../config'
 import { EngineError } from '../engine/engine'
 import type { AnalysisResponse, KataGoQueryBody } from '../engine/katago-types'
@@ -208,11 +208,14 @@ export class CardService {
     if (!Position.fromMoves(p.moves).isLegal(p.toMove, vertex)) throw new CardError('illegal_move')
     const judge = this.d.judge
     let judged = candidateLoss(p, vertex)
+    // Black's lead after an answer outside the candidates, as the engine measured it.
+    let measured: number | null = null
     if (!judged) {
       if (!judge || !judge.ready()) throw new CardError('engine_unavailable')
       try {
         const after = await judge.analyze({ ...baseQuery([...p.moves, { color: p.toMove, vertex }]), maxVisits: judge.visits(), priority: 10 })
-        judged = { loss: lossAfter(p, after.rootInfo.scoreLead), best: false }
+        measured = after.rootInfo.scoreLead
+        judged = { loss: lossAfter(p, measured), best: false }
       } catch (err) {
         if (err instanceof EngineError) throw new CardError('engine_unavailable')
         throw err
@@ -232,7 +235,20 @@ export class CardService {
       return this.d.repo.insertReview({ cardId, reviewedAt: now.toISOString(), rating: auto, auto, worst: category === 'exact' ? null : { category, loss }, stateBefore, sessionId: null })
     })
     const row = this.d.repo.review(reviewId)!
-    return { vertex, loss, category, best, line: p.analysis.candidates[0], repetition: this.info(row, { ...fresh, state }) }
+    return {
+      vertex, loss, category, best, line: p.analysis.candidates[0],
+      position: { turn: 0, scoreLeadBlack: p.analysis.scoreLeadBlack, visits: p.analysis.visits, candidates: p.analysis.candidates, ownership: null },
+      leadAfter: measured ?? p.analysis.scoreLeadBlack - colorSign(p.toMove) * loss,
+      repetition: this.info(row, { ...fresh, state }),
+    }
+  }
+
+  /** Spec (problem variations) 3.1: the moves and the side to move of a problem card; null for anything else. */
+  problemBase(cardId: string): { moves: Move[]; toMove: Color } | null {
+    const card = this.d.repo.card(cardId)
+    if (!card || card.deleted || card.kind !== 'move') return null
+    const p = card.data as unknown as ProblemData
+    return { moves: p.moves, toMove: p.toMove }
   }
 
   remove(id: string): void {
