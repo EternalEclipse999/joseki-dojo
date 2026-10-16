@@ -5,9 +5,11 @@ export default defineConfig({
   timeout: 30_000,
   use: { baseURL: 'http://127.0.0.1:5180' },
   projects: [
-    { name: 'chromium', use: { browserName: 'chromium' }, testIgnore: 'languages.spec.ts' },
+    { name: 'chromium', use: { browserName: 'chromium' }, testIgnore: ['languages.spec.ts', 'problems.spec.ts'] },
     // It saves other languages, so it runs against its own server (5183), not the one the other specs read Russian from.
     { name: 'languages', use: { browserName: 'chromium', baseURL: 'http://127.0.0.1:5183' }, testMatch: 'languages.spec.ts' },
+    // A mistake in a training needs the fake KataGo with a penalty stone, so it has its own server (5184).
+    { name: 'problems', use: { browserName: 'chromium', baseURL: 'http://127.0.0.1:5184' }, testMatch: 'problems.spec.ts' },
   ],
   // Playwright starts these one after another: the first builds the web UI that the second serves too.
   webServer: [
@@ -44,6 +46,13 @@ export default defineConfig({
       // Spec (languages) 9: its own profile in Russian (the language spec saves other languages), the same fake KataGo and start positions.
       command: 'npx tsx e2e/languages-server.ts',
       url: 'http://127.0.0.1:5183/api/health',
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      // The problem flow: the fake KataGo punishes N13 by 3 points, so the user's first move there is a mistake.
+      command: 'npx tsx e2e/problems-server.ts',
+      url: 'http://127.0.0.1:5184/api/health',
       reuseExistingServer: false,
       timeout: 120_000,
     },

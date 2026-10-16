@@ -86,9 +86,11 @@ export class CardRepo {
     return r ? review(r) : null
   }
 
-  /** The review of a training, whatever its card (a training repeats at most one position card). */
-  reviewOfSession(sessionId: string): ReviewRow | null {
-    const r = this.db.prepare('SELECT * FROM card_reviews WHERE session_id = ? ORDER BY id DESC LIMIT 1').get(sessionId) as RawReview | undefined
+  /** Spec (repetition) 5.3: the latest review of a training that belongs to a position card (problem reviews of the same training are not it). */
+  positionReviewOfSession(sessionId: string): ReviewRow | null {
+    const r = this.db
+      .prepare("SELECT r.* FROM card_reviews r JOIN cards c ON c.id = r.card_id WHERE r.session_id = ? AND c.kind = 'position' ORDER BY r.id DESC LIMIT 1")
+      .get(sessionId) as RawReview | undefined
     return r ? review(r) : null
   }
 

@@ -16,6 +16,8 @@
 //   FAKE_KATAGO_SILENT=1                never answer anything
 //   FAKE_KATAGO_DELAY_MS=<n>            answer analysis queries one at a time (a queue), each <n> ms after the previous
 //                                       answer was written; query_version stays immediate
+//   FAKE_KATAGO_PENALTY=<GTP>:<points>  every lead (Black view: the root and each candidate) is -points per black stone and
+//                                       +points per white stone on that point of the query moves (captures are not simulated)
 //   FAKE_KATAGO_VERSION=<v>             version reported by query_version (default 1.18.1)
 import { existsSync, writeFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
@@ -24,6 +26,14 @@ const LETTERS = 'ABCDEFGHJKLMNOPQRST'
 const BEST_MOVE_PREFERENCE = ['D4', 'Q4', 'D16', 'Q16']
 
 const toIndex = (gtp) => (19 - Number(gtp.slice(1))) * 19 + LETTERS.indexOf(gtp[0].toUpperCase())
+
+const [PENALTY_POINT, PENALTY_POINTS] = (process.env.FAKE_KATAGO_PENALTY ?? '').split(':')
+if (PENALTY_POINT && !(/^[A-HJ-T](?:[1-9]|1\d)$/i.test(PENALTY_POINT) && PENALTY_POINTS !== undefined && PENALTY_POINTS.trim() !== '' && Number.isFinite(Number(PENALTY_POINTS)))) {
+  process.stderr.write(`FAKE_KATAGO_PENALTY must be <GTP point>:<finite number>, got "${process.env.FAKE_KATAGO_PENALTY}"
+`)
+  process.exit(2)
+}
+const PENALTY_INDEX = PENALTY_POINT ? toIndex(PENALTY_POINT) : -1
 
 function answer(query, partial = 0) {
   if (query.action === 'query_version') {
@@ -37,14 +47,17 @@ function answer(query, partial = 0) {
   const allowed = (query.allowMoves ?? []).find((a) => a.player === toMove)
   const options = (allowed ? allowed.moves : BEST_MOVE_PREFERENCE).filter((m) => !taken.has(toIndex(m)))
   const best = options[0] ?? 'pass'
+  const lead = moves
+    .filter(([, v]) => v.toLowerCase() !== 'pass' && toIndex(v) === PENALTY_INDEX)
+    .reduce((sum, [color]) => sum + (color === 'B' ? -Number(PENALTY_POINTS) : Number(PENALTY_POINTS)), 0)
   const maxVisits = query.maxVisits ?? 1
   const visits = partial ? Math.ceil((maxVisits * partial) / 4) : maxVisits
   const res = {
     id: query.id,
     isDuringSearch: partial > 0,
     turnNumber: moves.length,
-    rootInfo: { currentPlayer: toMove, scoreLead: 0, winrate: 0.5, visits },
-    moveInfos: [{ move: best, order: 0, visits, scoreLead: 0, winrate: 0.5, pv: [best] }],
+    rootInfo: { currentPlayer: toMove, scoreLead: lead, winrate: 0.5, visits },
+    moveInfos: [{ move: best, order: 0, visits, scoreLead: lead, winrate: 0.5, pv: [best] }],
   }
   if (query.includeOwnership) res.ownership = new Array(361).fill(0)
   if (query.includePolicy) {

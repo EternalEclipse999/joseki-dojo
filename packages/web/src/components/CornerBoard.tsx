@@ -25,8 +25,10 @@ export interface CornerMark {
 }
 
 export interface CornerBoardProps {
-  /** Canonical moves in GTP, Black first. */
-  moves: string[]
+  /** Canonical moves in GTP, Black first (not needed with `stones`). */
+  moves?: string[]
+  /** Stones as they are (GTP in the zone), drawn instead of `moves`: no numbers, no last-move mark; `ghost` and `lastMove` are ignored. */
+  stones?: { black: string[]; white: string[] }
   /** A continuation shown as translucent stones, numbered from moves.length + 1. */
   ghost?: string[]
   marks?: CornerMark[]
@@ -39,13 +41,18 @@ export interface CornerBoardProps {
 }
 
 /** Spec (starts) 5.1: the top-right 11×11 corner with a position, its continuations' letters and a hovered continuation. */
-export function CornerBoard({ moves, ghost = [], marks = [], lastMove = false, onMarkEnter, onMarkLeave, onMarkClick, class: cls = 'start-preview' }: CornerBoardProps) {
-  const stones = moves.flatMap((m, i) => {
-    const p = point(m)
-    return p ? [{ ...p, black: i % 2 === 0 }] : []
-  })
-  const last = lastMove && moves.length > 0 ? point(moves[moves.length - 1]) : null
-  const ghosts = ghost.flatMap((m, i) => {
+export function CornerBoard({ moves = [], stones: given, ghost = [], marks = [], lastMove = false, onMarkEnter, onMarkLeave, onMarkClick, class: cls = 'start-preview' }: CornerBoardProps) {
+  const stones = given
+    ? [...given.black.map((g) => ({ g, black: true })), ...given.white.map((g) => ({ g, black: false }))].flatMap(({ g, black }) => {
+        const p = point(g)
+        return p ? [{ ...p, black }] : []
+      })
+    : moves.flatMap((m, i) => {
+        const p = point(m)
+        return p ? [{ ...p, black: i % 2 === 0 }] : []
+      })
+  const last = !given && lastMove && moves.length > 0 ? point(moves[moves.length - 1]) : null
+  const ghosts = (given ? [] : ghost).flatMap((m, i) => {
     const p = point(m)
     return p ? [{ ...p, black: (moves.length + i) % 2 === 0, n: moves.length + i + 1 }] : []
   })

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks'
-import type { CardListItem, CardSummary, LocalizedText } from '@joseki-dojo/shared'
+import type { CardKind, CardListItem, CardSummary, LocalizedText, Translate } from '@joseki-dojo/shared'
 import { deleteCard, failureText, fetchCardSummary, fetchCards } from '../api'
 import { CornerBoard } from '../components/CornerBoard'
 import { errorText } from '../error-text'
@@ -22,6 +22,18 @@ const REFRESH_MAX_MS = 3_600_000
 /** Never sooner: a client clock ahead of the server's must not turn the wait into a burst of requests. */
 const REFRESH_MIN_MS = 30_000
 
+const FILTERS = ['all', 'position', 'move'] as const
+
+/** A card row's title: a problem by its source, the corner's group and the move; a position by its name in the tree. */
+function cardTitle(c: CardListItem, tree: StartTreeNode, t: Translate): string {
+  if (c.problem) {
+    const { source, group, moveNumber } = c.problem
+    return `${t(`repetition.kind.${source}`)}${group ? ` · ${group}` : ''} · ${t('repetition.problemMove', { n: moveNumber })}`
+  }
+  const node = c.startId ? findById(tree, c.startId) : null
+  return node ? nodeTitle(node) : t('repetition.kind.position')
+}
+
 /** Spec (repetition) 5.1: what is due, the week ahead, the cards. */
 export function RepetitionScreen({ tree, busy, notice, onStartQueue, onChanged }: RepetitionScreenProps) {
   const { language, t } = useI18n()
@@ -29,6 +41,7 @@ export function RepetitionScreen({ tree, busy, notice, onStartQueue, onChanged }
   const [cards, setCards] = useState<CardListItem[]>([])
   const [error, setError] = useState<LocalizedText | null>(null)
   const [tick, setTick] = useState(0)
+  const [filter, setFilter] = useState<CardKind | 'all'>('all')
   useEffect(() => {
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -56,6 +69,7 @@ export function RepetitionScreen({ tree, busy, notice, onStartQueue, onChanged }
     }
   }, [tick])
   const now = new Date()
+  const visible = cards.filter((c) => filter === 'all' || c.kind === filter)
   const remove = (c: CardListItem): void => {
     if (!window.confirm(t('repetition.deleteConfirm'))) return
     deleteCard(c.id)
@@ -87,7 +101,16 @@ export function RepetitionScreen({ tree, busy, notice, onStartQueue, onChanged }
               <div class="metric">
                 <span class="k">{t('repetition.dueNow')}</span>
                 <span class="v">{summary.dueNow}</span>
-                {summary.dueNow > 0 && <span class="s">{t('repetition.dueKinds', { count: summary.dueByKind.position })}</span>}
+                {summary.dueNow > 0 && (
+                  <span class="s">
+                    {[
+                      summary.dueByKind.position > 0 ? t('repetition.dueKinds', { count: summary.dueByKind.position }) : null,
+                      summary.dueByKind.move > 0 ? t('repetition.dueProblems', { count: summary.dueByKind.move }) : null,
+                    ]
+                      .filter((x) => x !== null)
+                      .join(' · ')}
+                  </span>
+                )}
                 {summary.nextDue && <span class="s">{t('repetition.nextDue', { when: formatWhen(summary.nextDue, now, language, t) })}</span>}
               </div>
               <div class="metric">
@@ -115,12 +138,20 @@ export function RepetitionScreen({ tree, busy, notice, onStartQueue, onChanged }
         {summary && cards.length > 0 && (
           <section class="card-list" aria-label={t('repetition.list')}>
             <h2>{t('repetition.list')}</h2>
-            {cards.map((c) => {
-              const node = c.startId ? findById(tree, c.startId) : null
-              const name = node ? nodeTitle(node) : t('repetition.kind.position')
+            <div class="segmented" role="radiogroup" aria-label={t('repetition.filter')}>
+              {FILTERS.map((f) => (
+                <label key={f}>
+                  <input type="radio" name="repetition-filter" checked={filter === f} onChange={() => setFilter(f)} />
+                  {t(`repetition.filter.${f}`)}
+                </label>
+              ))}
+            </div>
+            {visible.length === 0 && <p class="hint">{t('repetition.filter.none')}</p>}
+            {visible.map((c) => {
+              const name = cardTitle(c, tree, t)
               return (
                 <div class="card-row" key={c.id}>
-                  <CornerBoard moves={c.moves} />
+                  {c.problem ? <CornerBoard stones={c.problem} /> : <CornerBoard moves={c.moves} />}
                   <div class="card-row-text">
                     <b>{name}</b>
                     {c.orphan ? (

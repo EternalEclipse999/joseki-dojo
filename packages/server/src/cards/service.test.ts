@@ -1,10 +1,13 @@
-import type { ReviewData } from '@joseki-dojo/shared'
+import type { Actor, Category, Color, Corner, ReviewData, Vertex } from '@joseki-dojo/shared'
 import { describe, expect, it } from 'vitest'
-import { decodeJdb, encodeJdb } from '../jdb'
+import { decodeJdb, encodeJdb, toTopRight } from '../jdb'
 import { StartBook } from '../starts/book'
 import { TEST_STARTS_LIST, testStartsTree } from '../starts/fixture'
 import { openDb } from '../store/db'
 import type { SessionRecord } from '../store/records'
+import { DEFAULT_CONFIG } from '../config'
+import { EngineError } from '../engine/engine'
+import type { AnalysisResponse, KataGoQueryBody } from '../engine/katago-types'
 import { CardRepo } from './repo'
 import { CardError, CardService, LEARN_AHEAD_MS } from './service'
 
@@ -166,5 +169,200 @@ describe('a position card whose start left the list', () => {
     expect(orphan.list()).toEqual([expect.objectContaining({ id: 'card1', startId: listedId(), moves: [], orphan: true })])
     orphan.remove('card1')
     expect(orphan.list()).toEqual([])
+  })
+})
+
+/**
+ * A training of Black in `corner`, seen in the top-right corner: Q16 (exact), the bot's R17, then a 2.4-point mistake at
+ * O17. Every position carries one candidate, so the mistake makes a problem card; with `startId` the training is of a
+ * listed start too.
+ */
+function problemTraining(id: string, corner: Corner = 'TR', startId: string | null = null): [SessionRecord, ReviewData] {
+  const settings = { mode: startId ? 'list' : 'free', environment: 'empty', userColor: 'B', botRank: '5k', corner, ...(startId ? { start: { id: startId, name: 'X', mirror: false } } : {}) }
+  const played: [Color, Vertex, Actor, number, Category][] = [
+    ['B', [15, 3], 'user', 0, 'exact'],
+    ['W', [16, 2], 'bot', 0, 'exact'],
+    ['B', [13, 2], 'user', 2.4, 'mistake'],
+  ]
+  const moves = played.map(([color, vertex, actor]) => ({ color, vertex: toTopRight(vertex, corner), actor, inZone: true }))
+  const rec = { id, createdAt: '', finishedAt: '', settings, status: 'finished', parentSessionId: null, initialMoves: [], moves, summary: null } as unknown as SessionRecord
+  const review = {
+    sessionId: id, settings, initialMoves: [], moves,
+    positions: Array.from({ length: moves.length + 1 }, (_, turn) => ({ turn, scoreLeadBlack: 0, visits: 10, candidates: [{ vertex: toTopRight([15, 2], corner), loss: 0, pv: [] }], ownership: null })),
+    moveReviews: played.map(([color, , actor, loss, category], turn) => ({ turn, color, actor, vertex: moves[turn].vertex, loss, category })),
+    punishments: [], summary: { userLoss: 0, botMistakes: 0, botMistakeLoss: 0, punished: 0, keptPoints: 0 },
+  } as unknown as ReviewData
+  return [rec, review]
+}
+
+describe('problem cards', () => {
+  it('makes a card of a mistake, due within minutes, once per training; another training of the position repeats it', () => {
+    const start = new Date('2026-10-15T10:00:00')
+    const { service, repo, setNow } = setup(start)
+    service.recordTraining(...problemTraining('s1'))
+    service.recordTraining(...problemTraining('s1'))
+    const [card, ...rest] = service.list()
+    expect(rest).toEqual([])
+    expect(service.repetitionOf('s1')).toBeNull()
+    expect(card).toMatchObject({
+      id: 'card1', kind: 'move', startId: null, moves: [], stage: 'learning', lastRating: 'again', reps: 1, orphan: false,
+      problem: { source: 'mistake', group: '4-4', moveNumber: 3, black: ['Q16'], white: ['R17'] },
+    })
+    expect(new Date(card.due).getTime() - start.getTime()).toBeLessThanOrEqual(10 * 60_000)
+    setNow(new Date('2026-10-15T10:30:00'))
+    service.recordTraining(...problemTraining('s2'))
+    expect(service.list()).toEqual([expect.objectContaining({ id: 'card1', reps: 2 })])
+    expect(repo.reviewBySession('card1', 's2')).toMatchObject({ rating: 'again', auto: 'again', worst: null })
+  })
+
+  it('repeats the same card for the same position in another corner', () => {
+    const { service, repo } = setup()
+    service.recordTraining(...problemTraining('s1', 'TR'))
+    service.recordTraining(...problemTraining('s2', 'BL'))
+    expect(service.list()).toEqual([expect.objectContaining({ id: 'card1', reps: 2 })])
+    expect(repo.reviewBySession('card1', 's2')).not.toBeNull()
+  })
+
+  it('does not bring a deleted problem card back', () => {
+    const { service } = setup()
+    service.recordTraining(...problemTraining('s1'))
+    service.remove('card1')
+    service.recordTraining(...problemTraining('s2'))
+    expect(service.list()).toEqual([])
+  })
+
+  it('shows the position card over the review of a training that made a problem card too', () => {
+    const { service } = setup()
+    service.recordTraining(...problemTraining('s1', 'TR', listedId()))
+    expect(service.list()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'card1', kind: 'position', startId: listedId(), problem: null }),
+        expect.objectContaining({ id: 'card2', kind: 'move' }),
+      ]),
+    )
+    expect(service.repetitionOf('s1')).toMatchObject({ cardId: 'card1', auto: 'again' })
+  })
+
+  it('serves a due problem card as the problem screen shows it, without the candidates', () => {
+    const { service } = setup()
+    service.recordTraining(...problemTraining('s1', 'BL'))
+    expect(service.due()).toEqual({
+      card: {
+        id: 'card1', kind: 'move',
+        problem: { source: 'mistake', corner: 'BL', userColor: 'B', moves: [{ color: 'B', vertex: [3, 15] }, { color: 'W', vertex: [2, 16] }], userMove: [5, 16], userLoss: 2.4, moveNumber: 3, group: '4-4' },
+      },
+    })
+  })
+
+  it('counts a problem card in the next due time when nothing is due', () => {
+    const { service, repo } = setup()
+    service.recordTraining(...problemTraining('s1'))
+    service.rate(repo.reviewBySession('card1', 's1')!.id, 'easy')
+    const nextDue = service.list()[0].due
+    expect(service.due()).toEqual({ card: null, nextDue })
+  })
+})
+
+describe('answering a problem', () => {
+  /**
+   * A problem card (Black to move after B Q16, W R17); the stored candidates: Q17 (best) and P17 (loss 0.8). `meanwhile`
+   * runs while the engine judges an answer.
+   */
+  function problemSetup(opts: { ready?: boolean; fail?: Error; lead?: number; meanwhile?: (service: CardService) => void } = {}) {
+    const queries: KataGoQueryBody[] = []
+    const judge = {
+      analyze: async (q: KataGoQueryBody): Promise<AnalysisResponse> => {
+        queries.push(q)
+        opts.meanwhile?.(service)
+        if (opts.fail) throw opts.fail
+        return { rootInfo: { scoreLead: opts.lead ?? -2.5 } } as unknown as AnalysisResponse
+      },
+      ready: () => opts.ready ?? true,
+      thresholds: () => DEFAULT_CONFIG.thresholds,
+      visits: () => 10,
+    }
+    let now = new Date('2026-10-15T10:00:00')
+    const repo = new CardRepo(openDb(':memory:'))
+    const service = new CardService({ repo, starts: book(), now: () => now, newId: () => 'card1', judge })
+    const [rec, review] = problemTraining('s1')
+    review.positions[2].candidates = [
+      { vertex: [15, 2], loss: 0, pv: [] },
+      { vertex: [14, 2], loss: 0.8, pv: [] },
+    ] as never
+    service.recordTraining(rec, review)
+    return { service, repo, queries, setNow: (d: Date) => (now = d) }
+  }
+
+  it('judges the best stored candidate without the engine: exact, easy', async () => {
+    const { service, queries } = problemSetup()
+    const a = await service.answer('card1', [15, 2])
+    expect(a).toMatchObject({ vertex: [15, 2], loss: 0, category: 'exact', best: true, line: { vertex: [15, 2] } })
+    expect(a.repetition).toMatchObject({ cardId: 'card1', auto: 'easy', rating: 'easy', editable: true })
+    expect(queries).toEqual([])
+  })
+
+  it('judges another stored candidate by its loss: inaccuracy, hard', async () => {
+    const { service, queries } = problemSetup()
+    const a = await service.answer('card1', [14, 2])
+    expect(a).toMatchObject({ loss: 0.8, category: 'inaccuracy', best: false })
+    expect(a.repetition.auto).toBe('hard')
+    expect(queries).toEqual([])
+  })
+
+  it('asks the engine about a point outside the candidates: loss from the lead after the move', async () => {
+    const { service, queries } = problemSetup()
+    const a = await service.answer('card1', [10, 10])
+    expect(queries).toHaveLength(1)
+    expect(queries[0].maxVisits).toBe(10)
+    expect(queries[0].priority).toBe(10)
+    expect(queries[0].moves).toHaveLength(3)
+    expect(queries[0].moves[2]).toEqual(['B', 'L9'])
+    expect(a).toMatchObject({ loss: 2.5, category: 'mistake', best: false })
+    expect(a.repetition.auto).toBe('again')
+  })
+
+  it('rejects an occupied point, an unknown card and a position card', async () => {
+    const { service } = problemSetup()
+    await expect(service.answer('card1', [15, 3])).rejects.toMatchObject({ code: 'illegal_move' })
+    await expect(service.answer('nope', [1, 1])).rejects.toMatchObject({ code: 'card_not_found' })
+    const { service: other } = setup()
+    other.recordTraining(...training('p1', listedId(), [[0, 'exact']]))
+    await expect(other.answer('card1', [1, 1])).rejects.toMatchObject({ code: 'wrong_kind' })
+  })
+
+  it('is unavailable without a ready engine or when the engine fails, and records nothing', async () => {
+    const down = problemSetup({ ready: false })
+    await expect(down.service.answer('card1', [10, 10])).rejects.toMatchObject({ code: 'engine_unavailable' })
+    const failing = problemSetup({ fail: new EngineError({ key: 'error.engine.noHumanPolicy' }, 'query_error') })
+    await expect(failing.service.answer('card1', [10, 10])).rejects.toMatchObject({ code: 'engine_unavailable' })
+    expect(failing.repo.card('card1')!.state.reps).toBe(1)
+    expect(down.repo.card('card1')!.state.reps).toBe(1)
+  })
+
+  it('rethrows a failure that is not an engine error as it is, and records nothing', async () => {
+    const boom = new TypeError('boom')
+    const { service, repo } = problemSetup({ fail: boom })
+    const before = repo.latestReviewId('card1')
+    await expect(service.answer('card1', [10, 10])).rejects.toBe(boom)
+    expect(repo.card('card1')!.state.reps).toBe(1)
+    expect(repo.latestReviewId('card1')).toBe(before)
+  })
+
+  it('drops the verdict on a card deleted while the engine judged it, and records nothing', async () => {
+    const { service, repo } = problemSetup({ meanwhile: (s) => s.remove('card1') })
+    const before = repo.latestReviewId('card1')
+    const err = await service.answer('card1', [10, 10]).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(CardError)
+    expect(err).toMatchObject({ code: 'card_not_found' })
+    expect(repo.card('card1')).toMatchObject({ deleted: true, state: { reps: 1 } })
+    expect(repo.latestReviewId('card1')).toBe(before)
+  })
+
+  it('records the answer as a review that can be re-rated', async () => {
+    const { service, repo, setNow } = problemSetup()
+    setNow(new Date('2026-10-15T10:30:00'))
+    const a = await service.answer('card1', [14, 2])
+    expect(repo.review(a.repetition.reviewId)).toMatchObject({ sessionId: null, auto: 'hard', worst: { category: 'inaccuracy', loss: 0.8 } })
+    expect(service.rate(a.repetition.reviewId, 'good')).toMatchObject({ rating: 'good', auto: 'hard', editable: true })
   })
 })

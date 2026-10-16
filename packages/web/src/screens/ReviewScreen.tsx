@@ -5,14 +5,11 @@ import { ChevronLeft, ChevronRight, FolderOpen, GitBranch, LoaderCircle, Map as 
 import {
   nextColor,
   Position,
-  RATINGS,
   type Actor,
   type AnalysisSettings,
   type MessageKey,
   type Move,
   type MoveVertex,
-  type Rating,
-  type RepetitionInfo,
   type ReviewData,
   type Translate,
   type TrapVerdict,
@@ -22,8 +19,9 @@ import { emptyMap, isVertex, ownershipMap, pvMoves, sameVertex } from '../board-
 import { Board } from '../components/Board'
 import { CandidateList, LABELS } from '../components/CandidateList'
 import { LossBar } from '../components/LossBar'
+import { RepetitionPanel, type RepetitionLink } from '../components/RepetitionPanel'
 import { VariationBar } from '../components/VariationBar'
-import { CATEGORY_LABEL, formatCount, formatPoints, formatWhen, moveLabel } from '../format'
+import { CATEGORY_LABEL, formatCount, formatPoints, moveLabel, ZERO_LOSS } from '../format'
 import { useI18n, useT } from '../i18n'
 import { summaryTiles } from '../review-summary'
 import { richText } from '../rich-text'
@@ -62,16 +60,6 @@ export interface VariationLink {
   errorSeq: number
   /** The visits of the stored review and the limit of a variation search; null until the settings are loaded. */
   visits: AnalysisSettings | null
-}
-
-/** Repetition spec 5.3: the review's link to the training's card repetition (`review.repetition`) and to the queue. */
-export interface RepetitionLink {
-  /** Replaces the rating of the shown repetition. */
-  onRate: (rating: Rating) => void
-  /** The training came from the queue: its «Дальше» and «Закончить»; null otherwise. */
-  queue: { onNext: () => void; onFinish: () => void } | null
-  /** A re-rating that failed, in the reader's language. */
-  error: string | null
 }
 
 export interface ReviewScreenProps {
@@ -160,55 +148,6 @@ export function ReviewScreen({ review, progress, onReplay, onNew, onNext, labels
       variations={variations}
       repetition={repetition}
     />
-  )
-}
-
-/**
- * Repetition spec 4.4, 5.3: KataGo's rating of the training as a card repetition with its reason in one line, the four
- * buttons that replace it, when the card comes back, and the queue's «Дальше» / «Закончить». Without `info` (a training
- * with no move of the player's in the corner zone is not a repetition) the panel says so above the queue's buttons.
- */
-function RepetitionPanel({ info, link, busy }: { info: RepetitionInfo | null; link: RepetitionLink; busy?: boolean }) {
-  const { language, t } = useI18n()
-  const { onRate, queue, error } = link
-  const worst = info?.worst ?? null
-  const reason = !worst
-    ? t('review.repetition.clean')
-    : worst.category === 'unpunished'
-      ? t('review.repetition.unpunished', { loss: formatPoints(worst.loss, language) })
-      : t('review.repetition.worst', { category: t(CATEGORY_LABEL[worst.category]), loss: formatPoints(worst.loss, language) })
-  return (
-    <section class="repetition-panel" aria-label={t('review.repetition.title')}>
-      <div class="label">{t('review.repetition.title')}</div>
-      {!info && <p>{t('review.repetition.notCounted')}</p>}
-      {info && (
-        <>
-          <p>
-            {t('review.repetition.auto', { rating: t(`rating.${info.auto}`) })} · {reason}
-          </p>
-          <div class="segmented" role="group" aria-label={t('review.repetition.ratings')}>
-            {RATINGS.map((r) => (
-              <button key={r} aria-pressed={info.rating === r} disabled={!info.editable} onClick={() => onRate(r)}>
-                {t(`rating.${r}`)}
-              </button>
-            ))}
-          </div>
-          {!info.editable && <p class="hint">{t('review.repetition.locked')}</p>}
-          <p class="hint">{t('review.repetition.next', { when: formatWhen(info.due, new Date(), language, t) })}</p>
-        </>
-      )}
-      {error && <p class="hint error">{error}</p>}
-      {queue && (
-        <div class="actions">
-          <button class="primary" disabled={busy} onClick={queue.onNext}>
-            {t('review.repetition.continue')}
-          </button>
-          <button class="ghost" disabled={busy} onClick={queue.onFinish}>
-            {t('review.repetition.finish')}
-          </button>
-        </div>
-      )}
-    </section>
   )
 }
 
@@ -502,7 +441,7 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variation
             <div class="move-line">
               <span class={last.color === 'B' ? 'stone black' : 'stone white'} />
               <span>{richText(t('review.variationMove', { n: fromTurn + variation.step }), { move: <b>{moveLabel(last.vertex, t)}</b> })}</span>
-              {lastLoss !== null && <span class="loss">{lastLoss > 0.05 ? `−${formatPoints(lastLoss, language)}` : formatPoints(0, language)}</span>}
+              {lastLoss !== null && <span class="loss">{lastLoss > ZERO_LOSS ? `−${formatPoints(lastLoss, language)}` : formatPoints(0, language)}</span>}
             </div>
           </>
         ) : (
@@ -527,7 +466,7 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variation
               <span>{richText(t(MOVE_BY[move.actor]), { move: <b>{moveLabel(move.vertex, t)}</b> })}</span>
               <span class={`cat ${move.category}`}>
                 {t(CATEGORY_LABEL[move.category])}
-                {move.loss > 0.05 && ` −${formatPoints(move.loss, language)}`}
+                {move.loss > ZERO_LOSS && ` −${formatPoints(move.loss, language)}`}
               </span>
             </div>
             {trapNote(review, turn, t)}

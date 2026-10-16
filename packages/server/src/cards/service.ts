@@ -1,13 +1,19 @@
 import { randomUUID } from 'node:crypto'
-import type { CardKind, CardListItem, CardSummary, DueCard, Rating, RepetitionInfo, ReviewData, StartCardState } from '@joseki-dojo/shared'
+import { Position, type CardKind, type CardListItem, type CardSummary, type DueCard, type ProblemAnswer, type Rating, type RepetitionInfo, type ReviewData, type StartCardState, type Vertex } from '@joseki-dojo/shared'
+import { DEFAULT_CONFIG, type Thresholds } from '../config'
+import { EngineError } from '../engine/engine'
+import type { AnalysisResponse, KataGoQueryBody } from '../engine/katago-types'
+import { baseQuery } from '../engine/query'
+import { categorize } from '../review/compute'
 import type { StartBook } from '../starts/book'
 import type { SessionRecord } from '../store/records'
 import { positionRating } from './grade'
+import { candidateLoss, findProblems, lossAfter, problemKey, zoneStones, type ProblemData } from './problem'
 import type { CardRepo, CardRow, ReviewRow } from './repo'
 import { dayStart, inLearningSteps, newState, schedule, stageOf } from './schedule'
 
 export class CardError extends Error {
-  constructor(readonly code: 'card_not_found' | 'review_not_found' | 'not_latest') {
+  constructor(readonly code: 'card_not_found' | 'review_not_found' | 'not_latest' | 'wrong_kind' | 'illegal_move' | 'engine_unavailable') {
     super(code)
   }
 }
@@ -17,6 +23,13 @@ export interface CardServiceDeps {
   starts: StartBook
   now?: () => Date
   newId?: () => string
+  /** Judges an answer that is not among a problem's stored candidates. */
+  judge?: {
+    analyze: (q: KataGoQueryBody) => Promise<AnalysisResponse>
+    ready: () => boolean
+    thresholds: () => Thresholds
+    visits: () => number
+  }
 }
 
 interface PositionData {
@@ -36,7 +49,7 @@ const addDays = (d: Date, n: number): Date => {
   return x
 }
 
-/** Spec (repetition) 4–5: cards, their schedule and the queue. Iteration 1: position cards. */
+/** Spec (repetition) 4–5: cards, their schedule and the queue: position cards and «find a good move» problem cards. */
 export class CardService {
   constructor(private readonly d: CardServiceDeps) {}
 
@@ -44,8 +57,14 @@ export class CardService {
     return this.d.now?.() ?? new Date()
   }
 
-  /** Spec (repetition) 4.2: a finished training of a listed start is a repetition of its position card. */
+  /** Spec (repetition) 4.2: a finished training repeats its position card and makes or repeats its problem cards. */
   recordTraining(rec: SessionRecord, review: ReviewData): void {
+    this.recordPosition(rec, review)
+    this.recordProblems(rec, review)
+  }
+
+  /** Spec (repetition) 4.2: a finished training of a listed start is a repetition of its position card. */
+  private recordPosition(rec: SessionRecord, review: ReviewData): void {
     const start = rec.settings.start
     if (!start || start.dubious) return
     const entry = this.d.starts.list().find((e) => e.id === start.id)
@@ -72,13 +91,34 @@ export class CardService {
     })
   }
 
+  /** Spec (repetition) 4.2: every problem of the training — a new card starts with «Снова», an existing one gets an «again» review once per training. */
+  private recordProblems(rec: SessionRecord, review: ReviewData): void {
+    for (const p of findProblems(rec, review)) {
+      const key = problemKey(p.moves, p.corner, p.toMove)
+      this.d.repo.transaction(() => {
+        let card = this.d.repo.cardByKey(key)
+        if (card?.deleted) return
+        if (card && this.d.repo.reviewBySession(card.id, rec.id)) return
+        const now = this.now()
+        if (!card) {
+          const row = { id: this.d.newId?.() ?? randomUUID(), kind: 'move' as const, key, data: { ...p } as unknown as Record<string, unknown>, state: newState(now), createdAt: now.toISOString() }
+          this.d.repo.insertCard(row)
+          card = { ...row, deleted: false }
+        }
+        const stateBefore = card.state
+        this.d.repo.updateState(card.id, schedule(stateBefore, 'again', now))
+        this.d.repo.insertReview({ cardId: card.id, reviewedAt: now.toISOString(), rating: 'again', auto: 'again', worst: null, stateBefore, sessionId: rec.id })
+      })
+    }
+  }
+
   private info(row: ReviewRow, card: CardRow): RepetitionInfo {
     return { cardId: card.id, reviewId: row.id, auto: row.auto, rating: row.rating, worst: row.worst, editable: this.d.repo.latestReviewId(card.id) === row.id, due: card.state.due }
   }
 
   /** Spec (repetition) 5.3: the repetition shown over the review of `sessionId`. */
   repetitionOf(sessionId: string): RepetitionInfo | null {
-    const row = this.d.repo.reviewOfSession(sessionId)
+    const row = this.d.repo.positionReviewOfSession(sessionId)
     const card = row ? this.d.repo.card(row.cardId) : null
     return row && card && !card.deleted ? this.info(row, card) : null
   }
@@ -132,26 +172,67 @@ export class CardService {
       .filter((c) => !kind || c.kind === kind)
       .map((c) => {
         const startId = c.kind === 'position' ? startIdOf(c) : null
+        const p = c.kind === 'move' ? (c.data as unknown as ProblemData) : null
         return {
           id: c.id, kind: c.kind, startId, moves: (startId && moves.get(startId)) || [], due: c.state.due, stage: stageOf(c.state),
           lastRating: this.d.repo.lastRating(c.id), reps: c.state.reps, orphan: this.orphan(c),
+          problem: p && { source: p.source, group: p.group, moveNumber: p.moveNumber, ...zoneStones(p.moves, p.corner) },
         }
       })
   }
 
   /**
-   * Spec (repetition) 5.2: the most overdue position card; when none is due, the earliest one in its learning steps due
-   * within LEARN_AHEAD_MS (so a card rated «Снова» comes back in the same session); otherwise the next due time.
+   * Spec (repetition) 5.2: the most overdue card, a position or a problem; when none is due, the earliest one in its learning
+   * steps due within LEARN_AHEAD_MS (so a card rated «Снова» comes back in the same session); otherwise the next due time.
    */
   due(): DueCard {
     const now = this.now().getTime()
-    // Only position cards are served by the queue in this iteration (iteration 2 adds move cards).
-    const cards = this.servable().filter((c) => c.kind === 'position')
+    const cards = this.servable()
     const dueAt = (c: CardRow): number => new Date(c.state.due).getTime()
     const next = cards.find((c) => dueAt(c) <= now) ?? cards.find((c) => inLearningSteps(c.state) && dueAt(c) <= now + LEARN_AHEAD_MS)
     if (!next) return { card: null, nextDue: cards[0]?.state.due ?? null }
+    if (next.kind === 'move') {
+      const p = next.data as unknown as ProblemData
+      return { card: { id: next.id, kind: 'move', problem: { source: p.source, corner: p.corner, userColor: p.userColor, moves: p.moves, userMove: p.userMove, userLoss: p.userLoss, moveNumber: p.moveNumber, group: p.group } } }
+    }
     const data = next.data as unknown as PositionData
     return { card: { id: next.id, kind: 'position', startId: data.startId, userColor: data.userColor, botRank: data.botRank } }
+  }
+
+  /** Spec (repetition) 5.4: judge a problem answer and record it as the card's review. */
+  async answer(cardId: string, vertex: Vertex): Promise<ProblemAnswer> {
+    const card = this.d.repo.card(cardId)
+    if (!card || card.deleted) throw new CardError('card_not_found')
+    if (card.kind !== 'move') throw new CardError('wrong_kind')
+    const p = card.data as unknown as ProblemData
+    if (!Position.fromMoves(p.moves).isLegal(p.toMove, vertex)) throw new CardError('illegal_move')
+    const judge = this.d.judge
+    let judged = candidateLoss(p, vertex)
+    if (!judged) {
+      if (!judge || !judge.ready()) throw new CardError('engine_unavailable')
+      try {
+        const after = await judge.analyze({ ...baseQuery([...p.moves, { color: p.toMove, vertex }]), maxVisits: judge.visits(), priority: 10 })
+        judged = { loss: lossAfter(p, after.rootInfo.scoreLead), best: false }
+      } catch (err) {
+        if (err instanceof EngineError) throw new CardError('engine_unavailable')
+        throw err
+      }
+    }
+    const { loss, best } = judged
+    const category = categorize(loss, judge?.thresholds() ?? DEFAULT_CONFIG.thresholds)
+    const auto: Rating = best ? 'easy' : category === 'exact' ? 'good' : category === 'inaccuracy' ? 'hard' : 'again'
+    const now = this.now()
+    // The card is read again after the await: a concurrent answer may have moved its state.
+    const fresh = this.d.repo.card(cardId)
+    if (!fresh || fresh.deleted) throw new CardError('card_not_found')
+    const stateBefore = fresh.state
+    const state = schedule(stateBefore, auto, now)
+    const reviewId = this.d.repo.transaction(() => {
+      this.d.repo.updateState(cardId, state)
+      return this.d.repo.insertReview({ cardId, reviewedAt: now.toISOString(), rating: auto, auto, worst: category === 'exact' ? null : { category, loss }, stateBefore, sessionId: null })
+    })
+    const row = this.d.repo.review(reviewId)!
+    return { vertex, loss, category, best, line: p.analysis.candidates[0], repetition: this.info(row, { ...fresh, state }) }
   }
 
   remove(id: string): void {
