@@ -1,9 +1,9 @@
 import type { JSX } from 'preact'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { localize, translator, type AnalysisSettings, type ClientMessage, type HealthResponse, type InstallStatus, type Language, type LocalizedText, type Rating, type ResolvedSettings, type ReviewData, type SessionSettings, type SessionView, type StartCardState, type StartsInfo, type TrapsInfo } from '@joseki-dojo/shared'
+import { localize, translator, type AnalysisSettings, type ClientMessage, type HealthResponse, type InstallStatus, type Language, type LocalizedText, type ProblemAnswer, type ProblemView, type Rating, type RepetitionInfo, type ResolvedSettings, type ReviewData, type SessionSettings, type SessionView, type StartCardState, type StartsInfo, type TrapsInfo, type Vertex } from '@joseki-dojo/shared'
 import { LoaderCircle, RefreshCw } from 'lucide-preact'
 import { buildStartTree } from './start-tree'
-import { DojoSocket, failureText, fetchCardSummary, fetchDueCard, fetchHealth, fetchInstall, fetchReview, fetchSettings, fetchStartCards, fetchStarts, fetchTraps, fetchUi, rateReview, recheckHealth, saveLanguage } from './api'
+import { answerProblem, DojoSocket, failureText, fetchCardSummary, fetchDueCard, fetchHealth, fetchInstall, fetchReview, fetchSettings, fetchStartCards, fetchStarts, fetchTraps, fetchUi, rateReview, recheckHealth, saveLanguage } from './api'
 import { I18nContext, pickLanguage, rememberLanguage, storedLanguage, type I18n } from './i18n'
 import { needsLanguageScreen } from './language-gate'
 import { AppHeader, type Section } from './components/AppHeader'
@@ -14,6 +14,7 @@ import { EngineScreen } from './screens/EngineScreen'
 import { GameScreen } from './screens/GameScreen'
 import { InstallScreen } from './screens/InstallScreen'
 import { LanguageScreen } from './screens/LanguageScreen'
+import { ProblemScreen } from './screens/ProblemScreen'
 import { RepetitionScreen } from './screens/RepetitionScreen'
 import { ReviewScreen } from './screens/ReviewScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
@@ -27,6 +28,9 @@ interface Progress {
   done: number
   total: number
 }
+
+/** Changes the shown repetition (the review's or the problem's) while it is still the one with this review id. */
+type Retarget = (reviewId: number, change: (info: RepetitionInfo) => RepetitionInfo) => void
 
 export function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null)
@@ -66,9 +70,21 @@ export function App() {
   // Repetition spec 4.4: a re-rating in the review failed (kept as a text key, so that a language switch retranslates it).
   const [ratingError, setRatingError] = useState<LocalizedText | null>(null)
   // The latest rating click, and the latest one whose answer is applied: an earlier click's late answer must not
-  // overwrite a later one, and only the latest click's failure is shown.
+  // overwrite a later one, and only the latest click's failure is shown. Leaving a card (another problem, another
+  // training) bumps `rateSeq` too, so that a late failure of its click is not shown on the next card's panel; a late
+  // success still lands (`ratedSeq` is untouched), on the repetition with its review id only.
   const rateSeq = useRef(0)
   const ratedSeq = useRef(0)
+  // Repetition spec 5.4: the queue's problem on screen, KataGo's verdict on the answer, the answer with KataGo, KataGo not
+  // ready, and the answer's request failed otherwise (the banner says why; the queue's buttons let the player move on).
+  const [problem, setProblem] = useState<{ id: string; view: ProblemView } | null>(null)
+  const [problemAnswer, setProblemAnswer] = useState<ProblemAnswer | null>(null)
+  const [judging, setJudging] = useState(false)
+  const [problemUnavailable, setProblemUnavailable] = useState(false)
+  const [answerFailed, setAnswerFailed] = useState(false)
+  // Bumped whenever the shown problem changes: a late verdict for an earlier one is dropped, and the screen starts afresh
+  // (the same card can come back at once after «Снова»).
+  const problemSeq = useRef(0)
   const [language, setLanguageState] = useState<Language>(storedLanguage)
   const [languageChosen, setLanguageChosen] = useState<boolean | null>(null)
   // The player picked a language (globe, settings, first screen): a late /api/ui answer must not undo it.
@@ -94,6 +110,8 @@ export function App() {
             if (msg.session.status === 'playing') {
               setReview(null)
               setProgress(null)
+              // A replay or the review's own «next» leaves the review without resetToStart: its rating click goes stale here.
+              rateSeq.current++
               setRatingError(null)
               // A game is on: its review must not land under «Повторение» or «Настройки» (the switch is hidden meanwhile).
               setSection('game')
@@ -301,14 +319,27 @@ export function App() {
     sendStarting({ type: 'startSession', settings })
   }
   const resetToStart = (): void => {
+    rateSeq.current++
     follow.leave(session?.id ?? null)
     setSession(null)
     setReview(null)
     setProgress(null)
     setError(null)
   }
+  /** Shows a problem of the queue, or none: the previous one's verdict, pending answer and rating error go with it. */
+  const openProblem = (next: { id: string; view: ProblemView } | null): void => {
+    problemSeq.current++
+    rateSeq.current++
+    setProblem(next)
+    setProblemAnswer(null)
+    setJudging(false)
+    setProblemUnavailable(false)
+    setAnswerFailed(false)
+    setRatingError(null)
+  }
   // Spec (repetition) 5.2: the next due card of the queue, or back to the tab with «На сегодня всё». `starting` covers the
-  // card's lookup too, so a second click (the tab's button, the review's «Дальше») cannot start a second training.
+  // card's lookup too, so a second click (the tab's button, the review's or the problem's «Дальше») cannot start a second
+  // training. A problem (5.4) opens its own screen under «Повторение»; a position starts a training.
   const startNextCard = (): void => {
     if (starting) return
     setStarting(true)
@@ -317,11 +348,22 @@ export function App() {
         if (!due.card) {
           setStarting(false)
           setQueue(false)
+          openProblem(null)
           resetToStart()
           setQueueDone(true)
           setSection('repetition')
           return
         }
+        if (due.card.kind === 'move') {
+          setStarting(false)
+          resetToStart()
+          setQueue(true)
+          setQueueDone(false)
+          openProblem({ id: due.card.id, view: due.card.problem })
+          setSection('repetition')
+          return
+        }
+        openProblem(null)
         setQueue(true)
         setQueueDone(false)
         resetToStart()
@@ -336,34 +378,66 @@ export function App() {
       })
   }
 
-  // Repetition spec 4.4: a button of the review's panel replaces the rating; the answer is the repetition as rescheduled.
-  // A later repetition of the card since (null) locks the rating: the panel's note says so instead of an error.
-  const rate = (rating: Rating): void => {
-    const info = review?.repetition
-    if (!info) return
-    const seq = ++rateSeq.current
-    const latest = (): boolean => seq === rateSeq.current
-    rateReview(info.reviewId, rating)
-      .then((next) => {
-        if (latest()) setRatingError(null)
-        if (!next) {
-          setReview((r) => (r && r.repetition?.reviewId === info.reviewId ? { ...r, repetition: { ...r.repetition, editable: false } } : r))
-          return
-        }
-        if (seq <= ratedSeq.current) return
-        ratedSeq.current = seq
-        // A lock seen meanwhile stays: the review never becomes the card's latest again.
-        setReview((r) => (r && r.repetition?.reviewId === next.reviewId ? { ...r, repetition: { ...next, editable: next.editable && r.repetition.editable } } : r))
-        setCardsTick((n) => n + 1)
-      })
-      .catch((e: unknown) => {
-        if (latest()) setRatingError(failureText(e))
-      })
-  }
+  // Repetition spec 4.4: a button of the repetition panel (the review's or the problem's) replaces the rating; the answer
+  // is the repetition as rescheduled. A later repetition of the card since (null) locks the rating: the panel's note says
+  // so instead of an error.
+  const rate =
+    (info: RepetitionInfo | undefined, retarget: Retarget) =>
+    (rating: Rating): void => {
+      if (!info) return
+      const seq = ++rateSeq.current
+      const latest = (): boolean => seq === rateSeq.current
+      rateReview(info.reviewId, rating)
+        .then((next) => {
+          if (latest()) setRatingError(null)
+          if (!next) {
+            retarget(info.reviewId, (shown) => ({ ...shown, editable: false }))
+            return
+          }
+          if (seq <= ratedSeq.current) return
+          ratedSeq.current = seq
+          // A lock seen meanwhile stays: the repetition never becomes the card's latest again.
+          retarget(next.reviewId, (shown) => ({ ...next, editable: next.editable && shown.editable }))
+          setCardsTick((n) => n + 1)
+        })
+        .catch((e: unknown) => {
+          if (latest()) setRatingError(failureText(e))
+        })
+    }
+  const inReview: Retarget = (reviewId, change) => setReview((r) => (r?.repetition?.reviewId === reviewId ? { ...r, repetition: change(r.repetition) } : r))
+  const inProblem: Retarget = (reviewId, change) => setProblemAnswer((a) => (a?.repetition.reviewId === reviewId ? { ...a, repetition: change(a.repetition) } : a))
   const finishQueue = (): void => {
     setQueue(false)
+    openProblem(null)
     resetToStart()
     setSection('repetition')
+  }
+  // Repetition spec 5.4: one click answers the problem, and KataGo's verdict is the card's repetition. A verdict for a
+  // problem no longer shown is dropped (the counts are read again all the same).
+  const answerShownProblem = (vertex: Vertex): void => {
+    if (!problem || judging) return
+    const seq = problemSeq.current
+    const shown = (): boolean => seq === problemSeq.current
+    setJudging(true)
+    setAnswerFailed(false)
+    answerProblem(problem.id, vertex)
+      .then((answer) => {
+        if (answer === 'unavailable') {
+          if (shown()) setProblemUnavailable(true)
+          return
+        }
+        setCardsTick((n) => n + 1)
+        if (shown()) setProblemAnswer(answer)
+      })
+      .catch((e: unknown) => {
+        if (!shown()) return
+        setAnswerFailed(true)
+        setError(failureText(e))
+        setErrorSeq((n) => n + 1)
+      })
+      .finally(() => {
+        if (shown()) setJudging(false)
+      })
   }
 
   const retryHealth = async (): Promise<void> => {
@@ -408,8 +482,29 @@ export function App() {
     crumb = t(repick ? 'app.crumb.repick' : 'app.crumb.engineUpdate')
     screen = <InstallScreen update repick={repick} onDone={() => void afterInstall()} onClose={closeUpdate} />
   } else if (section === 'repetition') {
-    crumb = t('app.crumb.repetition')
-    screen = <RepetitionScreen tree={startTree} busy={starting || !connected || !ready} notice={queueDone ? t('repetition.doneToday') : null} onStartQueue={startNextCard} onChanged={() => setCardsTick((n) => n + 1)} />
+    if (problem) {
+      crumb = t('app.crumb.problem')
+      screen = (
+        <ProblemScreen
+          key={problemSeq.current}
+          problem={problem.view}
+          answer={problemAnswer}
+          judging={judging}
+          unavailable={problemUnavailable}
+          failed={answerFailed}
+          onAnswer={answerShownProblem}
+          repetition={{
+            onRate: rate(problemAnswer?.repetition, inProblem),
+            queue: queue ? { onNext: startNextCard, onFinish: finishQueue } : null,
+            error: ratingError && localize(language, ratingError),
+          }}
+          busy={starting}
+        />
+      )
+    } else {
+      crumb = t('app.crumb.repetition')
+      screen = <RepetitionScreen tree={startTree} busy={starting || !connected || !ready} notice={queueDone ? t('repetition.doneToday') : null} onStartQueue={startNextCard} onChanged={() => setCardsTick((n) => n + 1)} />
+    }
   } else if (section === 'settings') {
     crumb = t('app.crumb.settings')
     screen = <SettingsScreen onClose={() => setSection('game')} onSaved={() => setHealthTick((n) => n + 1)} onRepick={startRepick} />
@@ -477,7 +572,7 @@ export function App() {
           visits: analysisSettings,
         }}
         repetition={{
-          onRate: rate,
+          onRate: rate(review?.repetition, inReview),
           // The review's own «next» button still replays the position; the queue goes on from the panel.
           queue: queue ? { onNext: startNextCard, onFinish: finishQueue } : null,
           error: ratingError && localize(language, ratingError),
@@ -505,6 +600,12 @@ export function App() {
           section,
           onSection: (s: Section) => {
             setQueueDone(false)
+            // The problem screen lives under «Повторение»: leaving it for another section, or for the tab itself, ends the
+            // queue and drops the problem. A queue's training keeps its «Дальше» / «Закончить» over a trip elsewhere.
+            if (problem) {
+              setQueue(false)
+              openProblem(null)
+            }
             setSection(s)
           },
           due: dueCount,

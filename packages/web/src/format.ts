@@ -11,6 +11,9 @@ const cachedFormat = (cache: Map<Language, Intl.NumberFormat>, lang: Language, o
 /** One decimal in the language. One formatter per language: a screen formats many numbers on every render, and building a formatter is slow. */
 export const oneDecimalFormat = (lang: Language): Intl.NumberFormat => cachedFormat(oneDecimalFormats, lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 
+/** A loss below this many points rounds to zero in the display: it shows as «0,0» and gets no minus sign. */
+export const ZERO_LOSS = 0.05
+
 /** One decimal, in the reader's language («5,1» / "5.1"); a value that rounds to zero prints without a sign. */
 export const formatPoints = (n: number, lang: Language): string => {
   const format = oneDecimalFormat(lang)

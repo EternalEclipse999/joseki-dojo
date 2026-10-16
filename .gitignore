@@ -16,3 +16,4 @@ e2e/starts-list.test.json
 e2e/starts-i18n.test.json
 # the app writes into its config during the e2e run (a copy of e2e/config.e2e.json)
 e2e/config.run.json
+e2e/.problems/

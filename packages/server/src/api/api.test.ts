@@ -8,6 +8,8 @@ import WebSocket from 'ws'
 import type { ClientMessage, ServerMessage } from '@joseki-dojo/shared'
 import { fakeEngine, serviceOptions, testConfig } from '../../test/helpers'
 import { buildApp, createServices, type AppServices } from '../app'
+import { CardRepo } from '../cards/repo'
+import { newState } from '../cards/schedule'
 import { HealthMonitor } from '../engine/health'
 import { StartBook } from '../starts/book'
 import { TEST_STARTS_LIST, testStartsTree } from '../starts/fixture'
@@ -390,6 +392,46 @@ describe('/api/cards', () => {
       const del = () => fetch(`http://${otherHost}/api/cards/${items[0].id}`, { method: 'DELETE' })
       expect((await del()).status).toBe(204)
       expect((await del()).status).toBe(404)
+    } finally {
+      await other.close()
+      await withStarts.engine.stop()
+      withStarts.db.close()
+    }
+  })
+})
+
+describe('POST /api/cards/:id/answer', () => {
+  it('judges an answer, and rejects a bad body, an unknown card and a position card', async () => {
+    const config = testConfig()
+    const withStarts = createServices(config, fakeEngine(), serviceOptions(config))
+    await withStarts.health.check()
+    const other = await buildApp(withStarts)
+    await other.listen({ port: 0, host: '127.0.0.1' })
+    const base = `http://127.0.0.1:${(other.server.address() as AddressInfo).port}`
+    try {
+      const repo = new CardRepo(withStarts.db)
+      const now = new Date().toISOString()
+      const data = {
+        source: 'mistake', corner: 'TR', userColor: 'B', toMove: 'B', moveNumber: 3, group: '4-4', userMove: [13, 2], userLoss: 2.4,
+        moves: [{ color: 'B', vertex: [15, 3] }, { color: 'W', vertex: [16, 2] }],
+        analysis: { scoreLeadBlack: 0, visits: 10, candidates: [{ vertex: [15, 2], loss: 0, pv: [] }] },
+      }
+      repo.insertCard({ id: 'p1', kind: 'move', key: 'move:test', data, state: newState(new Date()), createdAt: now })
+      repo.insertCard({ id: 'pos1', kind: 'position', key: 'position:x', data: { startId: 'x', userColor: 'B', botRank: '5k' }, state: newState(new Date()), createdAt: now })
+      const post = (id: string, body: unknown) => fetch(`${base}/api/cards/${id}/answer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+      const best = await post('p1', { vertex: [15, 2] })
+      expect(best.status).toBe(200)
+      expect(await best.json()).toMatchObject({ loss: 0, category: 'exact', best: true, repetition: { cardId: 'p1', editable: true } })
+      const elsewhere = await post('p1', { vertex: [10, 10] })
+      expect(elsewhere.status).toBe(200)
+      expect(await elsewhere.json()).toMatchObject({ loss: 0, category: 'exact', best: false })
+      expect((await post('p1', { vertex: [1] })).status).toBe(400)
+      expect((await post('p1', { vertex: [19, 0] })).status).toBe(400)
+      const occupied = await post('p1', { vertex: [15, 3] })
+      expect(occupied.status).toBe(400)
+      expect(await occupied.json()).toEqual({ error: 'illegal_move' })
+      expect((await post('nope', { vertex: [1, 1] })).status).toBe(404)
+      expect((await post('pos1', { vertex: [1, 1] })).status).toBe(409)
     } finally {
       await other.close()
       await withStarts.engine.stop()

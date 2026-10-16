@@ -1,6 +1,6 @@
 import { localize } from '@joseki-dojo/shared'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, deleteCard, failureText, fetchCards, fetchSettings, rateReview, saveLanguage } from './api'
+import { answerProblem, ApiError, deleteCard, failureText, fetchCards, fetchSettings, rateReview, saveLanguage } from './api'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -61,5 +61,19 @@ describe('API errors', () => {
   it('a re-rating refused because the review is no longer the card’s latest is null, not an error', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'not_latest' }, { status: 409 })))
     await expect(rateReview(7, 'good')).resolves.toBeNull()
+  })
+
+  it('a problem answer posts the vertex; KataGo not ready (503) is “unavailable”, any other refusal a keyed error', async () => {
+    const answer = { vertex: [15, 3], loss: 0, category: 'exact', best: true }
+    const fetch = vi.fn(async () => Response.json(answer))
+    vi.stubGlobal('fetch', fetch)
+    await expect(answerProblem('c/1', [15, 3])).resolves.toEqual(answer)
+    expect(fetch).toHaveBeenCalledWith('/api/cards/c%2F1/answer', expect.objectContaining({ method: 'POST', body: JSON.stringify({ vertex: [15, 3] }) }))
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'engine_unavailable' }, { status: 503 })))
+    await expect(answerProblem('c1', [15, 3])).resolves.toBe('unavailable')
+    for (const status of [400, 404, 409]) {
+      vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'refused' }, { status })))
+      expect(failureText(await caught(answerProblem('c1', [15, 3])))).toEqual({ key: 'error.api.answer', params: { status: String(status) } })
+    }
   })
 })

@@ -2,7 +2,7 @@ import { RATINGS, type CardKind, type Rating } from '@joseki-dojo/shared'
 import type { FastifyInstance } from 'fastify'
 import { CardError, type CardService } from '../cards/service'
 
-const STATUS: Record<CardError['code'], number> = { card_not_found: 404, review_not_found: 404, not_latest: 409 }
+const STATUS: Record<CardError['code'], number> = { card_not_found: 404, review_not_found: 404, not_latest: 409, wrong_kind: 409, illegal_move: 400, engine_unavailable: 503 }
 
 /** Spec (repetition) 7. */
 export function registerCardsRoutes(app: FastifyInstance, cards: CardService): void {
@@ -21,6 +21,15 @@ export function registerCardsRoutes(app: FastifyInstance, cards: CardService): v
     try {
       cards.remove(req.params.id)
       return reply.code(204).send()
+    } catch (err) {
+      return failed(err, reply)
+    }
+  })
+  app.post<{ Params: { id: string }; Body: { vertex?: unknown } }>('/api/cards/:id/answer', async (req, reply) => {
+    const v = req.body?.vertex
+    if (!Array.isArray(v) || v.length !== 2 || !v.every((n) => Number.isInteger(n) && n >= 0 && n < 19)) return reply.code(400).send({ error: 'bad_vertex' })
+    try {
+      return await cards.answer(req.params.id, [v[0], v[1]])
     } catch (err) {
       return failed(err, reply)
     }

@@ -1,4 +1,4 @@
-import type { CardListItem, CardSummary, ClientMessage, DueCard, HealthResponse, InstallStatus, Language, LocalizedText, MessageKey, PlayerSettings, Rating, RepetitionInfo, ReviewData, ServerMessage, SettingsResponse, SettingsUpdate, SettingsView, StartCardState, StartsInfo, Theme, TrapsInfo, UiSettings } from '@joseki-dojo/shared'
+import type { CardListItem, CardSummary, ClientMessage, DueCard, HealthResponse, InstallStatus, Language, LocalizedText, MessageKey, PlayerSettings, ProblemAnswer, Rating, RepetitionInfo, ReviewData, ServerMessage, SettingsResponse, SettingsUpdate, SettingsView, StartCardState, StartsInfo, Theme, TrapsInfo, UiSettings, Vertex } from '@joseki-dojo/shared'
 
 /** Spec (languages) 6: a failed request, kept as a key so that it is shown in the reader's language. */
 export class ApiError extends Error {
@@ -167,6 +167,17 @@ export async function rateReview(reviewId: number, rating: Rating): Promise<Repe
   if (res.status === 409) return null
   if (!res.ok) throw failed('error.api.rateReview', res)
   return (await res.json()) as RepetitionInfo
+}
+
+/**
+ * Spec (repetition) 5.4: KataGo's verdict on a problem answer, counted as the card's repetition; 'unavailable' when KataGo
+ * is not ready (503) — nothing is counted then.
+ */
+export async function answerProblem(cardId: string, vertex: Vertex): Promise<ProblemAnswer | 'unavailable'> {
+  const res = await request(`/api/cards/${encodeURIComponent(cardId)}/answer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ vertex }) })
+  if (res.status === 503) return 'unavailable'
+  if (!res.ok) throw failed('error.api.answer', res)
+  return (await res.json()) as ProblemAnswer
 }
 
 /** Spec (traps) 5: how many traps the base holds; 0 disables the mode. */

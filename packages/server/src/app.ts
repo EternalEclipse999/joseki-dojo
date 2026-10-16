@@ -26,6 +26,7 @@ import type { KataGoLock } from './engine/lock'
 import { toErrorMessage } from './errors'
 import { InstallerService } from './install/installer'
 import { ReviewService } from './review/service'
+import { thresholdsFor, type ThresholdTable } from './review/thresholds'
 import { VariationService } from './review/variation'
 import { SessionService } from './session/service'
 import { SettingsService } from './settings/service'
@@ -34,7 +35,6 @@ import { SessionRepo } from './store/repo'
 import { PlayerService } from './settings/player'
 import { UiService } from './settings/ui'
 import { StartBook } from './starts/book'
-import type { ThresholdTable } from './review/thresholds'
 import { TrapBook } from './traps/book'
 
 export interface AppServices {
@@ -90,7 +90,17 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
   const analysis = new AnalysisScheduler(engine, repo, config.analysis)
   const traps = options.traps ?? TrapBook.empty()
   const starts = options.starts ?? StartBook.empty()
-  const cards = new CardService({ repo: new CardRepo(db), starts })
+  const health = new HealthMonitor(config, engine)
+  const cards = new CardService({
+    repo: new CardRepo(db),
+    starts,
+    judge: {
+      analyze: (q) => engine.analyze(q),
+      ready: () => health.get().state === 'ready',
+      thresholds: () => thresholdsFor(config.player.level, options.thresholds ?? null, config.thresholds),
+      visits: () => config.analysis.reviewVisits,
+    },
+  })
   const reviews = new ReviewService({ repo, analysis, config, publish, traps, thresholds: options.thresholds ?? null, cards, log: options.log })
   const variations = new VariationService({ repo, engine, config })
   const sessions = new SessionService({
@@ -108,7 +118,6 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
       reviews.prepare(id).catch((err: unknown) => publish(id, toErrorMessage(err)))
     },
   })
-  const health = new HealthMonitor(config, engine)
   const { configFile, enginesDir, lock, commandFor, log, fetch } = options
   const settings = new SettingsService({ config, engine, health, lock, configFile, modelsDir: join(enginesDir, 'models'), commandFor, onSwitched: () => variations.clear() })
   const installer = new InstallerService({ config, lock, enginesDir, settings, commandFor, log, engine, health, fetch })

@@ -295,14 +295,57 @@ export interface CardListItem {
   reps: number
   /** Spec (repetition) 5.2: a position card whose start is no longer on the list: not served or counted, only deletable. */
   orphan: boolean
+  /** Problem cards: the source, the corner's group, the move number and the zone's stones (top-right, GTP). */
+  problem: { source: ProblemSource; group: StartGroup | null; moveNumber: number; black: string[]; white: string[] } | null
 }
 
 /** Spec (repetition) 5.2: the next card of the queue. */
-export type DueCard = { card: { id: string; kind: 'position'; startId: string; userColor: Color; botRank: string } } | { card: null; nextDue: string | null }
+export type DueCard =
+  | { card: { id: string; kind: 'position'; startId: string; userColor: Color; botRank: string } }
+  | { card: { id: string; kind: 'move'; problem: ProblemView } }
+  | { card: null; nextDue: string | null }
 
 /** Spec (repetition) 6: a position card's state for the tree. */
 export interface StartCardState {
   stage: CardStage
   due: string
   dueNow: boolean
+}
+
+/** Spec (repetition) 4.1: where a «find a good move» problem came from. */
+export type ProblemSource = 'mistake' | 'unpunished'
+
+/** A KataGo candidate of the problem position: the points lost against the first one, and its line. */
+export interface ProblemCandidate {
+  vertex: MoveVertex
+  loss: number
+  pv: MoveVertex[]
+}
+
+/** Spec (repetition) 5.4: the verdict on a problem answer. */
+export interface ProblemAnswer {
+  vertex: Vertex
+  loss: number
+  category: Category
+  /** The answer is KataGo's first candidate. */
+  best: boolean
+  /** KataGo's first candidate of the position, with its line. */
+  line: ProblemCandidate
+  repetition: RepetitionInfo
+}
+
+/** Spec (repetition) 5.4: what the problem screen shows before the answer (no hint of the best move). */
+export interface ProblemView {
+  source: ProblemSource
+  /** The corner of the training the problem came from; the board is shown as it was. */
+  corner: Corner
+  userColor: Color
+  /** The moves before the problem position, as played (the last one is marked). */
+  moves: Move[]
+  /** The move played in the training and its loss. */
+  userMove: MoveVertex
+  userLoss: number
+  /** The number of the problem move in that training (1-based, start moves included). */
+  moveNumber: number
+  group: StartGroup | null
 }

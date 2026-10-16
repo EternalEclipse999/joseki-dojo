@@ -47,17 +47,27 @@ describe('CardRepo', () => {
     repo.insertReview({ ...base, sessionId: null })
   })
 
-  it('finds the latest review of a session and has no last rating without reviews', () => {
+  it('has the last rating of a card, and none without reviews', () => {
     const repo = new CardRepo(openDb(':memory:'))
     repo.insertCard({ id: 'c1', kind: 'position', key: 'k1', data: {}, state: newState(now), createdAt: now.toISOString() })
     repo.insertCard({ id: 'c2', kind: 'position', key: 'k2', data: {}, state: newState(now), createdAt: now.toISOString() })
     const base = { reviewedAt: now.toISOString(), rating: 'good' as const, auto: 'good' as const, worst: null, stateBefore: newState(now) }
     repo.insertReview({ ...base, cardId: 'c1', sessionId: 's' })
-    const later = repo.insertReview({ ...base, cardId: 'c2', sessionId: 's' })
-    expect(repo.reviewOfSession('s')?.id).toBe(later)
-    expect(repo.reviewOfSession('nope')).toBeNull()
+    repo.insertReview({ ...base, cardId: 'c2', sessionId: 's' })
     expect(repo.lastRating('c1')).toBe('good')
     repo.insertCard({ id: 'c3', kind: 'position', key: 'k3', data: {}, state: newState(now), createdAt: now.toISOString() })
     expect(repo.lastRating('c3')).toBeNull()
+  })
+
+  it('finds the review of a session that belongs to a position card, even when a problem card was reviewed later', () => {
+    const repo = new CardRepo(openDb(':memory:'))
+    repo.insertCard({ id: 'p', kind: 'position', key: 'position:abcd1234', data: {}, state: newState(now), createdAt: now.toISOString() })
+    repo.insertCard({ id: 'm', kind: 'move', key: 'move:B:0', data: {}, state: newState(now), createdAt: now.toISOString() })
+    const base = { reviewedAt: now.toISOString(), rating: 'again' as const, auto: 'again' as const, worst: null, stateBefore: newState(now), sessionId: 's1' }
+    const position = repo.insertReview({ ...base, cardId: 'p' })
+    const problem = repo.insertReview({ ...base, cardId: 'm' })
+    expect(problem).toBeGreaterThan(position)
+    expect(repo.positionReviewOfSession('s1')?.id).toBe(position)
+    expect(repo.positionReviewOfSession('nope')).toBeNull()
   })
 })
