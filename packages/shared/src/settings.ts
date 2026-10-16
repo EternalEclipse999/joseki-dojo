@@ -31,3 +31,8 @@ export interface SettingsUpdate {
 }
 
 export type SettingsResponse = { ok: true; settings: SettingsView } | { ok: false; reason: LocalizedText }
+
+/** Spec (repetition) 3.1: the player's level, saved at once from Settings. */
+export interface PlayerSettings {
+  level: string
+}

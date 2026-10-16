@@ -67,6 +67,12 @@ describe('loadConfig', () => {
     expect(() => loadConfig(configFile({ bot: { defaultRank: '42k' } }))).toThrow(ConfigError)
   })
 
+  it('reads the player level and rejects an unknown one', () => {
+    expect(loadConfig(configFile({ player: { level: 'pro' } })).player.level).toBe('pro')
+    expect(loadConfig(configFile()).player.level).toBe('7k')
+    expect(() => loadConfig(configFile({ player: { level: '10p' } }))).toThrow('player.level is not a valid level: 10p')
+  })
+
   it('derives the variations limit as 10x the review visits when the file has none', () => {
     expect(loadConfig(configFile({ analysis: { reviewVisits: 300 } })).analysis.variationVisits).toBe(3000)
   })

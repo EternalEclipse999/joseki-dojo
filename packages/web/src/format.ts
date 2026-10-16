@@ -38,6 +38,9 @@ export const rankLabel = (rank: string, t: Translate): string => {
   return n === 1 ? t('rank.dan1') : t('rank.dan', { n })
 }
 
+/** Spec (repetition) 3.1: a player level as a label: the rank, or «профи». */
+export const levelLabel = (level: string, t: Translate): string => (level === 'pro' ? t('level.pro') : rankLabel(level, t))
+
 /** The colour as a label («Чёрные», "Black"). */
 export const colorLabel = (c: Color, t: Translate): string => t(c === 'B' ? 'common.black' : 'common.white')
 
@@ -58,3 +61,30 @@ export const CORNER_LABEL: Record<Corner, MessageKey> = {
 
 /** Who played a move, inside a sentence («вы», "you"). */
 export const ACTOR_LABEL: Record<Actor, MessageKey> = { user: 'actor.user', bot: 'actor.bot', 'auto-tenuki': 'actor.autoTenuki' }
+
+/** Spec (repetition) 4.3: the start of the repetition day containing `now` — 04:00 local time, as on the server. */
+export function dayStart(now: Date): Date {
+  const d = new Date(now)
+  d.setHours(4, 0, 0, 0)
+  if (now < d) d.setDate(d.getDate() - 1)
+  return d
+}
+
+/**
+ * Spec (repetition) 5.1: when a card is due — «сейчас», minutes or hours within a day («через 10 минут»), then repetition
+ * days counted on the 04:00 boundary as the week's forecast counts them («завтра», «послезавтра», «через 3 дня»).
+ */
+export function formatWhen(iso: string, now: Date, language: Language, t: Translate): string {
+  const due = new Date(iso)
+  const ms = due.getTime() - now.getTime()
+  if (ms <= 0) return t('repetition.now')
+  const rtf = new Intl.RelativeTimeFormat(language, { numeric: 'auto' })
+  const minutes = Math.ceil(ms / 60_000)
+  if (minutes < 60) return rtf.format(minutes, 'minute')
+  const hours = Math.round(minutes / 60)
+  // Rounded: a day across a daylight-saving change is 23 or 25 hours long.
+  const days = Math.round((dayStart(due).getTime() - dayStart(now).getTime()) / 86_400_000)
+  // A day or more ahead but not past 04:00 yet (the same repetition day): hours, never «сегодня».
+  if (hours < 24 || days < 1) return rtf.format(hours, 'hour')
+  return rtf.format(days, 'day')
+}

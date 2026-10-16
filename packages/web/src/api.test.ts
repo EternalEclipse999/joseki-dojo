@@ -1,6 +1,6 @@
 import { localize } from '@joseki-dojo/shared'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, failureText, fetchSettings, saveLanguage } from './api'
+import { ApiError, deleteCard, failureText, fetchCards, fetchSettings, rateReview, saveLanguage } from './api'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -47,5 +47,19 @@ describe('API errors', () => {
   it('any other error is an internal one with its message', () => {
     expect(failureText(new Error('boom'))).toEqual({ key: 'error.internal', params: { detail: 'boom' } })
     expect(failureText('oops')).toEqual({ key: 'error.internal', params: { detail: 'oops' } })
+  })
+
+  it('the card calls name what failed: reading, deleting or rating; a card already gone counts as deleted', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 500 })))
+    expect(failureText(await caught(fetchCards()))).toEqual({ key: 'error.api.cards', params: { status: '500' } })
+    expect(failureText(await caught(deleteCard('c1')))).toEqual({ key: 'error.api.deleteCard', params: { status: '500' } })
+    expect(failureText(await caught(rateReview(7, 'good')))).toEqual({ key: 'error.api.rateReview', params: { status: '500' } })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })))
+    await expect(deleteCard('c1')).resolves.toBeUndefined()
+  })
+
+  it('a re-rating refused because the review is no longer the card’s latest is null, not an error', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'not_latest' }, { status: 409 })))
+    await expect(rateReview(7, 'good')).resolves.toBeNull()
   })
 })

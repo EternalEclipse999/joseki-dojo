@@ -1,4 +1,4 @@
-import type { ClientMessage, HealthResponse, InstallStatus, Language, LocalizedText, MessageKey, ReviewData, ServerMessage, SettingsResponse, SettingsUpdate, SettingsView, StartsInfo, Theme, TrapsInfo, UiSettings } from '@joseki-dojo/shared'
+import type { CardListItem, CardSummary, ClientMessage, DueCard, HealthResponse, InstallStatus, Language, LocalizedText, MessageKey, PlayerSettings, Rating, RepetitionInfo, ReviewData, ServerMessage, SettingsResponse, SettingsUpdate, SettingsView, StartCardState, StartsInfo, Theme, TrapsInfo, UiSettings } from '@joseki-dojo/shared'
 
 /** Spec (languages) 6: a failed request, kept as a key so that it is shown in the reader's language. */
 export class ApiError extends Error {
@@ -98,6 +98,19 @@ export async function saveTheme(theme: Theme): Promise<UiSettings> {
   return (await res.json()) as UiSettings
 }
 
+/** Spec (repetition) 3.1: the player's level. */
+export async function fetchPlayer(): Promise<PlayerSettings> {
+  const res = await request('/api/player')
+  if (!res.ok) throw failed('error.api.loadPlayer', res)
+  return (await res.json()) as PlayerSettings
+}
+
+export async function savePlayer(level: string): Promise<PlayerSettings> {
+  const res = await request('/api/player', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ level }) })
+  if (!res.ok) throw failed('error.api.player', res)
+  return (await res.json()) as PlayerSettings
+}
+
 export async function saveLanguage(language: Language): Promise<UiSettings> {
   const res = await request('/api/ui', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ language }) })
   if (!res.ok) throw failed('error.api.saveUi', res)
@@ -109,6 +122,51 @@ export async function fetchStarts(): Promise<StartsInfo> {
   const res = await request('/api/starts')
   if (!res.ok) throw failed('error.api.starts', res)
   return (await res.json()) as StartsInfo
+}
+
+/** Spec (repetition) 5.1: the «Повторение» tab's summary. */
+export async function fetchCardSummary(): Promise<CardSummary> {
+  const res = await request('/api/cards/summary')
+  if (!res.ok) throw failed('error.api.cards', res)
+  return (await res.json()) as CardSummary
+}
+
+/** The cards, by due time. */
+export async function fetchCards(): Promise<CardListItem[]> {
+  const res = await request('/api/cards')
+  if (!res.ok) throw failed('error.api.cards', res)
+  return (await res.json()) as CardListItem[]
+}
+
+/** A card already gone (404) counts as deleted. */
+export async function deleteCard(id: string): Promise<void> {
+  const res = await request(`/api/cards/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  if (!res.ok && res.status !== 404) throw failed('error.api.deleteCard', res)
+}
+
+/** Spec (repetition) 5.2: the next card of the queue, or none with the next due time. */
+export async function fetchDueCard(): Promise<DueCard> {
+  const res = await request('/api/cards/due')
+  if (!res.ok) throw failed('error.api.cards', res)
+  return (await res.json()) as DueCard
+}
+
+/** Spec (repetition) 6: the position cards' states by start id, for the tree. */
+export async function fetchStartCards(): Promise<Record<string, StartCardState>> {
+  const res = await request('/api/cards/starts')
+  if (!res.ok) throw failed('error.api.cards', res)
+  return (await res.json()) as Record<string, StartCardState>
+}
+
+/**
+ * Spec (repetition) 4.4: replaces the rating of a training's review; only the card's latest review can be re-rated —
+ * null when a later repetition of the card has come since (409, `not_latest`).
+ */
+export async function rateReview(reviewId: number, rating: Rating): Promise<RepetitionInfo | null> {
+  const res = await request(`/api/cards/reviews/${reviewId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rating }) })
+  if (res.status === 409) return null
+  if (!res.ok) throw failed('error.api.rateReview', res)
+  return (await res.json()) as RepetitionInfo
 }
 
 /** Spec (traps) 5: how many traps the base holds; 0 disables the mode. */

@@ -48,6 +48,10 @@ Uninstalling keeps your data (KataGo, settings, training history). To remove it 
 
 In the review you can try your own moves instead of the game. Click a point on the board, or click a row in the list of KataGo's best moves: this starts a variation from that position. The **«Ветка»** (Branch) button on a row shows the line KataGo expects after that move, without playing it. With **«Отвечает KataGo»** (KataGo replies) on, KataGo answers your move; the answer comes once its analysis reaches the review's visits, or at once when you press **«Ответить сейчас»** (Reply now). The positions of the variation keep being analysed deeper while you look at them, and **«Глубже»** (Deeper) does the same for a move of the game. Use the arrows to step through the variation and **«Вернуться к партии»** (Back to the game) to leave it.
 
+## Repetition
+
+A position you train from the **«Из списка»** (From the list) tree becomes a card after the first training; so does a position of the list that **«Случайно»** (Random) draws for you, and every later training of the same position, from the tree, from **«Случайно»** or from the queue, repeats its card. Only a training from the start position itself in which you played in the corner counts: a replay from a later move, or a training without a move of yours in the corner, is not a repetition. In the review, the **«Повторение позиции»** (Position repetition) panel shows the rating the app chose by itself from how you played; correct it with one of four buttons: **«Снова»** (Again), **«Трудно»** (Hard), **«Хорошо»** (Good), **«Легко»** (Easy). The next repetition date comes from the FSRS schedule. The **«Повторение»** (Repetition) tab shows the metrics, the forecast and the list of cards (a card can be deleted there; a card whose position is no longer on the list is marked so and is never served), and **«Начать повторение»** (Start repetition) trains the positions that are due. In the queue, a card rated «Снова» comes back within minutes: when nothing else is due, the queue takes a card still being learned that falls due in the next 20 minutes. In the tree, marks on the positions show what you are still learning, what you have learned and what is due. **«Ваш уровень»** (Your level) in **«Настройки»** (Settings) sets your rank: it tunes how the app rates your moves and the schedule.
+
 ## Troubleshooting
 
 - **The analysis after a game is slow.** Open **«Настройки»** (Settings) and lower **«Визиты на позицию в разборе»** (visits per position in the review), for example to 100: the analysis gets faster and a little less precise. If variations in the review are slow, lower **«Предел визитов в вариантах»** (visit limit in variations) or press **«Ответить сейчас»** (Reply now) instead of waiting for KataGo. To use your graphics card, press **«Подобрать движок заново»** (Choose the engine again): the app measures the processor and the graphics card once more and keeps the faster one. If your graphics card could not run KataGo (often an old graphics driver without OpenCL), the processor is used.
@@ -131,6 +135,23 @@ The one-time run on the GPU machine:
 4. `npm run setup` and pick a GPU build of KataGo (the CPU build is far too slow for 8000 visits).
 5. `npm run traps:gpu` (roughly 20-90 minutes depending on the GPU; keep the machine awake).
 6. `git push` (`git push -u origin HEAD` for a new branch).
+
+### Calibrating the thresholds
+
+`npm run thresholds:gpu -- [--positions 400] [--visits 2000] [--seed 1]` measures how players of every level play the joseki starts: the human net gives each level's moves, KataGo the loss of each move, and the inaccuracy, mistake and blunder thresholds of a level are the losses its moves exceed in 25 %, 10 % and 3 % of cases. It writes `packages/server/bases/thresholds.json` and commits that file with the report, with the git identity configured in the repository; push it afterwards. It refuses to run on `main`, on a detached HEAD or with uncommitted changes in that file, and checks that KataGo answers with the human net before any work. Without the file the app uses the thresholds of the config for every level.
+
+The time grows with positions × moves × visits: every position takes one search of `--visits` for the position itself and one for each move the levels play there (the moves that cover 98 % of every level's policy, often dozens), plus a one-visit query of the human net per level. With the defaults that is several hours on a desktop GPU; fewer positions or visits shorten it. There is no resume: an interrupted run starts over, and nothing is written until the end. The log shows the progress every 20 positions with the minutes left.
+
+The one-time run on the GPU machine:
+
+1. Clone the repository (or pull).
+2. `git switch feat/repetition` (the pull request branch; if it was already merged, create a branch for the result instead, e.g. `git switch -c thresholds-gpu-run`).
+3. `npm ci`
+4. `npm run setup` and pick a GPU build of KataGo (the CPU build is far too slow for 2000 visits); the calibration needs the human net, which the setup installs with the main one.
+5. Check that `git config user.name` and `git config user.email` give the identity the commit should carry.
+6. `npm run thresholds:gpu` (keep the machine awake).
+7. Check the table and the report it prints (and `git show` for the committed file): the thresholds of every level, how many positions and moves were evaluated, and the smoothing corrections. If the table looks wrong, drop the commit instead of pushing it (`git reset --hard HEAD~1` on a clean clone).
+8. `git push` (`git push -u origin HEAD` for a new branch).
 
 ### Start positions base
 

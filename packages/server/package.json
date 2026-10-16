@@ -16,6 +16,7 @@
     "@joseki-dojo/shared": "*",
     "better-sqlite3": "^13.0.3",
     "fastify": "^5.12.5",
+    "ts-fsrs": "5.4.2",
     "yauzl": "^3.4.0"
   },
   "devDependencies": {

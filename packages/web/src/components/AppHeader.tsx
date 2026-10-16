@@ -2,14 +2,17 @@ import { ChevronRight } from 'lucide-preact'
 import { useT } from '../i18n'
 import { LanguageMenu } from './LanguageMenu'
 
+/** The header's sections: «Игра», «Повторение», «Настройки». */
+export type Section = 'game' | 'repetition' | 'settings'
+
 export interface AppHeaderProps {
   /** Where the player is («Новая тренировка», «Разбор тренировки», …), already in the current language. */
   crumb?: string
-  /** The «Игра / Настройки» switch; absent during a game and an engine update. */
-  nav?: { settings: boolean; onGame: () => void; onSettings: () => void }
+  /** The «Игра / Повторение / Настройки» switch; absent during a game and an engine update. `due`: the cards due now, for the badge. */
+  nav?: { section: Section; onSection: (s: Section) => void; due: number }
 }
 
-/** Spec 4: the brand, the breadcrumb, the section switch and the language globe on every screen. */
+/** Spec 4: the brand, the breadcrumb, the section switch (repetition spec 5.1: with the due cards' badge) and the language globe on every screen. */
 export function AppHeader({ crumb, nav }: AppHeaderProps) {
   const t = useT()
   return (
@@ -27,10 +30,21 @@ export function AppHeader({ crumb, nav }: AppHeaderProps) {
       <div class="header-end">
         {nav && (
           <nav class="segmented" aria-label={t('header.sections')}>
-            <button aria-pressed={!nav.settings} onClick={nav.onGame}>
+            <button aria-pressed={nav.section === 'game'} onClick={() => nav.onSection('game')}>
               {t('header.game')}
             </button>
-            <button aria-pressed={nav.settings} onClick={nav.onSettings}>
+            <button aria-pressed={nav.section === 'repetition'} onClick={() => nav.onSection('repetition')}>
+              {t('header.repetition')}
+              {nav.due > 0 && (
+                <>
+                  <span class="badge" aria-hidden="true">
+                    {nav.due}
+                  </span>
+                  <span class="sr-only"> {t('header.dueBadge', { count: nav.due })}</span>
+                </>
+              )}
+            </button>
+            <button aria-pressed={nav.section === 'settings'} onClick={() => nav.onSection('settings')}>
               {t('header.settings')}
             </button>
           </nav>

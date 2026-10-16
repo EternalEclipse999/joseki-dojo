@@ -10,6 +10,7 @@ import { KataGoEngine, type EngineCommand } from './engine/engine'
 import { loadLock, type KataGoLock } from './engine/lock'
 import { StartBook } from './starts/book'
 import { loadNames, type StartNames } from './starts/names'
+import { loadThresholds } from './review/thresholds'
 import { TrapBook } from './traps/book'
 
 export interface ServerOptions {
@@ -37,6 +38,8 @@ export interface ServerOptions {
   trapsFile?: string | null
   /** The start positions base (packages/server/bases/starts.jdb); missing, null or unreadable turns the start modes off. */
   startsFile?: string | null
+  /** Spec (repetition) 3.2: packages/server/bases/thresholds.json; missing — the config thresholds. */
+  thresholdsFile?: string | null
   /** The named start list (packages/server/bases/starts-list.json); missing or unreadable turns «Из списка» off. */
   startsListFile?: string | null
   /**
@@ -66,8 +69,9 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
   const commandFor = options.commandFor ?? engineCommand
   const engine = new KataGoEngine(commandFor(config), (line) => log(`[katago] ${line}`))
   const traps = loadTraps(options.trapsFile, log)
+  const thresholds = loadThresholds(options.thresholdsFile, log)
   const starts = loadStarts(options.startsFile, options.startsListFile, log, options.startsNamesFile)
-  const services = createServices(config, engine, { configFile: options.configFile, enginesDir: options.enginesDir, lock, commandFor, log, fetch: options.fetch, traps, starts })
+  const services = createServices(config, engine, { configFile: options.configFile, enginesDir: options.enginesDir, lock, commandFor, log, fetch: options.fetch, traps, starts, thresholds })
   let app: FastifyInstance | undefined
   try {
     // The installer's choice is a convenience: when the config cannot be written, the first-start language screen asks instead.

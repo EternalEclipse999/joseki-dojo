@@ -162,6 +162,8 @@ progress::-webkit-progress-value { background: var(--accent); border-radius: 3px
 .logo .b { fill: #17181c; stroke: var(--stone-ring); stroke-width: 1; }
 .logo .w { fill: #ffffff; stroke: #a3a3ab; stroke-width: 1; }
 .header-end { display: flex; align-items: center; gap: 8px; }
+/* Spec (repetition) 5.1: the count of the cards due now on «Повторение»; a filled pill, unlike the plain .badge. */
+.segmented .badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: var(--on-accent); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
 /* Language menu: the globe in the header and its popup (spec (languages) 5). */
 .language-menu { position: relative; }

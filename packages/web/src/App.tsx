@@ -1,12 +1,12 @@
 import type { JSX } from 'preact'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { localize, translator, type AnalysisSettings, type ClientMessage, type HealthResponse, type InstallStatus, type Language, type LocalizedText, type ResolvedSettings, type ReviewData, type SessionSettings, type SessionView, type StartsInfo, type TrapsInfo } from '@joseki-dojo/shared'
+import { localize, translator, type AnalysisSettings, type ClientMessage, type HealthResponse, type InstallStatus, type Language, type LocalizedText, type Rating, type ResolvedSettings, type ReviewData, type SessionSettings, type SessionView, type StartCardState, type StartsInfo, type TrapsInfo } from '@joseki-dojo/shared'
 import { LoaderCircle, RefreshCw } from 'lucide-preact'
 import { buildStartTree } from './start-tree'
-import { DojoSocket, failureText, fetchHealth, fetchInstall, fetchReview, fetchSettings, fetchStarts, fetchTraps, fetchUi, recheckHealth, saveLanguage } from './api'
+import { DojoSocket, failureText, fetchCardSummary, fetchDueCard, fetchHealth, fetchInstall, fetchReview, fetchSettings, fetchStartCards, fetchStarts, fetchTraps, fetchUi, rateReview, recheckHealth, saveLanguage } from './api'
 import { I18nContext, pickLanguage, rememberLanguage, storedLanguage, type I18n } from './i18n'
 import { needsLanguageScreen } from './language-gate'
-import { AppHeader } from './components/AppHeader'
+import { AppHeader, type Section } from './components/AppHeader'
 import { AppUpdateBanner } from './components/AppUpdateBanner'
 import { Bar } from './components/Bar'
 import { ErrorBanner } from './components/ErrorBanner'
@@ -14,6 +14,7 @@ import { EngineScreen } from './screens/EngineScreen'
 import { GameScreen } from './screens/GameScreen'
 import { InstallScreen } from './screens/InstallScreen'
 import { LanguageScreen } from './screens/LanguageScreen'
+import { RepetitionScreen } from './screens/RepetitionScreen'
 import { ReviewScreen } from './screens/ReviewScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { StartScreen } from './screens/StartScreen'
@@ -36,7 +37,7 @@ export function App() {
   const [error, setError] = useState<LocalizedText | null>(null)
   const [errorSeq, setErrorSeq] = useState(0)
   const [connected, setConnected] = useState(true)
-  const [showSettings, setShowSettings] = useState(false)
+  const [section, setSection] = useState<Section>('game')
   const [versionWarning, setVersionWarning] = useState<LocalizedText | null>(null)
   const [defaultRank, setDefaultRank] = useState<string | undefined>(undefined)
   // True from sending startSession/replayFrom until the server answers (sessionState/error) or the link drops.
@@ -53,24 +54,49 @@ export function App() {
   const [variationUpdate, setVariationUpdate] = useState<VariationUpdate | null>(null)
   const [analysisSettings, setAnalysisSettings] = useState<AnalysisSettings | null>(null)
   const [starts, setStarts] = useState<StartsInfo | null>(null)
+  // Repetition spec 5.2: the training on screen came from the repetition queue.
+  const [queue, setQueue] = useState(false)
+  // Bumped when the cards change (a deleted card): the header's due count and the tree's marks are read again.
+  const [cardsTick, setCardsTick] = useState(0)
+  const [dueCount, setDueCount] = useState(0)
+  // Repetition spec 6: the position cards' states by start id, for the marks in the «Из списка» tree.
+  const [startCards, setStartCards] = useState<Record<string, StartCardState>>({})
+  // The queue ran out: «На сегодня всё» on the «Повторение» tab (a flag, so that a language switch retranslates it); a section switch clears it.
+  const [queueDone, setQueueDone] = useState(false)
+  // Repetition spec 4.4: a re-rating in the review failed (kept as a text key, so that a language switch retranslates it).
+  const [ratingError, setRatingError] = useState<LocalizedText | null>(null)
+  // The latest rating click, and the latest one whose answer is applied: an earlier click's late answer must not
+  // overwrite a later one, and only the latest click's failure is shown.
+  const rateSeq = useRef(0)
+  const ratedSeq = useRef(0)
   const [language, setLanguageState] = useState<Language>(storedLanguage)
   const [languageChosen, setLanguageChosen] = useState<boolean | null>(null)
   // The player picked a language (globe, settings, first screen): a late /api/ui answer must not undo it.
   const pickedByPlayer = useRef(false)
+  // A queue card's startSession is on its way: if the server refuses it or the link drops, the queue ends.
+  const queueStart = useRef(false)
 
   const follow = useMemo(() => new SessionFollow(), [])
-  const socket = useMemo(
-    () =>
-      new DojoSocket((msg) => {
+  const socket = useMemo(() => {
+    const queueStartFailed = (): void => {
+      if (queueStart.current) setQueue(false)
+      queueStart.current = false
+    }
+    return new DojoSocket(
+      (msg) => {
         switch (msg.type) {
           case 'sessionState':
             if (!follow.acceptState(msg.session.id)) break
+            queueStart.current = false
             setSession(msg.session)
             setStarting(false)
             setError(null)
             if (msg.session.status === 'playing') {
               setReview(null)
               setProgress(null)
+              setRatingError(null)
+              // A game is on: its review must not land under «Повторение» or «Настройки» (the switch is hidden meanwhile).
+              setSection('game')
             }
             break
           case 'analysisProgress':
@@ -81,6 +107,8 @@ export function App() {
             break
           case 'reviewReady':
             if (!follow.concerns(msg.sessionId)) break
+            // The server recorded the training's card before this message: the header's count and the tree are stale.
+            setCardsTick((n) => n + 1)
             fetchReview(msg.sessionId)
               .then((r) => r && follow.concerns(r.sessionId) && setReview(r))
               .catch((e: unknown) => {
@@ -91,15 +119,19 @@ export function App() {
           case 'error':
             setError(msg.text)
             setStarting(false)
+            queueStartFailed()
             setErrorSeq((n) => n + 1)
             break
         }
-      }, (isConnected) => {
+      },
+      (isConnected) => {
         setConnected(isConnected)
-        if (!isConnected) setStarting(false)
-      }),
-    [follow],
-  )
+        if (isConnected) return
+        setStarting(false)
+        queueStartFailed()
+      },
+    )
+  }, [follow])
 
   useEffect(() => {
     socket.sessionId = session?.id ?? null
@@ -211,6 +243,23 @@ export function App() {
       .catch(() => setStarts({ count: 0, list: [], branches: [], groups: [] }))
   }, [ready, healthTick])
 
+  // Repetition spec 5.1, 6: the header's badge counts the cards due now and the tree marks the position cards; a finished
+  // training may have added or moved one, and a section switch reads them again, so that cards falling due meanwhile show
+  // up (the tab itself shows the same count).
+  useEffect(() => {
+    if (!ready) return
+    let cancelled = false
+    fetchCardSummary()
+      .then((s) => !cancelled && setDueCount(s.dueNow))
+      .catch(() => !cancelled && setDueCount(0))
+    fetchStartCards()
+      .then((c) => !cancelled && setStartCards(c))
+      .catch(() => !cancelled && setStartCards({}))
+    return () => {
+      cancelled = true
+    }
+  }, [ready, healthTick, cardsTick, session?.status, section])
+
   // While a finished session has no review yet, poll for it: reviewReady may have been missed
   // (socket drop) and the server does not re-send it on resync.
   const finishedId = session?.status === 'finished' ? session.id : null
@@ -225,6 +274,8 @@ export function App() {
         if (cancelled) return
         if (r) {
           setReview(r)
+          // As on reviewReady: the training's card was recorded with the review.
+          setCardsTick((n) => n + 1)
           return
         }
       } catch {
@@ -255,6 +306,64 @@ export function App() {
     setReview(null)
     setProgress(null)
     setError(null)
+  }
+  // Spec (repetition) 5.2: the next due card of the queue, or back to the tab with «На сегодня всё». `starting` covers the
+  // card's lookup too, so a second click (the tab's button, the review's «Дальше») cannot start a second training.
+  const startNextCard = (): void => {
+    if (starting) return
+    setStarting(true)
+    fetchDueCard()
+      .then((due) => {
+        if (!due.card) {
+          setStarting(false)
+          setQueue(false)
+          resetToStart()
+          setQueueDone(true)
+          setSection('repetition')
+          return
+        }
+        setQueue(true)
+        setQueueDone(false)
+        resetToStart()
+        setSection('game')
+        queueStart.current = true
+        startWith({ mode: 'list', environment: 'empty', userColor: due.card.userColor, botRank: due.card.botRank, corner: 'random', startId: due.card.startId })
+      })
+      .catch((e: unknown) => {
+        setStarting(false)
+        setError(failureText(e))
+        setErrorSeq((n) => n + 1)
+      })
+  }
+
+  // Repetition spec 4.4: a button of the review's panel replaces the rating; the answer is the repetition as rescheduled.
+  // A later repetition of the card since (null) locks the rating: the panel's note says so instead of an error.
+  const rate = (rating: Rating): void => {
+    const info = review?.repetition
+    if (!info) return
+    const seq = ++rateSeq.current
+    const latest = (): boolean => seq === rateSeq.current
+    rateReview(info.reviewId, rating)
+      .then((next) => {
+        if (latest()) setRatingError(null)
+        if (!next) {
+          setReview((r) => (r && r.repetition?.reviewId === info.reviewId ? { ...r, repetition: { ...r.repetition, editable: false } } : r))
+          return
+        }
+        if (seq <= ratedSeq.current) return
+        ratedSeq.current = seq
+        // A lock seen meanwhile stays: the review never becomes the card's latest again.
+        setReview((r) => (r && r.repetition?.reviewId === next.reviewId ? { ...r, repetition: { ...next, editable: next.editable && r.repetition.editable } } : r))
+        setCardsTick((n) => n + 1)
+      })
+      .catch((e: unknown) => {
+        if (latest()) setRatingError(failureText(e))
+      })
+  }
+  const finishQueue = (): void => {
+    setQueue(false)
+    resetToStart()
+    setSection('repetition')
   }
 
   const retryHealth = async (): Promise<void> => {
@@ -298,9 +407,12 @@ export function App() {
   } else if (engineUpdate) {
     crumb = t(repick ? 'app.crumb.repick' : 'app.crumb.engineUpdate')
     screen = <InstallScreen update repick={repick} onDone={() => void afterInstall()} onClose={closeUpdate} />
-  } else if (showSettings) {
+  } else if (section === 'repetition') {
+    crumb = t('app.crumb.repetition')
+    screen = <RepetitionScreen tree={startTree} busy={starting || !connected || !ready} notice={queueDone ? t('repetition.doneToday') : null} onStartQueue={startNextCard} onChanged={() => setCardsTick((n) => n + 1)} />
+  } else if (section === 'settings') {
     crumb = t('app.crumb.settings')
-    screen = <SettingsScreen onClose={() => setShowSettings(false)} onSaved={() => setHealthTick((n) => n + 1)} onRepick={startRepick} />
+    screen = <SettingsScreen onClose={() => setSection('game')} onSaved={() => setHealthTick((n) => n + 1)} onRepick={startRepick} />
   } else if (!health || (health.state !== 'ready' && !installChecked)) {
     screen = (
       <main class="loading">
@@ -317,7 +429,7 @@ export function App() {
       <EngineScreen
         health={health}
         onRetry={retryHealth}
-        onSettings={() => setShowSettings(true)}
+        onSettings={() => setSection('settings')}
         onRepick={install?.installed ? startRepick : undefined}
       />
     )
@@ -331,8 +443,12 @@ export function App() {
         startsCount={starts?.count ?? 0}
         startTree={startTree}
         last={lastSettings}
+        cards={startCards}
         busy={starting || !connected}
-        onStart={startWith}
+        onStart={(s) => {
+          setQueue(false)
+          startWith(s)
+        }}
       />
     )
   } else if (session.status === 'playing') {
@@ -346,7 +462,10 @@ export function App() {
         progress={progress}
         busy={starting}
         onReplay={(turn) => sendStarting({ type: 'replayFrom', sessionId: session.id, turn })}
-        onNew={resetToStart}
+        onNew={() => {
+          setQueue(false)
+          resetToStart()
+        }}
         onNext={lastSettings ? () => startWith(lastSettings) : null}
         labels={reviewLabels(session.settings.mode, t)}
         variations={{
@@ -356,6 +475,12 @@ export function App() {
           connected,
           errorSeq,
           visits: analysisSettings,
+        }}
+        repetition={{
+          onRate: rate,
+          // The review's own «next» button still replays the position; the queue goes on from the panel.
+          queue: queue ? { onNext: startNextCard, onFinish: finishQueue } : null,
+          error: ratingError && localize(language, ratingError),
         }}
       />
     )
@@ -373,8 +498,18 @@ export function App() {
   // Spec 5.1: offered outside a game, when the installer's KataGo is not the one pinned in katago.lock.json.
   // Not while a review is being prepared: the update stops KataGo, and the review needs it.
   const reviewPending = session?.status === 'finished' && review === null
-  const offerEngineUpdate = ready && install?.updateAvailable === true && !engineUpdate && !inGame && !showSettings && !reviewPending && !languageGate
-  const nav = !inGame && !engineUpdate && !languageGate ? { settings: showSettings, onGame: () => setShowSettings(false), onSettings: () => setShowSettings(true) } : undefined
+  const offerEngineUpdate = ready && install?.updateAvailable === true && !engineUpdate && !inGame && section !== 'settings' && !reviewPending && !languageGate
+  const nav =
+    !inGame && !engineUpdate && !languageGate
+      ? {
+          section,
+          onSection: (s: Section) => {
+            setQueueDone(false)
+            setSection(s)
+          },
+          due: dueCount,
+        }
+      : undefined
 
   return (
     <I18nContext.Provider value={i18n}>
@@ -386,7 +521,7 @@ export function App() {
           {t('app.engineUpdate.offer')}
         </Bar>
       )}
-      {versionWarning && !showSettings && <Bar tone="warning">{localize(language, versionWarning)}</Bar>}
+      {versionWarning && section !== 'settings' && <Bar tone="warning">{localize(language, versionWarning)}</Bar>}
       {screen}
     </I18nContext.Provider>
   )

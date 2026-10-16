@@ -87,4 +87,35 @@ CREATE INDEX trap_attempts_trap ON trap_attempts (trap_id);
 ALTER TABLE sessions ADD COLUMN start_json TEXT;
 `,
   },
+  {
+    version: 4,
+    name: '004_cards.sql',
+    sql: `
+CREATE TABLE cards (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('position', 'move')),
+  card_key TEXT NOT NULL UNIQUE,
+  data_json TEXT NOT NULL,
+  fsrs_json TEXT NOT NULL,
+  due TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  deleted INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX cards_due ON cards (deleted, due);
+
+CREATE TABLE card_reviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  card_id TEXT NOT NULL REFERENCES cards (id) ON DELETE CASCADE,
+  reviewed_at TEXT NOT NULL,
+  rating TEXT NOT NULL CHECK (rating IN ('again', 'hard', 'good', 'easy')),
+  auto_rating TEXT NOT NULL CHECK (auto_rating IN ('again', 'hard', 'good', 'easy')),
+  worst_json TEXT,
+  state_before_json TEXT NOT NULL,
+  session_id TEXT
+);
+CREATE INDEX card_reviews_card ON card_reviews (card_id, id);
+CREATE UNIQUE INDEX card_reviews_session ON card_reviews (card_id, session_id) WHERE session_id IS NOT NULL;
+CREATE INDEX card_reviews_session_only ON card_reviews (session_id);
+`,
+  },
 ]

@@ -55,7 +55,7 @@ test('a random start: its name is in the crumbs', async ({ page }) => {
   await page.getByRole('button', { name: 'Начать тренировку' }).click()
 
   await expect(page.getByRole('heading', { name: 'Ваш ход' })).toBeVisible()
-  await expect(page.getByText(/Тестовое (начало|продолжение)/)).toBeVisible()
+  await expect(page.getByText(/Тестовое начало|Тестовое продолжение|Тестовая очередь/)).toBeVisible()
 })
 
 test('a start from a group: only its corner stone is on the board and the bot answers it', async ({ page }) => {

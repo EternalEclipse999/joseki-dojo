@@ -200,6 +200,7 @@ async function boot(): Promise<void> {
     lockFile: join(resourcesDir, 'katago.lock.json'),
     trapsFile: app.isPackaged ? join(resourcesDir, 'bases', 'traps.jdb') : join(resourcesDir, 'packages', 'server', 'bases', 'traps.jdb'),
     startsFile: app.isPackaged ? join(resourcesDir, 'bases', 'starts.jdb') : join(resourcesDir, 'packages', 'server', 'bases', 'starts.jdb'),
+    thresholdsFile: app.isPackaged ? join(resourcesDir, 'bases', 'thresholds.json') : join(resourcesDir, 'packages', 'server', 'bases', 'thresholds.json'),
     startsListFile: app.isPackaged ? join(resourcesDir, 'bases', 'starts-list.json') : join(resourcesDir, 'packages', 'server', 'bases', 'starts-list.json'),
     startsNamesFile: app.isPackaged ? join(resourcesDir, 'bases', 'starts-i18n.json') : join(resourcesDir, 'packages', 'server', 'bases', 'starts-i18n.json'),
     webDist,

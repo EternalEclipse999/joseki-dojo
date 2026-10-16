@@ -5,11 +5,14 @@ import { ChevronLeft, ChevronRight, FolderOpen, GitBranch, LoaderCircle, Map as 
 import {
   nextColor,
   Position,
+  RATINGS,
   type Actor,
   type AnalysisSettings,
   type MessageKey,
   type Move,
   type MoveVertex,
+  type Rating,
+  type RepetitionInfo,
   type ReviewData,
   type Translate,
   type TrapVerdict,
@@ -20,7 +23,7 @@ import { Board } from '../components/Board'
 import { CandidateList, LABELS } from '../components/CandidateList'
 import { LossBar } from '../components/LossBar'
 import { VariationBar } from '../components/VariationBar'
-import { CATEGORY_LABEL, formatCount, formatPoints, moveLabel } from '../format'
+import { CATEGORY_LABEL, formatCount, formatPoints, formatWhen, moveLabel } from '../format'
 import { useI18n, useT } from '../i18n'
 import { summaryTiles } from '../review-summary'
 import { richText } from '../rich-text'
@@ -61,6 +64,16 @@ export interface VariationLink {
   visits: AnalysisSettings | null
 }
 
+/** Repetition spec 5.3: the review's link to the training's card repetition (`review.repetition`) and to the queue. */
+export interface RepetitionLink {
+  /** Replaces the rating of the shown repetition. */
+  onRate: (rating: Rating) => void
+  /** The training came from the queue: its «Дальше» and «Закончить»; null otherwise. */
+  queue: { onNext: () => void; onFinish: () => void } | null
+  /** A re-rating that failed, in the reader's language. */
+  error: string | null
+}
+
 export interface ReviewScreenProps {
   review: ReviewData | null
   progress: { done: number; total: number } | null
@@ -73,9 +86,10 @@ export interface ReviewScreenProps {
   labels: ReviewLabels
   busy?: boolean
   variations: VariationLink
+  repetition?: RepetitionLink
 }
 
-export function ReviewScreen({ review, progress, onReplay, onNew, onNext, labels, busy, variations }: ReviewScreenProps) {
+export function ReviewScreen({ review, progress, onReplay, onNew, onNext, labels, busy, variations, repetition }: ReviewScreenProps) {
   const t = useT()
   if (!review) {
     return (
@@ -114,10 +128,12 @@ export function ReviewScreen({ review, progress, onReplay, onNew, onNext, labels
       <main>
         <div class="page">
           <div class="card section">
+            {/* A training without moves is not a repetition, but the queue goes on from it. */}
+            {repetition?.queue && <RepetitionPanel info={null} link={repetition} busy={busy} />}
             <p>{t('review.noMoves')}</p>
             <div class="actions">
               {onNext && (
-                <button class="primary" disabled={busy} onClick={onNext}>
+                <button class={repetition?.queue ? undefined : 'primary'} disabled={busy} onClick={onNext}>
                   <Play aria-hidden="true" />
                   {labels.next}
                 </button>
@@ -132,7 +148,68 @@ export function ReviewScreen({ review, progress, onReplay, onNew, onNext, labels
       </main>
     )
   }
-  return <ReviewLoaded key={review.sessionId} review={review} onReplay={onReplay} onNew={onNew} onNext={onNext} labels={labels} busy={busy} variations={variations} />
+  return (
+    <ReviewLoaded
+      key={review.sessionId}
+      review={review}
+      onReplay={onReplay}
+      onNew={onNew}
+      onNext={onNext}
+      labels={labels}
+      busy={busy}
+      variations={variations}
+      repetition={repetition}
+    />
+  )
+}
+
+/**
+ * Repetition spec 4.4, 5.3: KataGo's rating of the training as a card repetition with its reason in one line, the four
+ * buttons that replace it, when the card comes back, and the queue's «Дальше» / «Закончить». Without `info` (a training
+ * with no move of the player's in the corner zone is not a repetition) the panel says so above the queue's buttons.
+ */
+function RepetitionPanel({ info, link, busy }: { info: RepetitionInfo | null; link: RepetitionLink; busy?: boolean }) {
+  const { language, t } = useI18n()
+  const { onRate, queue, error } = link
+  const worst = info?.worst ?? null
+  const reason = !worst
+    ? t('review.repetition.clean')
+    : worst.category === 'unpunished'
+      ? t('review.repetition.unpunished', { loss: formatPoints(worst.loss, language) })
+      : t('review.repetition.worst', { category: t(CATEGORY_LABEL[worst.category]), loss: formatPoints(worst.loss, language) })
+  return (
+    <section class="repetition-panel" aria-label={t('review.repetition.title')}>
+      <div class="label">{t('review.repetition.title')}</div>
+      {!info && <p>{t('review.repetition.notCounted')}</p>}
+      {info && (
+        <>
+          <p>
+            {t('review.repetition.auto', { rating: t(`rating.${info.auto}`) })} · {reason}
+          </p>
+          <div class="segmented" role="group" aria-label={t('review.repetition.ratings')}>
+            {RATINGS.map((r) => (
+              <button key={r} aria-pressed={info.rating === r} disabled={!info.editable} onClick={() => onRate(r)}>
+                {t(`rating.${r}`)}
+              </button>
+            ))}
+          </div>
+          {!info.editable && <p class="hint">{t('review.repetition.locked')}</p>}
+          <p class="hint">{t('review.repetition.next', { when: formatWhen(info.due, new Date(), language, t) })}</p>
+        </>
+      )}
+      {error && <p class="hint error">{error}</p>}
+      {queue && (
+        <div class="actions">
+          <button class="primary" disabled={busy} onClick={queue.onNext}>
+            {t('review.repetition.continue')}
+          </button>
+          <button class="ghost" disabled={busy} onClick={queue.onFinish}>
+            {t('review.repetition.finish')}
+          </button>
+        </div>
+      )}
+    </section>
+  )
 }
 
 /** The move line of a game move: who played it, then the move («Вы: Q16»). */
@@ -195,13 +272,15 @@ interface ReviewLoadedProps {
   labels: ReviewLabels
   busy?: boolean
   variations: VariationLink
+  repetition?: RepetitionLink
 }
 
 /**
  * Spec 7: summary, loss chart, move navigator, candidates and the branch, next to the board.
  * Variations spec 3–5: a variation instead of a game move, its deepening analysis and KataGo's replies.
+ * Repetition spec 5.3: the repetition panel above them.
  */
-function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variations }: ReviewLoadedProps) {
+function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variations, repetition }: ReviewLoadedProps) {
   const { t, language } = useI18n()
   const [turn, setTurn] = useState(0)
   const [pvStep, setPvStep] = useState<number | null>(null)
@@ -393,6 +472,7 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variation
         onClick={onBoardClick}
       />
       <aside class="panel">
+        {repetition && (review.repetition || repetition.queue) && <RepetitionPanel info={review.repetition ?? null} link={repetition} busy={busy} />}
         <div class="metrics">
           {summaryTiles(review.summary, t, language).map((tile) => (
             <div class="metric" key={tile.k}>
@@ -525,7 +605,7 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variation
         <hr class="divider" />
         <div class="actions">
           {onNext && (
-            <button class="primary" disabled={busy} onClick={onNext}>
+            <button class={repetition?.queue ? undefined : 'primary'} disabled={busy} onClick={onNext}>
               <Play aria-hidden="true" />
               {labels.next}
             </button>

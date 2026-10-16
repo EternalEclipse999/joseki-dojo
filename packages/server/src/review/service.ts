@@ -1,10 +1,12 @@
 import type { ReviewData, ServerMessage } from '@joseki-dojo/shared'
 import type { AnalysisScheduler } from '../analysis/scheduler'
+import type { CardService } from '../cards/service'
 import type { AppConfig } from '../config'
 import { TrapBook } from '../traps/book'
 import { SessionError } from '../session/session'
 import type { SessionRecord, StoredAnalysis } from '../store/records'
 import type { SessionRepo } from '../store/repo'
+import { thresholdsFor, type ThresholdTable } from './thresholds'
 import { buildReview, missedPunishmentRows } from './compute'
 import { trapReview } from './trap'
 
@@ -17,7 +19,13 @@ export interface ReviewServiceDeps {
   publish: (sessionId: string, msg: ServerMessage) => void
   /** The traps base for the trap block; default: an empty book. */
   traps?: TrapBook
+  /** Spec (repetition) 3.2: the calibrated table; null — the config thresholds. */
+  thresholds?: ThresholdTable | null
+  /** Spec (repetition) 4.2, 5.3. */
+  cards?: CardService
   now?: () => string
+  /** One-line diagnostics; the card hook logs here instead of breaking the review. */
+  log?: (line: string) => void
 }
 
 export class ReviewService {
@@ -56,8 +64,13 @@ export class ReviewService {
     const review = this.assemble(rec, analyses)
     this.d.repo.saveSummary(sessionId, review.summary)
     this.d.repo.replaceMissedPunishments(sessionId, missedPunishmentRows(review), this.now())
+    try {
+      this.d.cards?.recordTraining(rec, review)
+    } catch (err) {
+      this.d.log?.(`card hook failed for session ${sessionId}: ${err instanceof Error ? err.message : String(err)}`)
+    }
     this.d.publish(sessionId, { type: 'reviewReady', sessionId })
-    return review
+    return this.withRepetition(review)
   }
 
   get(sessionId: string): ReviewResult {
@@ -69,7 +82,18 @@ export class ReviewService {
       if (!row || row.visits < this.d.config.analysis.reviewVisits) return { status: 'not_ready' }
       analyses.push(row.analysis)
     }
-    return { status: 'ok', review: this.assemble(rec, analyses) }
+    return { status: 'ok', review: this.withRepetition(this.assemble(rec, analyses)) }
+  }
+
+  /** Spec (repetition) 5.3: the card repetition of this training, if any. */
+  private withRepetition(review: ReviewData): ReviewData {
+    let repetition = null
+    try {
+      repetition = this.d.cards?.repetitionOf(review.sessionId) ?? null
+    } catch (err) {
+      this.d.log?.(`card lookup failed for session ${review.sessionId}: ${err instanceof Error ? err.message : String(err)}`)
+    }
+    return repetition ? { ...review, repetition } : review
   }
 
   private assemble(rec: SessionRecord, analyses: StoredAnalysis[]): ReviewData {
@@ -79,7 +103,7 @@ export class ReviewService {
       initialMoves: rec.initialMoves,
       moves: rec.moves,
       analyses,
-      thresholds: this.d.config.thresholds,
+      thresholds: thresholdsFor(this.d.config.player.level, this.d.thresholds ?? null, this.d.config.thresholds),
       trap: trapReview(rec.settings, rec.initialMoves.length, rec.moves, this.d.traps ?? TrapBook.empty()),
     })
   }

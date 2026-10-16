@@ -10,5 +10,6 @@
   "analysis": { "reviewVisits": 500, "endVisits": 200, "variationVisits": 5000 },
   "thresholds": { "inaccuracy": 0.5, "mistake": 2, "blunder": 5, "punished": 1 },
   "bot": { "defaultRank": "7k", "temperature": 1 },
+  "player": { "level": "7k" },
   "maxSessionMoves": 60
 }
