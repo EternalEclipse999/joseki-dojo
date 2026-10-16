@@ -164,6 +164,7 @@ Conventions:
 | изучена (карточка на этапе повторения) | learned | 習得済み | 已掌握 | 已掌握 | 학습 완료 | `repetition.stage.learned`, `tree.card.learned`; the tree's «изучено N из M» uses the same word (`tree.progress`: 習得 / 已掌握 / 학습 완료). | App word (catalogs), not a Go term | catalogs |
 | карточка (карточка повторения) | card | カード; counter 枚 | 卡片; counter 张 | 卡片; counter 張 | 카드; counter 장 | `repetition.list` (Cards / カード / 卡片 / 卡片 / 카드), `header.dueBadge`, `repetition.learnedOf`. | App word (catalogs), not a Go term | catalogs |
 | задача (карточка «найди хороший ход») | problem | 問題 | 题目 | 題目 | 문제 | `repetition.dueProblems`, `repetition.filter.move`: a card with one move to find in a position, made from the player's mistake or an unpunished mistake of the opponent. Not a tsumego, so no 詰碁 / 死活题 / 사활 word. | App word (catalogs), not a Go term | catalogs |
+| новое (метка новинки) | new | 新機能 | 新功能 | 新功能 | 새 기능 | `news.badge`: a quiet mark on a control whose novelty the player has not opened yet; not the due-count pill. The callout's title starts with the same word (`news.repetition.title`: New: Repetition / 新機能：復習 / 新功能：复习 / 新功能：複習 / 새 기능: 반복). | App word (catalogs), not a Go term | catalogs |
 
 ---
 

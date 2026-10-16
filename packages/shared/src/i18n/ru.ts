@@ -178,6 +178,12 @@ export const ru = {
   'header.repetition': 'Повторение',
   'header.dueBadge': { one: '{count} карточка к повторению', few: '{count} карточки к повторению', many: '{count} карточек к повторению', other: '{count} карточки к повторению' },
   'header.settings': 'Настройки',
+  // Spec (whats-new) 2: the «новое» mark on a section button and the callout under it.
+  'news.badge': 'новое',
+  'news.repetition.title': 'Новое: повторение',
+  'news.repetition.text': 'Позиции из дерева и задачи из ваших ошибок возвращаются к повторению по расписанию.',
+  'news.open': 'Открыть',
+  'news.dismiss': 'Понятно',
   // The globe button in the header (its name and tooltip) and the name of the language choice in Settings.
   'language.label': 'Язык',
   'start.title': 'Новая тренировка',

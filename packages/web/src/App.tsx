@@ -1,11 +1,12 @@
 import type { JSX } from 'preact'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { localize, translator, type AnalysisSettings, type ClientMessage, type HealthResponse, type InstallStatus, type Language, type LocalizedText, type ProblemAnswer, type ProblemView, type Rating, type RepetitionInfo, type ResolvedSettings, type ReviewData, type SessionSettings, type SessionView, type StartCardState, type StartsInfo, type TrapsInfo, type Vertex } from '@joseki-dojo/shared'
+import { localize, translator, type AnalysisSettings, type ClientMessage, type HealthResponse, type InstallStatus, type Language, type LocalizedText, type NewsId, type ProblemAnswer, type ProblemView, type Rating, type RepetitionInfo, type ResolvedSettings, type ReviewData, type SessionSettings, type SessionView, type StartCardState, type StartsInfo, type TrapsInfo, type Vertex } from '@joseki-dojo/shared'
 import { LoaderCircle, RefreshCw } from 'lucide-preact'
 import { buildStartTree } from './start-tree'
-import { answerProblem, DojoSocket, failureText, fetchCardSummary, fetchDueCard, fetchHealth, fetchInstall, fetchReview, fetchSettings, fetchStartCards, fetchStarts, fetchTraps, fetchUi, rateReview, recheckHealth, saveLanguage } from './api'
+import { answerProblem, DojoSocket, failureText, fetchCardSummary, fetchDueCard, fetchHealth, fetchInstall, fetchNews, fetchReview, fetchSettings, fetchStartCards, fetchStarts, fetchTraps, fetchUi, markNews, rateReview, recheckHealth, saveLanguage } from './api'
 import { I18nContext, pickLanguage, rememberLanguage, storedLanguage, type I18n } from './i18n'
 import { needsLanguageScreen } from './language-gate'
+import { afterAction, fromStartup, NO_NEWS, type NewsAction, type NewsShown } from './news'
 import { AppHeader, type Section } from './components/AppHeader'
 import { AppUpdateBanner } from './components/AppUpdateBanner'
 import { Bar } from './components/Bar'
@@ -91,6 +92,9 @@ export function App() {
   const pickedByPlayer = useRef(false)
   // A queue card's startSession is on its way: if the server refuses it or the link drops, the queue ends.
   const queueStart = useRef(false)
+  // Spec (whats-new) 3.4: the novelties highlighted in the header, and the latest `seen` / `dismiss` sent.
+  const [news, setNews] = useState<NewsShown>(NO_NEWS)
+  const newsSeq = useRef(0)
 
   const follow = useMemo(() => new SessionFollow(), [])
   const socket = useMemo(() => {
@@ -177,6 +181,33 @@ export function App() {
       })
       .catch(() => undefined)
   }, [])
+
+  // Spec (whats-new) 3.4: the novelties, once per run; a failure shows no highlight and no error bar.
+  useEffect(() => {
+    let cancelled = false
+    fetchNews()
+      .then((v) => !cancelled && setNews(fromStartup(v)))
+      .catch((err: unknown) => console.warn('news', err))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Applied at once; the answer of the latest action sets the marks, an older one is dropped, a failure keeps the local change.
+  const actOnNews = (id: NewsId, action: NewsAction): void => {
+    const seq = ++newsSeq.current
+    setNews((s) => afterAction(s, id, action, null))
+    markNews(id, action)
+      .then((v) => {
+        if (seq === newsSeq.current) setNews((s) => afterAction(s, id, action, v))
+      })
+      .catch((err: unknown) => console.warn('news', err))
+  }
+
+  // Spec (whats-new) 2.1: opening the section by any path marks its novelty seen.
+  useEffect(() => {
+    if (section === 'repetition' && news.unseen.includes('repetition')) actOnNews('repetition', 'seen')
+  }, [section, news.unseen])
 
   const i18n = useMemo<I18n>(
     () => ({
@@ -594,21 +625,23 @@ export function App() {
   // Not while a review is being prepared: the update stops KataGo, and the review needs it.
   const reviewPending = session?.status === 'finished' && review === null
   const offerEngineUpdate = ready && install?.updateAvailable === true && !engineUpdate && !inGame && section !== 'settings' && !reviewPending && !languageGate
+  const goSection = (s: Section): void => {
+    setQueueDone(false)
+    // The problem screen lives under «Повторение»: leaving it for another section, or for the tab itself, ends the
+    // queue and drops the problem. A queue's training keeps its «Дальше» / «Закончить» over a trip elsewhere.
+    if (problem) {
+      setQueue(false)
+      openProblem(null)
+    }
+    setSection(s)
+  }
   const nav =
     !inGame && !engineUpdate && !languageGate
       ? {
           section,
-          onSection: (s: Section) => {
-            setQueueDone(false)
-            // The problem screen lives under «Повторение»: leaving it for another section, or for the tab itself, ends the
-            // queue and drops the problem. A queue's training keeps its «Дальше» / «Закончить» over a trip elsewhere.
-            if (problem) {
-              setQueue(false)
-              openProblem(null)
-            }
-            setSection(s)
-          },
+          onSection: goSection,
           due: dueCount,
+          news: { unseen: news.unseen, callout: news.callout, onOpen: () => goSection('repetition'), onDismiss: (id: NewsId) => actOnNews(id, 'dismiss') },
         }
       : undefined
 

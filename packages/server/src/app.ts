@@ -14,6 +14,7 @@ import { registerSettingsRoutes } from './api/settings-routes'
 import { registerCardsRoutes } from './api/cards-routes'
 import { registerStartsRoutes } from './api/starts-routes'
 import { registerTrapsRoutes } from './api/traps-routes'
+import { registerNewsRoutes } from './api/news-routes'
 import { registerPlayerRoutes } from './api/player-routes'
 import { registerUiRoutes } from './api/ui-routes'
 import { handleSocket } from './api/ws'
@@ -25,6 +26,7 @@ import { HealthMonitor } from './engine/health'
 import type { KataGoLock } from './engine/lock'
 import { toErrorMessage } from './errors'
 import { InstallerService } from './install/installer'
+import { NewsService } from './news/service'
 import { ReviewService } from './review/service'
 import { thresholdsFor, type ThresholdTable } from './review/thresholds'
 import { VariationService } from './review/variation'
@@ -54,6 +56,8 @@ export interface AppServices {
   cards: CardService
   ui: UiService
   player: PlayerService
+  /** Spec (whats-new) 3.2: which novelties are new for this player. */
+  news: NewsService
   hub: Hub
 }
 
@@ -84,6 +88,7 @@ const LOCAL_ORIGIN = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i
 
 export function createServices(config: AppConfig, engine: KataGoEngine, options: ServiceOptions): AppServices {
   const db = openDb(join(config.dataDir, 'joseki-dojo.sqlite'))
+  const news = new NewsService(db)
   const repo = new SessionRepo(db)
   const hub = new Hub()
   const publish = (sessionId: string, msg: ServerMessage): void => hub.publish(sessionId, msg)
@@ -123,7 +128,7 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
   const installer = new InstallerService({ config, lock, enginesDir, settings, commandFor, log, engine, health, fetch })
   const ui = new UiService(config, configFile)
   const player = new PlayerService(config, configFile)
-  return { config, db, engine, health, sessions, reviews, variations, settings, installer, hub, traps, starts, cards, ui, player }
+  return { config, db, engine, health, sessions, reviews, variations, settings, installer, hub, traps, starts, cards, ui, player, news }
 }
 
 export async function buildApp(services: AppServices, webDist: string | null = null): Promise<FastifyInstance> {
@@ -149,6 +154,7 @@ export async function buildApp(services: AppServices, webDist: string | null = n
   registerCardsRoutes(app, services.cards)
   registerUiRoutes(app, services.ui)
   registerPlayerRoutes(app, services.player)
+  registerNewsRoutes(app, services.news)
   if (webDist && existsSync(webDist)) await app.register(fastifyStatic, { root: webDist })
   return app
 }

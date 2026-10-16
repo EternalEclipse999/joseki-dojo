@@ -164,6 +164,23 @@ progress::-webkit-progress-value { background: var(--accent); border-radius: 3px
 .header-end { display: flex; align-items: center; gap: 8px; }
 /* Spec (repetition) 5.1: the count of the cards due now on «Повторение»; a filled pill, unlike the plain .badge. */
 .segmented .badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: var(--on-accent); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Spec (whats-new) 2.1: the «новое» mark — a quiet accent pill, unlike the filled due-count pill. */
+.new-mark { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 9px; background: var(--accent-bg); color: var(--accent-text); font-size: 11px; font-weight: 500; }
+/* Spec (whats-new) 2.2: the callout under its header button (CSS anchor positioning; without it, under the right end of the sections). */
+.header-nav { position: relative; display: inline-flex; }
+.header-nav .news-target { anchor-name: --news-target; }
+.news-callout { position: absolute; top: calc(100% + 12px); right: 0; z-index: 20; width: 280px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); white-space: normal; }
+/* With anchor positioning the nav must not be the containing block: the area under the button would be only as tall as the nav.
+   The same goes for any positioned (or transformed, filtered, contained) ancestor up to the root: the anchored callout needs none;
+   a later `position: sticky` on `.app-header` would shrink its area the same way. */
+@supports (position-area: bottom) {
+  .header-nav { position: static; }
+  .news-callout { top: auto; right: auto; position-anchor: --news-target; position-area: bottom; justify-self: anchor-center; margin-top: 12px; }
+}
+.news-callout::before { content: ''; position: absolute; top: -6px; left: calc(50% - 5px); width: 10px; height: 10px; background: var(--bg); border-left: 1px solid var(--border); border-top: 1px solid var(--border); transform: rotate(45deg); }
+.news-callout b { display: block; font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+.news-callout p { font-size: 13px; color: var(--text-2); margin-bottom: 10px; }
+.news-callout .actions { display: flex; justify-content: flex-end; gap: 8px; }
 
 /* Language menu: the globe in the header and its popup (spec (languages) 5). */
 .language-menu { position: relative; }
