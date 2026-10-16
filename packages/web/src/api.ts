@@ -1,4 +1,5 @@
-import type { CardListItem, CardSummary, ClientMessage, DueCard, HealthResponse, InstallStatus, Language, LocalizedText, MessageKey, PlayerSettings, ProblemAnswer, Rating, RepetitionInfo, ReviewData, ServerMessage, SettingsResponse, SettingsUpdate, SettingsView, StartCardState, StartsInfo, Theme, TrapsInfo, UiSettings, Vertex } from '@joseki-dojo/shared'
+import type { CardListItem, CardSummary, ClientMessage, DueCard, HealthResponse, InstallStatus, Language, LocalizedText, MessageKey, NewsId, NewsView, PlayerSettings, ProblemAnswer, Rating, RepetitionInfo, ReviewData, ServerMessage, SettingsResponse, SettingsUpdate, SettingsView, StartCardState, StartsInfo, Theme, TrapsInfo, UiSettings, Vertex } from '@joseki-dojo/shared'
+import type { NewsAction } from './news'
 
 /** Spec (languages) 6: a failed request, kept as a key so that it is shown in the reader's language. */
 export class ApiError extends Error {
@@ -216,4 +217,18 @@ export async function startInstall(): Promise<InstallStatus> {
   const res = await request('/api/install', { method: 'POST' })
   if (!res.ok) throw failed('error.api.install', res)
   return (await res.json()) as InstallStatus
+}
+
+/** Spec (whats-new) 3.3: the novelties to highlight. A failure is not shown to the player: the highlight is not essential. */
+export async function fetchNews(): Promise<NewsView> {
+  const res = await request('/api/news')
+  if (!res.ok) throw new Error(`news: HTTP ${res.status}`)
+  return (await res.json()) as NewsView
+}
+
+/** Spec (whats-new) 3.3: the player opened a novelty (`seen`) or closed its callout (`dismiss`). */
+export async function markNews(id: NewsId, action: NewsAction): Promise<NewsView> {
+  const res = await request(`/api/news/${encodeURIComponent(id)}/${action}`, { method: 'POST' })
+  if (!res.ok) throw new Error(`news: HTTP ${res.status}`)
+  return (await res.json()) as NewsView
 }

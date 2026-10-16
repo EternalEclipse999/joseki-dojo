@@ -118,4 +118,14 @@ CREATE UNIQUE INDEX card_reviews_session ON card_reviews (card_id, session_id) W
 CREATE INDEX card_reviews_session_only ON card_reviews (session_id);
 `,
   },
+  {
+    version: 5,
+    name: '005_app_state.sql',
+    sql: `
+CREATE TABLE app_state (
+  key TEXT PRIMARY KEY,
+  value_json TEXT NOT NULL
+);
+`,
+  },
 ]

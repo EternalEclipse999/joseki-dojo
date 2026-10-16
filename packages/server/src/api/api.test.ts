@@ -204,6 +204,18 @@ describe('API', () => {
     local.close()
   })
 
+  it('serves the novelties: none on a fresh install; seen and dismiss answer the view; an unknown id is 404', async () => {
+    expect(await (await fetch(`http://${host}/api/news`)).json()).toEqual({ unseen: [], callout: null })
+    const seen = await fetch(`http://${host}/api/news/repetition/seen`, { method: 'POST' })
+    expect(seen.status).toBe(200)
+    expect(await seen.json()).toEqual({ unseen: [], callout: null })
+    const dismissed = await fetch(`http://${host}/api/news/repetition/dismiss`, { method: 'POST' })
+    expect(await dismissed.json()).toEqual({ unseen: [], callout: null })
+    const unknown = await fetch(`http://${host}/api/news/nope/seen`, { method: 'POST' })
+    expect(unknown.status).toBe(404)
+    expect(await unknown.json()).toEqual({ error: 'news_not_found' })
+  })
+
   it('returns 404 for an unknown review', async () => {
     const res = await fetch(`http://${host}/api/sessions/nope/review`)
     expect(res.status).toBe(404)
