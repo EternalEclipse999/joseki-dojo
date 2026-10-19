@@ -43,6 +43,7 @@ export const zhHans: Catalog = {
   'error.session.finished': '这次训练已经结束',
   'error.variation.reviewOnly': '变化只能在复盘中使用',
   'error.variation.illegal': '变化中有不能落子的一手',
+  'error.card.notFound': '这道题目已不存在',
   'error.engine.notReady': 'KataGo 未就绪：{reason}',
   'error.engine.noHumanPolicy': 'KataGo 没有返回 humanPolicy：未加载 human 网络',
   'error.engine.stopped': 'KataGo 已停止',
@@ -369,6 +370,10 @@ export const zhHans: Catalog = {
   'problem.kataGoBest': 'KataGo 的最佳选点：{move}',
   'problem.inGame': '对局中：{move}，−{loss}',
   'problem.illegal': '这里不能落子',
+  'problem.view.start': '题目初始局面',
+  'problem.view.answer': '你的解答：{move}',
+  'problem.explore': '点击棋盘来研究这个局面',
+  'problem.backToProblem': '返回题目',
   'problem.repetition.title': '题目复习',
   'problem.repetition.locked': '只有该题目最近一次复习的评分可以修改。',
 }

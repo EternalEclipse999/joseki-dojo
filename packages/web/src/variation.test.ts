@@ -10,11 +10,16 @@ import {
   candidateIndex,
   candidateLeft,
   exitTurn,
+  firstTurn,
+  lossBefore,
+  positionTurn,
   replyVertex,
   shouldReply,
   shownMoves,
   startAfterTurn,
+  startFromView,
   startVariation,
+  stepTurn,
   stepVariation,
   variationMoves,
   type VariationResult,
@@ -206,5 +211,62 @@ describe('where a variation starts and where it leaves to', () => {
     expect(exitTurn(startAfterTurn(3, R6))).toBe(3)
     expect(exitTurn(startVariation(3, R6))).toBe(3)
     expect(exitTurn(startVariation(0, R6))).toBe(0)
+  })
+})
+
+describe('the start view (a problem: the position before the answer, no move placed)', () => {
+  it('is the first view only on a screen that has one', () => {
+    expect(firstTurn(true)).toBe(-1)
+    expect(firstTurn(false)).toBe(0)
+  })
+
+  it('bounds the steps: from game move 0 without it, from the start view with it, to the last game move', () => {
+    expect(stepTurn(0, -1, 3, false)).toBe(0)
+    expect(stepTurn(2, 1, 3, false)).toBe(3)
+    expect(stepTurn(3, 1, 3, false)).toBe(3)
+    expect(stepTurn(1, -5, 3, false)).toBe(0)
+    expect(stepTurn(0, -1, 0, true)).toBe(-1)
+    expect(stepTurn(-1, -1, 0, true)).toBe(-1)
+    expect(stepTurn(-1, 1, 0, true)).toBe(0)
+    expect(stepTurn(0, 1, 0, true)).toBe(0)
+  })
+
+  it('shows the candidates of the position before game move 0', () => {
+    expect(positionTurn(-1)).toBe(0)
+    expect(positionTurn(0)).toBe(0)
+    expect(positionTurn(3)).toBe(3)
+  })
+
+  it('a board click on it plays instead of game move 0, and leaving returns to it', () => {
+    const v = startFromView(-1, R6)
+    expect(v).toEqual({ fromTurn: 0, originTurn: -1, moves: [R6], step: 1 })
+    expect(exitTurn(v)).toBe(-1)
+  })
+
+  it('a board click on game move 0 still plays after it', () => {
+    expect(startFromView(0, R6)).toEqual({ fromTurn: 1, originTurn: 0, moves: [R6], step: 1 })
+    expect(startFromView(3, R6)).toEqual(startAfterTurn(3, R6))
+  })
+})
+
+describe('the position a variation move loses from', () => {
+  const stored = (visits: number, lead: number): PositionReview => ({ ...review(0, D4, lead), visits })
+  const result = (visits: number, lead: number): VariationResult => ({ visits, done: false, position: review(1, D4, lead) })
+
+  it('is the previous variation position, once analysed', () => {
+    expect(lossBefore(false, result(5, 2), stored(100, 1))?.scoreLeadBlack).toBe(2)
+    expect(lossBefore(false, undefined, stored(100, 1))).toBeUndefined()
+  })
+
+  it('is the stored position for the first move, or its deeper result', () => {
+    expect(lossBefore(true, undefined, stored(100, 1))?.scoreLeadBlack).toBe(1)
+    expect(lossBefore(true, result(50, 2), stored(100, 1))?.scoreLeadBlack).toBe(1)
+    expect(lossBefore(true, result(150, 2), stored(100, 1))?.scoreLeadBlack).toBe(2)
+    expect(lossBefore(true, result(10, 2), { turn: 1, scoreLeadBlack: 1.5, visits: 0, candidates: [], ownership: null })?.scoreLeadBlack).toBe(2)
+  })
+
+  it('is the lead after the answer for the first move after it (a stored position with only a lead)', () => {
+    const before = lossBefore(true, undefined, { turn: 1, scoreLeadBlack: 1.5, visits: 0, candidates: [], ownership: null })
+    expect(before?.scoreLeadBlack).toBe(1.5)
   })
 })

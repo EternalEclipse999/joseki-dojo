@@ -43,6 +43,7 @@ export const ja: Catalog = {
   'error.session.finished': 'このトレーニングはもう終わっています',
   'error.variation.reviewOnly': '変化は検討でのみ使えます',
   'error.variation.illegal': '変化の中に打てない手があります',
+  'error.card.notFound': 'この問題はもうありません',
   'error.engine.notReady': 'KataGoの準備ができていません：{reason}',
   'error.engine.noHumanPolicy': 'KataGoがhumanPolicyを返しませんでした：humanネットワークが読み込まれていません',
   'error.engine.stopped': 'KataGoは停止しました',
@@ -369,6 +370,10 @@ export const ja: Catalog = {
   'problem.kataGoBest': 'KataGoの最善手：{move}',
   'problem.inGame': '対局では：{move}、−{loss}',
   'problem.illegal': 'ここには打てません',
+  'problem.view.start': '問題の開始局面',
+  'problem.view.answer': 'あなたの解答：{move}',
+  'problem.explore': '碁盤をクリックして局面を検討できます',
+  'problem.backToProblem': '問題に戻る',
   'problem.repetition.title': '問題の復習',
   'problem.repetition.locked': '評価を変更できるのは、その問題の最新の復習だけです。',
 }

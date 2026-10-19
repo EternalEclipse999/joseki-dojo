@@ -18,6 +18,22 @@ export const startAfterTurn = (turn: number, first: Vertex): Variation => startV
 /** Variations spec 8: leaving a variation shows the game move that was shown when it was started. */
 export const exitTurn = (v: Variation): number => v.originTurn
 
+/**
+ * Problem variations 2.2: the first view — the start view (−1: the position before game move 0, no game move placed) on a
+ * screen that has one, else game move 0.
+ */
+export const firstTurn = (startView: boolean): number => (startView ? -1 : 0)
+
+/** Stepping through the game stops at the first view and at the last game move. */
+export const stepTurn = (turn: number, delta: number, lastTurn: number, startView: boolean): number =>
+  Math.min(lastTurn, Math.max(firstTurn(startView), turn + delta))
+
+/** The game position whose candidates view `turn` shows: the one before game move `turn`; the start view's is game move 0's. */
+export const positionTurn = (turn: number): number => Math.max(0, turn)
+
+/** Variations spec 8, problem variations 2.2: a board click plays after the shown game move; on the start view, which shows none, instead of game move 0. */
+export const startFromView = (turn: number, first: Vertex): Variation => (turn < 0 ? startVariation(0, first, turn) : startAfterTurn(turn, first))
+
 /** A move after the shown part: the hidden tail is replaced. */
 export function playInVariation(v: Variation, next: Vertex): Variation {
   const moves = [...v.moves.slice(0, v.step), next]
@@ -28,6 +44,18 @@ export function playInVariation(v: Variation, next: Vertex): Variation {
 export const stepVariation = (v: Variation, delta: number): Variation => ({ ...v, step: Math.min(v.moves.length, Math.max(1, v.step + delta)) })
 
 export const shownMoves = (v: Variation): Vertex[] => v.moves.slice(0, v.step)
+
+/** The move numbers a variation is shown with: `from`, its first move's («Вариант от хода N»); `move`, its shown move's («Ход N»). */
+export interface VariationNumbers {
+  from: number
+  move: number
+}
+
+/** A variation's move numbers when game move 0 is move `firstNumber`: 1 in the review; a problem counts from its own move. */
+export function variationNumbers(v: Variation, firstNumber = 1): VariationNumbers {
+  const before = firstNumber - 1 + v.fromTurn
+  return { from: before + 1, move: before + v.step }
+}
 
 /** The key of a position: the replaced game move and the variation moves before it (as sent to the server). */
 export const positionKey = (fromTurn: number, moves: readonly Vertex[]): string => `${fromTurn}:${moves.map(vertexToGtp).join(' ')}`
@@ -54,6 +82,9 @@ export function isLegalNext(moves: readonly Move[], vertex: Vertex): boolean {
 
 export type VariationUpdate = Extract<ServerMessage, { type: 'variationAnalysis' }>
 
+/** What the variations take from an analysis message, whichever screen it belongs to (a review session or a problem card). */
+export type VariationUpdateLike = Pick<VariationUpdate, 'fromTurn' | 'moves' | 'visits' | 'done' | 'position'>
+
 /** The latest analysis of a position from the deepening search (spec 4). */
 export interface VariationResult {
   visits: number
@@ -63,7 +94,7 @@ export interface VariationResult {
 }
 
 /** Spec 4: a message replaces a stored result only with more visits, or marks it done; an unchanged map is returned as is. */
-export function mergeResult(results: ReadonlyMap<string, VariationResult>, msg: VariationUpdate): ReadonlyMap<string, VariationResult> {
+export function mergeResult(results: ReadonlyMap<string, VariationResult>, msg: VariationUpdateLike): ReadonlyMap<string, VariationResult> {
   const key = positionKey(msg.fromTurn, msg.moves)
   const known = results.get(key)
   let next: VariationResult
@@ -102,3 +133,11 @@ export function replyVertex(result: VariationResult | undefined): Vertex | null 
 
 /** Spec 3: what a move by `mover` lost, from Black's score lead before and after it; a gain counts as no loss. */
 export const moveLoss = (mover: Color, leadBefore: number, leadAfter: number): number => Math.max(0, colorSign(mover) * (leadBefore - leadAfter))
+
+/**
+ * Spec 3: the position the last variation move is measured from — the previous variation position's result, or, for the
+ * first move, the stored position it replaces (its deeper result once that rests on more visits). A stored position may
+ * hold only a lead (problem variations 2.3: the lead after the answer).
+ */
+export const lossBefore = (first: boolean, prev: VariationResult | undefined, stored: PositionReview): PositionReview | undefined =>
+  !first ? prev?.position : prev && prev.visits > stored.visits ? prev.position : stored

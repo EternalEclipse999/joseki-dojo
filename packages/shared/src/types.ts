@@ -331,6 +331,10 @@ export interface ProblemAnswer {
   best: boolean
   /** KataGo's first candidate of the position, with its line. */
   line: ProblemCandidate
+  /** Spec (problem variations) 3.1: the stored analysis of the problem position, for the candidates after the answer. */
+  position: PositionReview
+  /** Spec (problem variations) 2.3: Black's lead after the answer — measured, or the problem position's lead minus the answer's loss. */
+  leadAfter: number
   repetition: RepetitionInfo
 }
 

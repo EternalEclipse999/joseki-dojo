@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { moveToGtp, type ServerMessage } from '@joseki-dojo/shared'
+import { moveToGtp, type ServerMessage, type Vertex } from '@joseki-dojo/shared'
 import { EngineError } from '../engine/engine'
 import { StubEngine, testConfig } from '../../test/helpers'
 import { SessionError } from '../session/session'
@@ -29,7 +29,9 @@ function setup() {
   }
   repo.insertSession(rec)
   engine.best = () => 'D4'
-  const service = new VariationService({ repo, engine, config })
+  // One problem card, 'c1': White to move after B Q16.
+  const problems = (cardId: string) => (cardId === 'c1' ? { moves: [{ color: 'B' as const, vertex: [15, 3] as Vertex }], toMove: 'W' as const } : null)
+  const service = new VariationService({ repo, engine, config, problems })
   const limit = config.analysis.variationVisits
   /** `onFirst` runs synchronously inside the first message, before the stub's next timer tick. */
   const inbox = (onFirst?: () => void): { msgs: ServerMessage[]; send: (m: ServerMessage) => void } => {
@@ -236,5 +238,113 @@ describe('VariationService', () => {
     expect(engine.stops).toBe(0)
     expect(a.msgs.filter(isAnalysis).every((m) => m.moves[0][0] === 3)).toBe(true)
     expect(b.msgs.filter(isAnalysis).every((m) => m.moves[0][0] === 9)).toBe(true)
+  })
+})
+
+type ProblemAnalysis = Extract<ServerMessage, { type: 'problemVariationAnalysis' }>
+const isProblemAnalysis = (m: ServerMessage): m is ProblemAnalysis => m.type === 'problemVariationAnalysis'
+const problemFinished = (msgs: ServerMessage[]): boolean => msgs.some((m) => isProblemAnalysis(m) && m.done)
+const PROBLEM = { cardId: 'c1', answer: [16, 5] as Vertex, fromTurn: 0, moves: [[16, 2]] as Vertex[] }
+
+describe('VariationService on a problem card', () => {
+  it('instead of the answer: the variation starts at the problem position with the side to move', async () => {
+    const { service, limit, inbox, engine } = setup()
+    const { msgs, send } = inbox()
+    service.startProblem({}, PROBLEM, send)
+    await vi.waitFor(() => expect(problemFinished(msgs)).toBe(true))
+    expect(engine.queries[0].moves).toEqual([
+      ['B', moveToGtp([15, 3])],
+      ['W', moveToGtp([16, 2])],
+    ])
+    const got = msgs.filter(isProblemAnalysis)
+    expect(got).toHaveLength(msgs.length)
+    expect(got.map((m) => m.done)).toEqual([false, false, true])
+    expect(got[2]).toMatchObject({ cardId: 'c1', fromTurn: 0, moves: [[16, 2]], visits: limit, position: { turn: 1 } })
+  })
+
+  it('after the answer: the answer is played first, then the variation, the colours alternating', async () => {
+    const { service, inbox, engine } = setup()
+    const { msgs, send } = inbox()
+    service.startProblem({}, { ...PROBLEM, fromTurn: 1 }, send)
+    await vi.waitFor(() => expect(problemFinished(msgs)).toBe(true))
+    expect(engine.queries[0].moves).toEqual([
+      ['B', moveToGtp([15, 3])],
+      ['W', moveToGtp([16, 5])],
+      ['B', moveToGtp([16, 2])],
+    ])
+    expect(msgs.filter(isProblemAnalysis).at(-1)).toMatchObject({ cardId: 'c1', fromTurn: 1, moves: [[16, 2]], position: { turn: 2 } })
+  })
+
+  it('rejects an unknown card, an illegal move and a bad fromTurn, leaving the running search alone', async () => {
+    const { service, inbox, engine } = setup()
+    const owner = {}
+    const { msgs, send } = inbox()
+    service.startProblem(owner, PROBLEM, send)
+    expect(() => service.startProblem(owner, { ...PROBLEM, cardId: 'nope' }, send)).toThrow(expect.objectContaining({ code: 'card_not_found', text: { key: 'error.card.notFound' } }))
+    expect(() => service.startProblem(owner, { ...PROBLEM, moves: [[15, 3]] }, send)).toThrow(expect.objectContaining({ code: 'illegal_move', text: { key: 'error.variation.illegal' } }))
+    expect(() => service.startProblem(owner, { ...PROBLEM, fromTurn: 1, answer: [15, 3] }, send)).toThrow(expect.objectContaining({ code: 'illegal_move' }))
+    for (const fromTurn of [-1, 2, 0.5]) {
+      expect(() => service.startProblem(owner, { ...PROBLEM, fromTurn }, send)).toThrow(expect.objectContaining({ code: 'bad_request', text: { key: 'error.turn.notFound' } }))
+    }
+    expect(engine.stops).toBe(0)
+    await vi.waitFor(() => expect(problemFinished(msgs)).toBe(true))
+    expect(engine.queries).toHaveLength(1)
+  })
+
+  it('a problem search replaces the review search of the same owner', async () => {
+    const { service, inbox, engine } = setup()
+    const owner = {}
+    const { msgs, send } = inbox(() => service.startProblem(owner, PROBLEM, send2))
+    const send2 = (m: ServerMessage): void => send(m)
+    service.start(owner, REQ, send)
+    await vi.waitFor(() => expect(problemFinished(msgs)).toBe(true))
+    expect(engine.stops).toBe(1)
+    expect(msgs.slice(1).every(isProblemAnalysis)).toBe(true)
+    expect(finished(msgs)).toBe(false)
+  })
+
+  it('a review search replaces the problem search of the same owner', async () => {
+    const { service, inbox, engine } = setup()
+    const owner = {}
+    const { msgs, send } = inbox(() => service.start(owner, REQ, send2))
+    const send2 = (m: ServerMessage): void => send(m)
+    service.startProblem(owner, PROBLEM, send)
+    await vi.waitFor(() => expect(finished(msgs)).toBe(true))
+    expect(engine.stops).toBe(1)
+    expect(msgs.slice(1).every(isAnalysis)).toBe(true)
+    expect(problemFinished(msgs)).toBe(false)
+  })
+
+  it('stop(owner) stops a problem search and no done message follows', async () => {
+    const { service, inbox, engine } = setup()
+    const owner = {}
+    const { msgs, send } = inbox(() => service.stop(owner))
+    service.startProblem(owner, PROBLEM, send)
+    await vi.waitFor(() => expect(msgs.length).toBeGreaterThan(0))
+    expect(engine.stops).toBe(1)
+    await new Promise((r) => setTimeout(r, 20))
+    expect(problemFinished(msgs)).toBe(false)
+  })
+
+  it('shares the cache with the review: the same position is answered without a new query', async () => {
+    const { service, limit, inbox, engine } = setup()
+    // The review's position before move 2 (B Q16, W R14) is the problem position after the answer R14.
+    const review = inbox()
+    service.start({}, { sessionId: 's1', fromTurn: 2, moves: [] }, review.send)
+    await vi.waitFor(() => expect(finished(review.msgs)).toBe(true))
+    const problem = inbox()
+    service.startProblem({}, { ...PROBLEM, fromTurn: 1, moves: [] }, problem.send)
+    expect(problem.msgs).toEqual([expect.objectContaining({ type: 'problemVariationAnalysis', done: true, visits: limit, position: expect.objectContaining({ turn: 1 }) })])
+    expect(engine.queries).toHaveLength(1)
+  })
+
+  it('asks again once by itself after a restart', async () => {
+    const { service, inbox, engine } = setup()
+    engine.streamFailures.push(new EngineError({ key: 'error.engine.restarted' }, 'engine_failed'))
+    const { msgs, send } = inbox()
+    service.startProblem({}, PROBLEM, send)
+    await vi.waitFor(() => expect(problemFinished(msgs)).toBe(true))
+    expect(msgs.some((m) => m.type === 'error')).toBe(false)
+    expect(engine.queries).toHaveLength(2)
   })
 })

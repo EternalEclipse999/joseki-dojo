@@ -1,4 +1,4 @@
-import type { Actor, Category, Color, Corner, ReviewData, Vertex } from '@joseki-dojo/shared'
+import { colorSign, type Actor, type Category, type Color, type Corner, type ReviewData, type Vertex } from '@joseki-dojo/shared'
 import { describe, expect, it } from 'vitest'
 import { decodeJdb, encodeJdb, toTopRight } from '../jdb'
 import { StartBook } from '../starts/book'
@@ -254,6 +254,16 @@ describe('problem cards', () => {
     })
   })
 
+  it('gives the moves and the side to move of a problem card; nothing for a position card, an unknown or a deleted card', () => {
+    const { service } = setup()
+    service.recordTraining(...problemTraining('s1', 'TR', listedId()))
+    expect(service.problemBase('card2')).toEqual({ moves: [{ color: 'B', vertex: [15, 3] }, { color: 'W', vertex: [16, 2] }], toMove: 'B' })
+    expect(service.problemBase('card1')).toBeNull()
+    expect(service.problemBase('nope')).toBeNull()
+    service.remove('card2')
+    expect(service.problemBase('card2')).toBeNull()
+  })
+
   it('counts a problem card in the next due time when nothing is due', () => {
     const { service, repo } = setup()
     service.recordTraining(...problemTraining('s1'))
@@ -309,6 +319,17 @@ describe('answering a problem', () => {
     expect(queries).toEqual([])
   })
 
+  it('carries the stored analysis of the problem position, and the lead after a stored candidate from its loss', async () => {
+    const { service } = problemSetup()
+    const a = await service.answer('card1', [14, 2])
+    expect(a.position).toEqual({
+      turn: 0, scoreLeadBlack: 0, visits: 10, ownership: null,
+      candidates: [{ vertex: [15, 2], loss: 0, pv: [] }, { vertex: [14, 2], loss: 0.8, pv: [] }],
+    })
+    // Black is to move: the answer's loss is taken from Black's lead.
+    expect(a.leadAfter).toBe(0 - colorSign('B') * 0.8)
+  })
+
   it('asks the engine about a point outside the candidates: loss from the lead after the move', async () => {
     const { service, queries } = problemSetup()
     const a = await service.answer('card1', [10, 10])
@@ -317,8 +338,14 @@ describe('answering a problem', () => {
     expect(queries[0].priority).toBe(10)
     expect(queries[0].moves).toHaveLength(3)
     expect(queries[0].moves[2]).toEqual(['B', 'L9'])
-    expect(a).toMatchObject({ loss: 2.5, category: 'mistake', best: false })
+    expect(a).toMatchObject({ loss: 2.5, category: 'mistake', best: false, leadAfter: -2.5 })
     expect(a.repetition.auto).toBe('again')
+  })
+
+  it('keeps the measured lead after a point outside the candidates, a gain included', async () => {
+    const { service } = problemSetup({ lead: 1.5 })
+    const a = await service.answer('card1', [10, 10])
+    expect(a).toMatchObject({ loss: 0, leadAfter: 1.5 })
   })
 
   it('rejects an occupied point, an unknown card and a position card', async () => {

@@ -43,6 +43,7 @@ export const zhHant: Catalog = {
   'error.session.finished': '這次訓練已經結束',
   'error.variation.reviewOnly': '變化只能在復盤中使用',
   'error.variation.illegal': '變化中有不能落子的一手',
+  'error.card.notFound': '這道題目已不存在',
   'error.engine.notReady': 'KataGo 尚未就緒：{reason}',
   'error.engine.noHumanPolicy': 'KataGo 沒有傳回 humanPolicy：未載入 human 網路',
   'error.engine.stopped': 'KataGo 已停止',
@@ -369,6 +370,10 @@ export const zhHant: Catalog = {
   'problem.kataGoBest': 'KataGo 的最佳選點：{move}',
   'problem.inGame': '對局中：{move}，−{loss}',
   'problem.illegal': '這裡不能落子',
+  'problem.view.start': '題目初始局面',
+  'problem.view.answer': '你的解答：{move}',
+  'problem.explore': '點擊棋盤來研究這個局面',
+  'problem.backToProblem': '返回題目',
   'problem.repetition.title': '題目複習',
   'problem.repetition.locked': '只有該題目最近一次複習的評分可以修改。',
 }

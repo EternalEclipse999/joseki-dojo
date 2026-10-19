@@ -31,6 +31,36 @@ describe('parseClientMessage', () => {
     }
   })
 
+  it('accepts the problem variation messages', () => {
+    expect(parseClientMessage('{"type":"analyzeProblemVariation","cardId":"c1","answer":[16,5],"fromTurn":1,"moves":[[16,2]]}')).toEqual({ type: 'analyzeProblemVariation', cardId: 'c1', answer: [16, 5], fromTurn: 1, moves: [[16, 2]] })
+    expect(parseClientMessage('{"type":"analyzeProblemVariation","cardId":"c1","answer":[16,5],"fromTurn":0,"moves":[]}')).toEqual({ type: 'analyzeProblemVariation', cardId: 'c1', answer: [16, 5], fromTurn: 0, moves: [] })
+    expect(parseClientMessage('{"type":"stopProblemVariation","cardId":"c1"}')).toEqual({ type: 'stopProblemVariation', cardId: 'c1' })
+  })
+
+  it('rejects malformed problem variation messages', () => {
+    const msg = (over: object): string => JSON.stringify({ type: 'analyzeProblemVariation', cardId: 'c1', answer: [16, 5], fromTurn: 0, moves: [], ...over })
+    for (const bad of [
+      msg({ cardId: undefined }),
+      msg({ cardId: '' }),
+      msg({ cardId: 7 }),
+      msg({ answer: undefined }),
+      msg({ answer: [19, 0] }),
+      msg({ answer: 'R14' }),
+      msg({ fromTurn: undefined }),
+      msg({ fromTurn: -1 }),
+      msg({ fromTurn: 2 }),
+      msg({ fromTurn: 0.5 }),
+      msg({ moves: undefined }),
+      msg({ moves: 'D4' }),
+      msg({ moves: [[19, 0]] }),
+      msg({ moves: Array.from({ length: 201 }, () => [3, 3]) }),
+      '{"type":"stopProblemVariation"}',
+      '{"type":"stopProblemVariation","cardId":""}',
+    ]) {
+      expect(() => parseClientMessage(bad)).toThrow(expect.objectContaining({ code: 'bad_request' }))
+    }
+  })
+
   it('rejects malformed messages', () => {
     const codeOf = (text: string): string | null => {
       try {

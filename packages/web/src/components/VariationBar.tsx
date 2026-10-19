@@ -21,12 +21,16 @@ export interface VariationBarProps {
   passed: boolean
   /** «Ответить сейчас»; null while there is nothing to play yet. */
   onAnswer: (() => void) | null
+  /** The number of the variation's first move in the caption («Вариант от хода N»): see `variationNumbers`. */
+  fromNumber: number
+  /** The caption of the way back; the review's «Вернуться к партии» unless a screen names its own. */
+  closeLabel?: string
 }
 
 /** Variations spec 3–5: the variation's moves and steps, the way back to the game, KataGo's replies and their progress. */
-export function VariationBar({ variation, onStep, onClose, autoReply, onAutoReply, visits, thinking, limit, passed, onAnswer }: VariationBarProps) {
+export function VariationBar({ variation, onStep, onClose, autoReply, onAutoReply, visits, thinking, limit, passed, onAnswer, fromNumber, closeLabel }: VariationBarProps) {
   const { t, language } = useI18n()
-  const { fromTurn, moves, step } = variation
+  const { moves, step } = variation
   const line = moves.map((m, i) => (
     <Fragment key={i}>
       {i > 0 && ' · '}
@@ -46,7 +50,7 @@ export function VariationBar({ variation, onStep, onClose, autoReply, onAutoRepl
           <ChevronLeft aria-hidden="true" />
         </button>
         <span class="line" data-testid="variation-line">
-          {richText(t('variation.line', { n: fromTurn + 1 }), { moves: line })}
+          {richText(t('variation.line', { n: fromNumber }), { moves: line })}
         </span>
         <button class="ghost icon" disabled={step >= moves.length} onClick={() => onStep(1)} aria-label={t('variation.forward')}>
           <ChevronRight aria-hidden="true" />
@@ -59,7 +63,7 @@ export function VariationBar({ variation, onStep, onClose, autoReply, onAutoRepl
         </label>
         <button class="ghost sm" onClick={onClose}>
           <Undo2 aria-hidden="true" />
-          {t('variation.backToGame')}
+          {closeLabel ?? t('variation.backToGame')}
         </button>
       </div>
       <div class="status" aria-live="polite">

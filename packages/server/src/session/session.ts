@@ -3,7 +3,7 @@ import { movesBefore, type SessionRecord } from '../store/records'
 import { TextError } from '../text-error'
 import { josekiStartedIn } from './joseki-start'
 
-export type SessionErrorCode = 'bad_request' | 'outside_zone' | 'not_your_turn' | 'session_not_found' | 'session_finished' | 'illegal_move'
+export type SessionErrorCode = 'bad_request' | 'outside_zone' | 'not_your_turn' | 'session_not_found' | 'session_finished' | 'illegal_move' | 'card_not_found'
 
 export class SessionError extends TextError {
   constructor(

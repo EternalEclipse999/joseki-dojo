@@ -50,6 +50,7 @@ export const ru = {
   'error.session.finished': 'Тренировка уже закончена',
   'error.variation.reviewOnly': 'Варианты доступны только в разборе',
   'error.variation.illegal': 'Недопустимый ход в варианте',
+  'error.card.notFound': 'Задачи больше нет',
   'error.engine.notReady': 'KataGo не готов: {reason}',
   'error.engine.noHumanPolicy': 'KataGo не вернул humanPolicy: human-сеть не загружена',
   'error.engine.stopped': 'KataGo остановлен',
@@ -417,6 +418,10 @@ export const ru = {
   'problem.kataGoBest': 'Лучший ход KataGo: {move}',
   'problem.inGame': 'В партии: {move}, −{loss}',
   'problem.illegal': 'Сюда ходить нельзя',
+  'problem.view.start': 'Начало задачи',
+  'problem.view.answer': 'Ваш ответ: {move}',
+  'problem.explore': 'Щёлкните по доске, чтобы исследовать позицию',
+  'problem.backToProblem': 'Вернуться к задаче',
   'problem.repetition.title': 'Повторение задачи',
   'problem.repetition.locked': 'Оценку можно поменять только у последнего повторения задачи.',
 } satisfies Record<string, Message>

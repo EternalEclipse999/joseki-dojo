@@ -41,6 +41,12 @@ export function handleSocket(socket: WebSocket, deps: SocketDeps): void {
       case 'stopVariation':
         deps.variations.stop(socket)
         return
+      case 'analyzeProblemVariation':
+        deps.variations.startProblem(socket, msg, send)
+        return
+      case 'stopProblemVariation':
+        deps.variations.stop(socket)
+        return
       case 'playMove':
         deps.sessions.playUserMove(msg.sessionId, msg.vertex)
         return

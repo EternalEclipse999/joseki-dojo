@@ -6,6 +6,7 @@ interface ListedCard {
 }
 
 const vertex = (page: Page, x: number, y: number) => page.locator(`.shudan-vertex[data-x="${x}"][data-y="${y}"]`)
+const stones = (page: Page) => page.locator('.problem .shudan-vertex.shudan-sign_1, .problem .shudan-vertex.shudan-sign_-1')
 
 // The server (5184) runs the fake KataGo with a 3-point penalty on N13: the user's first move there is a mistake.
 test('a mistake becomes a problem: listed, answered in the queue, rated, and its card comes later', async ({ page }) => {
@@ -52,10 +53,55 @@ test('a mistake becomes a problem: listed, answered in the queue, rated, and its
   await other.click()
   await expect(other).toHaveAttribute('aria-pressed', 'true')
   await expect(auto).toHaveAttribute('aria-pressed', 'false')
-  await page.getByRole('button', { name: 'Показать ветку' }).click()
-  await expect(page.getByRole('button', { name: 'Скрыть ветку' })).toBeVisible()
+
+  // Problem variations 2.2: «Ваш ответ» keeps the verdict's marks; the best candidate's «Ветка» shows KataGo's line.
+  await expect(page.getByText('Ваш ответ: Q16')).toBeVisible()
+  await expect(vertex(page, 15, 3)).toHaveClass(/shudan-marker_circle\b/)
+  await expect(vertex(page, 3, 15)).toHaveClass(/shudan-marker_triangle\b/)
+  await expect(vertex(page, 12, 6)).toHaveClass(/shudan-marker_cross\b/)
+  await page.getByRole('button', { name: /^Ветка / }).first().click()
+  await expect(page.getByText(/Ветка: 1 из/)).toBeVisible()
   await page.getByRole('button', { name: 'Скрыть ветку' }).click()
-  await expect(page.getByRole('button', { name: 'Показать ветку' })).toBeVisible()
+  await expect(page.getByText(/Ветка: 1 из/)).toBeHidden()
+
+  // A click after the answer is White's move C3; KataGo (Black) replies with the fake's best free point, D4.
+  const line = page.getByTestId('variation-line')
+  await vertex(page, 2, 16).click()
+  await expect(line).toHaveText('Вариант от хода 2: C3 · D4', { timeout: 5_000 })
+  await expect(vertex(page, 2, 16)).toHaveClass(/shudan-sign_-1\b/)
+  await expect(vertex(page, 3, 15)).toHaveClass(/shudan-sign_1\b/)
+  await expect(stones(page)).toHaveCount(3)
+
+  // ← steps back through the variation, leaves it for «Ваш ответ», then shows the problem's start without the answer.
+  await page.keyboard.press('ArrowLeft')
+  await expect(stones(page)).toHaveCount(2)
+  await page.keyboard.press('ArrowLeft')
+  await expect(line).toBeHidden()
+  await expect(page.getByText('Ваш ответ: Q16')).toBeVisible()
+  await expect(stones(page)).toHaveCount(1)
+  await page.keyboard.press('ArrowLeft')
+  await expect(page.getByText('Начало задачи')).toBeVisible()
+  await expect(stones(page)).toHaveCount(0)
+  await expect(vertex(page, 15, 3)).not.toHaveClass(/shudan-marker_/)
+  // The problem is on the first move: no setup move to mark.
+  await expect(page.locator('.problem .shudan-marker_point')).toHaveCount(0)
+
+  // A click on the start view is another first move instead of the answer; KataGo (White) replies; closing the variation
+  // shows the start view again.
+  await vertex(page, 16, 15).click()
+  await expect(line).toHaveText('Вариант от хода 1: R4 · D4', { timeout: 5_000 })
+  await expect(vertex(page, 16, 15)).toHaveClass(/shudan-sign_1\b/)
+  await expect(vertex(page, 3, 15)).toHaveClass(/shudan-sign_-1\b/)
+  await expect(vertex(page, 15, 3)).toHaveClass(/shudan-sign_0\b/)
+  await page.getByRole('button', { name: 'Вернуться к задаче' }).click()
+  await expect(line).toBeHidden()
+  await expect(page.getByText('Начало задачи')).toBeVisible()
+  await expect(stones(page)).toHaveCount(0)
+
+  // The exploration changes neither the rating nor the schedule: «Трудно», chosen above, is still the pressed rating.
+  await expect(panel.locator('button[aria-pressed="true"]')).toHaveCount(1)
+  await expect(other).toHaveAttribute('aria-pressed', 'true')
+  await expect(auto).toHaveAttribute('aria-pressed', 'false')
 
   await panel.getByRole('button', { name: 'Закончить повторение' }).click()
   await expect(page.getByRole('heading', { name: 'Повторение', exact: true })).toBeVisible()
