@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
-import type { AnalysisSettings, LocalizedText, SettingsResponse, SettingsUpdate, SettingsView } from '@joseki-dojo/shared'
+import { basename, dirname, join, resolve } from 'node:path'
+import type { AboutInfo, AnalysisSettings, LocalizedText, SettingsResponse, SettingsUpdate, SettingsView } from '@joseki-dojo/shared'
 import type { AppConfig, KataGoSettings, SetupInfo } from '../config'
 import { engineCommand } from '../engine/command'
 import type { EngineCommand, KataGoEngine } from '../engine/engine'
@@ -24,6 +24,9 @@ export interface SettingsServiceDeps {
 
 const MODEL_FILE = /\.(bin|txt)\.gz$|\.bin$/
 
+/** A network's file name without its folder and extension, as the «О программе» window shows it. */
+const modelName = (file: string): string => basename(file).replace(MODEL_FILE, '')
+
 function validateUpdate(u: SettingsUpdate): LocalizedText | null {
   const paths = u?.katago ? [u.katago.path, u.katago.analysisConfig, u.katago.mainModel, u.katago.humanModel] : []
   if (paths.length !== 4 || paths.some((p) => typeof p !== 'string' || p.trim() === '')) return { key: 'settings.error.paths' }
@@ -45,7 +48,7 @@ export class SettingsService {
   }
 
   async view(): Promise<SettingsView> {
-    const running = this.d.health.get().state === 'ready' ? await this.d.engine.version().catch(() => null) : null
+    const running = await this.runningVersion()
     const { path, analysisConfig, mainModel, humanModel } = this.d.config.katago
     return {
       katago: { path, analysisConfig, mainModel, humanModel },
@@ -56,6 +59,25 @@ export class SettingsService {
       versionWarning: versionWarning(this.d.lock, running),
       defaultBotRank: this.d.config.bot.defaultRank,
     }
+  }
+
+  /** Spec (about) 3.2: the engine block of the «О программе» window. */
+  async about(): Promise<AboutInfo> {
+    const { config, lock } = this.d
+    return {
+      katago: {
+        lockedVersion: lock.katago.version,
+        runningVersion: await this.runningVersion(),
+        setup: missingFiles(config) !== null ? 'missing' : (config.setup?.kind ?? 'manual'),
+        mainModel: modelName(config.katago.mainModel),
+        humanModel: modelName(config.katago.humanModel),
+      },
+    }
+  }
+
+  /** The running KataGo's version, asked only while it is ready; null otherwise or when the question fails. */
+  private runningVersion(): Promise<string | null> {
+    return this.d.health.get().state === 'ready' ? this.d.engine.version().catch(() => null) : Promise.resolve(null)
   }
 
   async apply(update: SettingsUpdate): Promise<SettingsResponse> {

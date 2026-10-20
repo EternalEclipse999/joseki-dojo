@@ -1,4 +1,4 @@
-import type { CardListItem, CardSummary, ClientMessage, DueCard, HealthResponse, InstallStatus, Language, LocalizedText, MessageKey, NewsId, NewsView, PlayerSettings, ProblemAnswer, Rating, RepetitionInfo, ReviewData, ServerMessage, SettingsResponse, SettingsUpdate, SettingsView, StartCardState, StartsInfo, Theme, TrapsInfo, UiSettings, Vertex } from '@joseki-dojo/shared'
+import type { AboutInfo, CardListItem, CardSummary, ClientMessage, DueCard, HealthResponse, InstallStatus, Language, LocalizedText, MessageKey, NewsId, NewsView, PlayerSettings, ProblemAnswer, Rating, RepetitionInfo, ReviewData, ServerMessage, SettingsResponse, SettingsUpdate, SettingsView, StartCardState, StartsInfo, Theme, TrapsInfo, UiSettings, Vertex } from '@joseki-dojo/shared'
 import type { NewsAction } from './news'
 
 /** Spec (languages) 6: a failed request, kept as a key so that it is shown in the reader's language. */
@@ -224,6 +224,13 @@ export async function fetchNews(): Promise<NewsView> {
   const res = await request('/api/news')
   if (!res.ok) throw new Error(`news: HTTP ${res.status}`)
   return (await res.json()) as NewsView
+}
+
+/** Spec (about) 3.3: the engine block of the «О программе» window, asked on every opening. */
+export async function fetchAbout(): Promise<AboutInfo> {
+  const res = await request('/api/about')
+  if (!res.ok) throw new Error(`about: HTTP ${res.status}`)
+  return (await res.json()) as AboutInfo
 }
 
 /** Spec (whats-new) 3.3: the player opened a novelty (`seen`) or closed its callout (`dismiss`). */

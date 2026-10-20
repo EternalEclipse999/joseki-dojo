@@ -190,6 +190,24 @@ progress::-webkit-progress-value { background: var(--accent); border-radius: 3px
 .language-popup .invisible { visibility: hidden; }
 .language-screen .language-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
 
+/* Spec (about) 2.2: the «О программе» window. The dialog has no padding, so a click on the dialog itself is a click on
+   the backdrop (AboutDialog); its content fills it. */
+dialog.about { width: min(28rem, calc(100vw - 32px)); padding: 0; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--bg); color: var(--text); box-shadow: 0 16px 48px rgb(0 0 0 / 0.2); }
+dialog.about::backdrop { background: rgb(0 0 0 / 0.4); }
+.about-body { display: grid; gap: 16px; padding: 18px 20px 20px; }
+.about-head { display: flex; align-items: center; gap: 12px; }
+.about-head .logo { width: 32px; height: 32px; }
+.about-head h2 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.about-head p { font-size: 13px; color: var(--text-2); }
+.about-head .about-close { margin-left: auto; align-self: flex-start; }
+.about section { display: grid; gap: 4px; font-size: 13px; }
+.about h3 { margin: 0 0 2px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.about ul { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; }
+.about a { color: var(--accent-text); text-decoration: none; }
+.about a:hover { text-decoration: underline; }
+/* More specific than the :lang() font rules, so the network names keep the monospace font in every language. */
+.about code { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+
 /* Spec (languages) 5: the characters in the shapes of each language. */
 :lang(zh-Hans) { font-family: 'Inter Variable', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif; }
 :lang(zh-Hant) { font-family: 'Inter Variable', 'Microsoft JhengHei', 'PingFang TC', 'Noto Sans CJK TC', sans-serif; }

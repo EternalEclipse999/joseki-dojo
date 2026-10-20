@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WebSocket from 'ws'
-import type { ClientMessage, ServerMessage } from '@joseki-dojo/shared'
+import type { AboutInfo, ClientMessage, ServerMessage } from '@joseki-dojo/shared'
 import { fakeEngine, serviceOptions, testConfig } from '../../test/helpers'
 import { buildApp, createServices, type AppServices } from '../app'
 import { CardRepo } from '../cards/repo'
@@ -256,6 +256,38 @@ describe('settings API', () => {
     const body = await res.json()
     expect(body.ok).toBe(false)
     expect(body.reason).toMatchObject({ key: expect.stringMatching(/^health\.missing\./), params: { path: expect.any(String) } })
+  })
+})
+
+describe('GET /api/about', () => {
+  const about = async (): Promise<AboutInfo> => (await (await fetch(`http://${host}/api/about`)).json()) as AboutInfo
+
+  it('reports the pinned and the running KataGo, the networks by name, and a manual setup without a setup record', async () => {
+    expect(await about()).toEqual({
+      katago: {
+        lockedVersion: '1.18.1',
+        runningVersion: '1.18.1',
+        setup: 'manual',
+        mainModel: 'kata1-b18c384nbt-s9996604416-d4316597426',
+        humanModel: 'b18c384nbt-humanv0',
+      },
+    })
+  })
+
+  it('names the build the installer or npm run setup chose', async () => {
+    services.config.setup = { kind: 'gpu', lockId: 'lock' }
+    expect((await about()).katago.setup).toBe('gpu')
+    services.config.setup = { kind: 'cpu' }
+    expect((await about()).katago.setup).toBe('cpu')
+  })
+
+  it('reports missing KataGo files, no running version while KataGo is not ready, and a .bin network by name', async () => {
+    vi.spyOn(services.health, 'get').mockReturnValue({ state: 'starting', reason: null })
+    services.config.setup = { kind: 'cpu' }
+    // Without the fake KataGo's command line the files are checked, and the configured ones do not exist.
+    const { commandOverride: _fake, ...katago } = services.config.katago
+    services.config.katago = { ...katago, humanModel: '/nope/custom-net.bin' }
+    expect((await about()).katago).toMatchObject({ runningVersion: null, setup: 'missing', humanModel: 'custom-net' })
   })
 })
 

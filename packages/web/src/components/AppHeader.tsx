@@ -1,8 +1,10 @@
 import type { NewsId } from '@joseki-dojo/shared'
-import { ChevronRight } from 'lucide-preact'
-import { useRef } from 'preact/hooks'
+import { ChevronRight, Info } from 'lucide-preact'
+import { useRef, useState } from 'preact/hooks'
 import { useT } from '../i18n'
+import { AboutDialog } from './AboutDialog'
 import { LanguageMenu } from './LanguageMenu'
+import { Logo } from './Logo'
 import { NewMark } from './NewMark'
 import { NewsCallout } from './NewsCallout'
 
@@ -24,11 +26,14 @@ export interface AppHeaderProps {
 
 /**
  * Spec 4: the brand, the breadcrumb, the section switch (repetition spec 5.1: with the due cards' badge; whats-new spec 2:
- * with the «новое» mark and the callout) and the language globe on every screen.
+ * with the «новое» mark and the callout), the language globe on every screen, and the «О программе» button and window
+ * (spec (about) 2).
  */
 export function AppHeader({ crumb, nav }: AppHeaderProps) {
   const t = useT()
   const targetRef = useRef<HTMLButtonElement>(null)
+  const aboutRef = useRef<HTMLButtonElement>(null)
+  const [about, setAbout] = useState(false)
   return (
     <header class="app-header">
       <div class="brand">
@@ -78,19 +83,26 @@ export function AppHeader({ crumb, nav }: AppHeaderProps) {
             )}
           </div>
         )}
+        <button
+          ref={aboutRef}
+          class="icon"
+          aria-label={t('about.title')}
+          aria-haspopup="dialog"
+          title={t('about.title')}
+          onClick={() => setAbout(true)}
+        >
+          <Info aria-hidden="true" />
+        </button>
         <LanguageMenu />
       </div>
+      {about && (
+        <AboutDialog
+          onClose={() => {
+            setAbout(false)
+            aboutRef.current?.focus()
+          }}
+        />
+      )}
     </header>
-  )
-}
-
-/** Two stones, black over white. */
-function Logo() {
-  return (
-    <svg class="logo" viewBox="0 0 22 22" aria-hidden="true">
-      <circle class="w" cx="14" cy="11" r="6.6" />
-      <circle cx="8.2" cy="11" r="7.3" fill="var(--bg)" />
-      <circle class="b" cx="8.2" cy="11" r="6.6" />
-    </svg>
   )
 }
