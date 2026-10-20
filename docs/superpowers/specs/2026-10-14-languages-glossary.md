@@ -165,6 +165,8 @@ Conventions:
 | карточка (карточка повторения) | card | カード; counter 枚 | 卡片; counter 张 | 卡片; counter 張 | 카드; counter 장 | `repetition.list` (Cards / カード / 卡片 / 卡片 / 카드), `header.dueBadge`, `repetition.learnedOf`. | App word (catalogs), not a Go term | catalogs |
 | задача (карточка «найди хороший ход») | problem | 問題 | 题目 | 題目 | 문제 | `repetition.dueProblems`, `repetition.filter.move`: a card with one move to find in a position, made from the player's mistake or an unpunished mistake of the opponent. Not a tsumego, so no 詰碁 / 死活题 / 사활 word. | App word (catalogs), not a Go term | catalogs |
 | новое (метка новинки) | new | 新機能 | 新功能 | 新功能 | 새 기능 | `news.badge`: a quiet mark on a control whose novelty the player has not opened yet; not the due-count pill. The callout's title starts with the same word (`news.repetition.title`: New: Repetition / 新機能：復習 / 新功能：复习 / 新功能：複習 / 새 기능: 반복). | App word (catalogs), not a Go term | catalogs |
+| О программе (окно) | About | このアプリについて | 关于 | 關於 | 프로그램 정보 | `about.title`: the window with the version, the engine, the links and the credits, and the name of its button in the header. | App word (catalogs), not a Go term | catalogs |
+| сборка (KataGo) | build | ビルド | 构建版本 | 建置版本 | 빌드 | `about.engine.cpu` / `gpu` / `manual`: which KataGo build runs — processor, graphics card (CPU / 显卡 / 顯示卡 / GPU / 그래픽 카드, as in `settings.repick.hint`), or set up by hand. | App word (catalogs), not a Go term | catalogs |
 
 ---
 

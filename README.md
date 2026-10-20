@@ -26,6 +26,8 @@ Chinese, Japanese and Korean need CJK fonts; if you see squares instead of chara
 
 When a new version is out, a bar appears at the top of the window: **«Доступна версия X.Y.Z»** (Version X.Y.Z is available). Click **«Обновить»** (Update). The app downloads the update, shows the progress, and restarts in the new version. Your settings, training history and KataGo stay as they were.
 
+To see which version you have, click the **i** button in the header, next to the globe: the **«О программе»** (About) window shows the version, which KataGo runs and on what, links to the project page, the version history and the bug reports, and the projects the app is built on.
+
 Sometimes a new version also brings a newer tested KataGo. Then the bar says **«Доступна новая проверенная версия KataGo»** (A new tested version of KataGo is available); click **«Обновить движок»** (Update the engine).
 
 ## Languages

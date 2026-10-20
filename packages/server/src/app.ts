@@ -11,6 +11,7 @@ import { registerHttp } from './api/http'
 import { Hub } from './api/hub'
 import { registerInstallRoutes } from './api/install-routes'
 import { registerSettingsRoutes } from './api/settings-routes'
+import { registerAboutRoutes } from './api/about-routes'
 import { registerCardsRoutes } from './api/cards-routes'
 import { registerStartsRoutes } from './api/starts-routes'
 import { registerTrapsRoutes } from './api/traps-routes'
@@ -148,6 +149,7 @@ export async function buildApp(services: AppServices, webDist: string | null = n
   app.get('/ws', { websocket: true }, (socket) => handleSocket(socket, services))
   registerHttp(app, services)
   registerSettingsRoutes(app, services.settings)
+  registerAboutRoutes(app, services.settings)
   registerInstallRoutes(app, services.installer)
   registerTrapsRoutes(app, services.traps)
   registerStartsRoutes(app, services.starts)
