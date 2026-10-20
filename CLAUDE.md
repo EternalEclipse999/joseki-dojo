@@ -6,3 +6,4 @@
 - **One pull request per iteration.** `main` is protected (changes go through a PR only); the user merges.
 - **Language.** User-facing text is Russian. Code, identifiers, comments, commit messages and PR descriptions are English.
 - **Commit email.** This repository uses the GitHub noreply address set in `.git/config`; never commit with another address.
+- **GPU calibrations.** Heavy KataGo runs (the thresholds per level, the move probabilities of the joseki graph) run only on the owner's GPU machine, never on the development machine. Everything that machine needs to know is in `docs/gpu-calibration.md`; read it before running any of them.
