@@ -12,6 +12,8 @@ const server = await startServer({
   trapsFile: process.env.JOSEKI_TRAPS ?? join(repoRoot, 'packages', 'server', 'bases', 'traps.jdb'),
   startsFile: process.env.JOSEKI_STARTS ?? join(repoRoot, 'packages', 'server', 'bases', 'starts.jdb'),
   thresholdsFile: process.env.JOSEKI_THRESHOLDS ?? join(repoRoot, 'packages', 'server', 'bases', 'thresholds.json'),
+  graphFile: process.env.JOSEKI_GRAPH ?? join(repoRoot, 'packages', 'server', 'bases', 'joseki-graph.bin'),
+  graphWeightsFile: process.env.JOSEKI_GRAPH_WEIGHTS ?? join(repoRoot, 'packages', 'server', 'bases', 'joseki-weights.bin'),
   startsListFile: process.env.JOSEKI_STARTS_LIST ?? join(repoRoot, 'packages', 'server', 'bases', 'starts-list.json'),
   // Unset: starts-i18n.json next to the list.
   startsNamesFile: process.env.JOSEKI_STARTS_NAMES,

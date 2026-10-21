@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import type { AddressInfo } from 'node:net'
 import { dirname, join, resolve } from 'node:path'
 import type { FastifyInstance } from 'fastify'
@@ -8,6 +8,8 @@ import { loadConfig, type AppConfig } from './config'
 import { engineCommand } from './engine/command'
 import { KataGoEngine, type EngineCommand } from './engine/engine'
 import { loadLock, type KataGoLock } from './engine/lock'
+import { GraphBook } from './graph/book'
+import { GraphError } from './graph/format'
 import { StartBook } from './starts/book'
 import { loadNames, type StartNames } from './starts/names'
 import { loadThresholds } from './review/thresholds'
@@ -40,6 +42,10 @@ export interface ServerOptions {
   startsFile?: string | null
   /** Spec (repetition) 3.2: packages/server/bases/thresholds.json; missing — the config thresholds. */
   thresholdsFile?: string | null
+  /** Spec (progress) 3.4: the joseki graph (packages/server/bases/joseki-graph.bin); missing or null — no graph, broken — no graph and a log line. */
+  graphFile?: string | null
+  /** Spec (progress) 3.3: the graph's move probabilities by level (packages/server/bases/joseki-weights.bin); missing, null or broken — no weights. */
+  graphWeightsFile?: string | null
   /** The named start list (packages/server/bases/starts-list.json); missing or unreadable turns «Из списка» off. */
   startsListFile?: string | null
   /**
@@ -71,7 +77,8 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
   const traps = loadTraps(options.trapsFile, log)
   const thresholds = loadThresholds(options.thresholdsFile, log)
   const starts = loadStarts(options.startsFile, options.startsListFile, log, options.startsNamesFile)
-  const services = createServices(config, engine, { configFile: options.configFile, enginesDir: options.enginesDir, lock, commandFor, log, fetch: options.fetch, traps, starts, thresholds })
+  const graph = loadGraph(options.graphFile, options.graphWeightsFile, log)
+  const services = createServices(config, engine, { configFile: options.configFile, enginesDir: options.enginesDir, lock, commandFor, log, fetch: options.fetch, traps, starts, thresholds, graph })
   let app: FastifyInstance | undefined
   try {
     // The installer's choice is a convenience: when the config cannot be written, the first-start language screen asks instead.
@@ -145,6 +152,30 @@ export function loadStarts(baseFile: string | null | undefined, listFile: string
     return book.withList(json, log, names)
   } catch (err) {
     log(`Список стартовых позиций недоступен: ${err instanceof Error ? err.message : String(err)}`)
+    return book
+  }
+}
+
+/**
+ * Spec (progress) 3.4: the joseki graph and its weights. No graph file is silent (the graph may not be built yet); a broken
+ * graph is one log line and an empty book; a configured weights file that is missing or broken, or the weights of another
+ * graph, are one log line and a graph without weights. No weights file configured ('', null, undefined) is silent.
+ */
+export function loadGraph(graphFile: string | null | undefined, weightsFile: string | null | undefined, log: (line: string) => void): GraphBook {
+  if (!graphFile || !existsSync(graphFile)) return GraphBook.empty()
+  let book: GraphBook
+  try {
+    book = GraphBook.load(readFileSync(graphFile), null)
+  } catch (err) {
+    log(`Граф вариантов недоступен: ${err instanceof Error ? err.message : String(err)}`)
+    return GraphBook.empty()
+  }
+  if (!weightsFile) return book
+  try {
+    if (!existsSync(weightsFile)) throw new GraphError(`нет файла ${weightsFile}`)
+    return book.withWeights(readFileSync(weightsFile))
+  } catch (err) {
+    log(`Веса графа вариантов недоступны: ${err instanceof Error ? err.message : String(err)}`)
     return book
   }
 }

@@ -33,6 +33,8 @@ const server = await startServer({
   startsListFile: resolve('e2e/starts-list.test.json'),
   startsNamesFile: resolve('e2e/starts-i18n.test.json'),
   thresholdsFile: null,
+  graphFile: null,
+  graphWeightsFile: null,
   webDist: resolve('packages/web/dist'),
   port: 5185,
 })

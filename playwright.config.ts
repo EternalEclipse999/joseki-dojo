@@ -26,6 +26,9 @@ export default defineConfig({
         JOSEKI_STARTS_LIST: 'e2e/starts-list.test.json',
         JOSEKI_STARTS_NAMES: 'e2e/starts-i18n.test.json',
         JOSEKI_THRESHOLDS: '',
+        // Likewise the joseki graph and its weights: e2e does not depend on the shipped files.
+        JOSEKI_GRAPH: '',
+        JOSEKI_GRAPH_WEIGHTS: '',
       },
       reuseExistingServer: false,
       timeout: 120_000,

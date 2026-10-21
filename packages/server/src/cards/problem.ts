@@ -1,5 +1,5 @@
 import { colorSign, Position, vertexToGtp, zoneVertices, type Color, type Corner, type Move, type MoveVertex, type ProblemCandidate, type ProblemSource, type ReviewData, type StartGroup, type Vertex } from '@joseki-dojo/shared'
-import { mirrorDiagonal, toTopRight } from '../jdb'
+import { mirrorDiagonal, movesToTopRight } from '../jdb'
 import { movesBefore, type SessionRecord } from '../store/records'
 
 /** Spec (repetition) 4.2: everything a problem card needs, independent of the training it came from. */
@@ -18,11 +18,10 @@ export interface ProblemData {
 }
 
 const isVertex = (v: MoveVertex): v is Vertex => v !== 'pass'
-const topRight = (moves: readonly Move[], corner: Corner): Move[] => moves.map((m) => (isVertex(m.vertex) ? { ...m, vertex: toTopRight(m.vertex, corner) } : m))
 
 /** Spec (repetition) 4.1: the position seen in the top-right corner, diagonal-canonical, with the colour to move. */
 export function problemKey(moves: readonly Move[], corner: Corner, toMove: Color): string {
-  const s = Position.fromMoves(topRight(moves, corner)).signMap()
+  const s = Position.fromMoves(movesToTopRight(moves, corner)).signMap()
   const read = (mirror: boolean): string => {
     let out = ''
     for (let y = 0; y < 19; y++) for (let x = 0; x < 19; x++) {
@@ -40,7 +39,7 @@ const GROUPS: Record<string, StartGroup> = { '4-4': '4-4', '3-4': '3-4', '4-3': 
 
 /** The group of the corner by its first stone (lines counted from the corner's edges); null for another point. */
 export function cornerGroup(moves: readonly Move[], corner: Corner): StartGroup | null {
-  const first = topRight(moves, corner).find((m) => isVertex(m.vertex))
+  const first = movesToTopRight(moves, corner).find((m) => isVertex(m.vertex))
   if (!first || !isVertex(first.vertex)) return null
   const fromRight = 19 - first.vertex[0]
   const fromTop = first.vertex[1] + 1
@@ -49,7 +48,7 @@ export function cornerGroup(moves: readonly Move[], corner: Corner): StartGroup 
 
 /** The stones of the corner zone seen in the top-right corner (captures applied), as GTP — for the small board. */
 export function zoneStones(moves: readonly Move[], corner: Corner): { black: string[]; white: string[] } {
-  const s = Position.fromMoves(topRight(moves, corner)).signMap()
+  const s = Position.fromMoves(movesToTopRight(moves, corner)).signMap()
   const black: string[] = []
   const white: string[] = []
   for (const [x, y] of zoneVertices('TR')) {

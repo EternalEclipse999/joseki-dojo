@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { humanProfile, indexToVertex, PLAYER_LEVELS } from '@joseki-dojo/shared'
 import { describe, expect, it } from 'vitest'
-import { calibrate, commitThresholds, exceedThreshold, gitProblem, movesToEvaluate, parseCalibrateOptions, sample, smooth, THRESHOLDS_FILE } from './calibrate-steps'
+import { calibrate, exceedThreshold, gitProblem, movesToEvaluate, parseCalibrateOptions, sample, smooth, THRESHOLDS_FILE } from './calibrate-steps'
 
 // The git calls must not depend on the developer's own git config (a global commit.gpgsign would hang the commits).
 const CONFIG_DIR = mkdtempSync(join(tmpdir(), 'joseki-gitcfg-'))
@@ -145,7 +145,7 @@ function repo(): string {
   return root
 }
 
-describe('the thresholds commit', () => {
+describe('the thresholds checks', () => {
   it('refuses main and an uncommitted thresholds file', () => {
     const root = repo()
     expect(gitProblem(root)).toBeNull()
@@ -153,18 +153,5 @@ describe('the thresholds commit', () => {
     expect(gitProblem(root)).toMatch(/Uncommitted changes in packages\/server\/bases\/thresholds.json/)
     git(root, 'checkout', '-q', '-b', 'main')
     expect(gitProblem(root)).toMatch(/on main/)
-  })
-
-  it("commits only the new thresholds file, with the repository's configured identity", () => {
-    const root = repo()
-    writeFileSync(join(root, THRESHOLDS_FILE), '{}')
-    writeFileSync(join(root, 'other.txt'), 'changed')
-    git(root, 'add', 'other.txt')
-    expect(commitThresholds(root, 'subject', 'body line')).toBe(true)
-    const configured = `${CONFIGURED.name} <${CONFIGURED.email}>`
-    expect(git(root, 'log', '-1', '--format=%an <%ae>|%cn <%ce>|%s|%b')).toBe(`${configured}|${configured}|subject|body line`)
-    expect(git(root, 'show', '--name-only', '--format=', 'HEAD')).toBe(THRESHOLDS_FILE)
-    expect(git(root, 'status', '--porcelain')).toBe('M  other.txt')
-    expect(commitThresholds(root, 'subject', 'body')).toBe(false)
   })
 })

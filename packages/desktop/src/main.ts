@@ -201,6 +201,8 @@ async function boot(): Promise<void> {
     trapsFile: app.isPackaged ? join(resourcesDir, 'bases', 'traps.jdb') : join(resourcesDir, 'packages', 'server', 'bases', 'traps.jdb'),
     startsFile: app.isPackaged ? join(resourcesDir, 'bases', 'starts.jdb') : join(resourcesDir, 'packages', 'server', 'bases', 'starts.jdb'),
     thresholdsFile: app.isPackaged ? join(resourcesDir, 'bases', 'thresholds.json') : join(resourcesDir, 'packages', 'server', 'bases', 'thresholds.json'),
+    graphFile: app.isPackaged ? join(resourcesDir, 'bases', 'joseki-graph.bin') : join(resourcesDir, 'packages', 'server', 'bases', 'joseki-graph.bin'),
+    graphWeightsFile: app.isPackaged ? join(resourcesDir, 'bases', 'joseki-weights.bin') : join(resourcesDir, 'packages', 'server', 'bases', 'joseki-weights.bin'),
     startsListFile: app.isPackaged ? join(resourcesDir, 'bases', 'starts-list.json') : join(resourcesDir, 'packages', 'server', 'bases', 'starts-list.json'),
     startsNamesFile: app.isPackaged ? join(resourcesDir, 'bases', 'starts-i18n.json') : join(resourcesDir, 'packages', 'server', 'bases', 'starts-i18n.json'),
     webDist,

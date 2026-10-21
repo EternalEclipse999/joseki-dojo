@@ -4,8 +4,10 @@ import { gtpToVertex, type HealthResponse, type InstallStatus, type Language, ty
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FAKE_KATAGO, REPO_LOCK, tempDir } from '../test/helpers'
 import { createInstallFixture, fakeBuildCommand, type InstallFixture } from '../test/install-fixture'
+import { TEST_LIST_ID, testGraph, writeTestGraph } from './graph/fixture'
+import { encodeGraph } from './graph/format'
 import { encodeJdb, type JdbNode, type JdbTree } from './jdb'
-import { startServer, type RunningServer } from './start'
+import { loadGraph, startServer, type RunningServer } from './start'
 import { writeTestStarts } from './starts/fixture'
 import { writeTestTraps } from './traps/fixture'
 
@@ -255,6 +257,100 @@ describe('startServer', () => {
       const { lines, starts } = await startWith()
       expect(noStartsLog(lines)).toBe(false)
       expect(starts).toEqual({ count: 0, list: [], branches: [], groups: [] })
+    })
+  })
+
+  describe('joseki graph', () => {
+    function graphFiles(): { graph: string; weights: string } {
+      const dir = tempDir()
+      const files = { graph: join(dir, 'joseki-graph.bin'), weights: join(dir, 'joseki-weights.bin') }
+      writeTestGraph(files.graph, files.weights)
+      return files
+    }
+    function load(graph: string | null | undefined, weights: string | null | undefined): { book: ReturnType<typeof loadGraph>; lines: string[] } {
+      const lines: string[] = []
+      return { book: loadGraph(graph, weights, (line) => void lines.push(line)), lines }
+    }
+
+    it('loads the graph with its weights', () => {
+      const files = graphFiles()
+      const { book, lines } = load(files.graph, files.weights)
+      expect(lines).toEqual([])
+      expect(book.hasWeights).toBe(true)
+      expect(book.listNode(TEST_LIST_ID)).toBe(1)
+    })
+
+    it('is silent without a graph file and serves an empty book', () => {
+      const { weights } = graphFiles()
+      for (const graph of [join(tempDir(), 'missing.bin'), '', null, undefined]) {
+        const { book, lines } = load(graph, weights)
+        expect(lines).toEqual([])
+        expect(book.nodeCount).toBe(0)
+      }
+    })
+
+    it('is silent when no weights file is configured and keeps the graph', () => {
+      const { graph } = graphFiles()
+      for (const weights of ['', null, undefined]) {
+        const { book, lines } = load(graph, weights)
+        expect(lines).toEqual([])
+        expect(book.hasWeights).toBe(false)
+        expect(book.listNode(TEST_LIST_ID)).toBe(1)
+      }
+    })
+
+    it('logs a configured weights file that does not exist once and keeps the graph', () => {
+      const { graph } = graphFiles()
+      const missing = join(tempDir(), 'missing.bin')
+      const { book, lines } = load(graph, missing)
+      expect(lines).toEqual([`Веса графа вариантов недоступны: нет файла ${missing}`])
+      expect(book.hasWeights).toBe(false)
+      expect(book.listNode(TEST_LIST_ID)).toBe(1)
+    })
+
+    it('logs a broken graph once and serves an empty book', () => {
+      const files = graphFiles()
+      writeFileSync(files.graph, 'nonsense')
+      const { book, lines } = load(files.graph, files.weights)
+      expect(lines).toEqual(['Граф вариантов недоступен: Это не файл графа вариантов'])
+      expect(book.nodeCount).toBe(0)
+    })
+
+    it('logs broken weights or the weights of another graph once and keeps the graph without weights', () => {
+      const other = testGraph()
+      other.edges[3].categories = [{ source: 1, category: 'question' }]
+      const damages: ((files: { graph: string; weights: string }) => void)[] = [
+        (files) => writeFileSync(files.weights, 'nonsense'),
+        (files) => writeFileSync(files.graph, encodeGraph(other)),
+      ]
+      const lines = damages.map((damage) => {
+        const files = graphFiles()
+        damage(files)
+        const loaded = load(files.graph, files.weights)
+        expect(loaded.book.hasWeights).toBe(false)
+        expect(loaded.book.listNode(TEST_LIST_ID)).toBe(1)
+        return loaded.lines
+      })
+      expect(lines).toEqual([['Веса графа вариантов недоступны: Это не файл весов графа вариантов'], ['Веса графа вариантов недоступны: Веса посчитаны для другого графа вариантов']])
+    })
+
+    it('serves the graph of the server options', async () => {
+      const files = graphFiles()
+      const root = tempDir()
+      const server = await startServer({
+        configFile: join(root, 'config.json'),
+        dataDir: join(root, 'data'),
+        enginesDir: join(root, 'engines'),
+        lockFile: REPO_LOCK,
+        webDist: null,
+        port: 0,
+        log: () => undefined,
+        graphFile: files.graph,
+        graphWeightsFile: files.weights,
+      })
+      servers.push(server)
+      expect(server.services.graph.hasWeights).toBe(true)
+      expect(server.services.graph.listNode(TEST_LIST_ID)).toBe(1)
     })
   })
 })
