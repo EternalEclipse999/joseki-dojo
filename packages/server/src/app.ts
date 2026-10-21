@@ -26,6 +26,7 @@ import type { EngineCommand, KataGoEngine } from './engine/engine'
 import { HealthMonitor } from './engine/health'
 import type { KataGoLock } from './engine/lock'
 import { toErrorMessage } from './errors'
+import { GraphBook } from './graph/book'
 import { InstallerService } from './install/installer'
 import { NewsService } from './news/service'
 import { ReviewService } from './review/service'
@@ -54,6 +55,8 @@ export interface AppServices {
   traps: TrapBook
   /** The loaded start positions; empty when there is none. */
   starts: StartBook
+  /** Spec (progress) 3.4: the joseki graph with its weights; empty when there is none. */
+  graph: GraphBook
   cards: CardService
   ui: UiService
   player: PlayerService
@@ -79,6 +82,8 @@ export interface ServiceOptions {
   starts?: StartBook
   /** Spec (repetition) 3.2: the calibrated thresholds table; default: none (the config thresholds). */
   thresholds?: ThresholdTable | null
+  /** Spec (progress) 3.4: the joseki graph; default: an empty book. */
+  graph?: GraphBook
 }
 
 // The server only talks to the local browser. Checking Host defeats DNS rebinding, checking Origin stops other
@@ -96,6 +101,7 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
   const analysis = new AnalysisScheduler(engine, repo, config.analysis)
   const traps = options.traps ?? TrapBook.empty()
   const starts = options.starts ?? StartBook.empty()
+  const graph = options.graph ?? GraphBook.empty()
   const health = new HealthMonitor(config, engine)
   const cards = new CardService({
     repo: new CardRepo(db),
@@ -129,7 +135,7 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
   const installer = new InstallerService({ config, lock, enginesDir, settings, commandFor, log, engine, health, fetch })
   const ui = new UiService(config, configFile)
   const player = new PlayerService(config, configFile)
-  return { config, db, engine, health, sessions, reviews, variations, settings, installer, hub, traps, starts, cards, ui, player, news }
+  return { config, db, engine, health, sessions, reviews, variations, settings, installer, hub, traps, starts, graph, cards, ui, player, news }
 }
 
 export async function buildApp(services: AppServices, webDist: string | null = null): Promise<FastifyInstance> {

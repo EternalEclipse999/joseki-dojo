@@ -171,6 +171,18 @@ The scripts that build the list (`chapters.mjs` and the others in the `joseki-do
 npm run jdb:dump -- packages/server/bases/starts.jdb
 ```
 
+### Joseki graph
+
+`packages/server/bases/joseki-graph.bin` is the graph of joseki positions under the start list. It merges the positions of two joseki dictionaries by position: transpositions (the same position by another move order) and mirrors are one node, and every edge carries a category. The graph is built outside the repository by a local tool from one-off walks of the dictionaries; the tool and its cache are not part of the repository, only the resulting file is.
+
+`packages/server/bases/joseki-weights.bin` holds the human net's move probabilities for every node of the graph at each of the 30 levels. It is produced on a machine with a GPU:
+
+```bash
+npm run tree:gpu
+```
+
+The guide for this run is [docs/gpu-calibration.md](docs/gpu-calibration.md), section 2. Without the weights file the app shows no learning progress (the progress itself comes in a later part); a missing or broken graph file turns the graph off.
+
 ### Project layout
 
 - `packages/shared`: types, coordinates, the corner zone, Go rules

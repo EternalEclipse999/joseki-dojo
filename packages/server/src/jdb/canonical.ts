@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { vertexToGtp, type Corner, type Vertex } from '@joseki-dojo/shared'
+import { vertexToGtp, type Corner, type Move, type Vertex } from '@joseki-dojo/shared'
 
 export type CanonicalMove = Vertex | 'tenuki'
 const LAST = 18
@@ -22,6 +22,9 @@ export function toTopRight(v: Vertex, corner: Corner): Vertex {
   return [flipX ? LAST - v[0] : v[0], flipY ? LAST - v[1] : v[1]]
 }
 export const fromTopRight = toTopRight
+/** Moves of `corner` seen in the top-right corner; passes stay passes. */
+export const movesToTopRight = (moves: readonly Move[], corner: Corner): Move[] =>
+  moves.map((m) => (m.vertex === 'pass' ? m : { ...m, vertex: toTopRight(m.vertex, corner) }))
 
 /** Reflection of the top-right corner in its diagonal (R16 <-> Q17). */
 export const mirrorDiagonal = (v: Vertex): Vertex => [LAST - v[1], LAST - v[0]]

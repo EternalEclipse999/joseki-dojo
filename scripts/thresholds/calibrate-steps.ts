@@ -1,12 +1,10 @@
-import { execFileSync } from 'node:child_process'
-import { rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { colorSign, humanProfile, indexToVertex, nextColor, PASS_INDEX, PLAYER_LEVELS, type Move } from '@joseki-dojo/shared'
 import type { AnalysisEngine } from '../../packages/server/src/engine/engine'
 import { baseQuery } from '../../packages/server/src/engine/query'
-import { renameRetrying } from '../../packages/server/src/install/download'
 import { parseThresholdTable, type LevelThresholds } from '../../packages/server/src/review/thresholds'
 import { StartBook } from '../../packages/server/src/starts/book'
+import { resultGitProblem, saveResult } from '../gpu-run'
 
 export const THRESHOLDS_FILE = 'packages/server/bases/thresholds.json'
 export const STARTS_FILE = 'packages/server/bases/starts.jdb'
@@ -200,33 +198,8 @@ export async function calibrate(engine: AnalysisEngine, positions: Move[][], opt
   return { ...smooth(raw), evaluated }
 }
 
-const git = (root: string, args: string[]): string => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
-const fileChanges = (root: string): string => git(root, ['status', '--porcelain', '--', THRESHOLDS_FILE])
-
 /** Spec (repetition) 3.3: why the run could not commit its result here, or null. */
-export function gitProblem(root: string): string | null {
-  let branch: string
-  try {
-    branch = git(root, ['symbolic-ref', '--short', '-q', 'HEAD'])
-  } catch (err) {
-    const stderr = String((err as { stderr?: unknown }).stderr ?? '').trim()
-    const detail = stderr !== '' ? `\ngit says: ${stderr}` : ''
-    return `Not on a branch (a detached HEAD or not a git repository): switch to the pull request branch or create a branch for the result (e.g. git switch -c thresholds-gpu-run)${detail}`
-  }
-  if (branch === 'main') return 'You are on main: switch to the pull request branch or create a branch for the result (e.g. git switch -c thresholds-gpu-run)'
-  const changed = fileChanges(root)
-  if (changed !== '') return `Uncommitted changes in ${THRESHOLDS_FILE}:\n${changed}\nCommit, restore or delete it first`
-  return null
-}
-
-/** Spec (repetition) 3.3: commits only the thresholds file (new or changed) with the repository's configured identity; false when it did not change. */
-export function commitThresholds(root: string, subject: string, body: string): boolean {
-  if (fileChanges(root) === '') return false
-  // A path commit only takes files git knows: the first run creates the file.
-  git(root, ['add', '--', THRESHOLDS_FILE])
-  git(root, ['commit', '-q', '-m', subject, '-m', body, '--', THRESHOLDS_FILE])
-  return true
-}
+export const gitProblem = (root: string): string | null => resultGitProblem(root, THRESHOLDS_FILE, 'thresholds-gpu-run')
 
 const fixed = (x: number): string => x.toFixed(2)
 
@@ -275,21 +248,7 @@ export async function runCalibration({ root, engine, opts, engineInfo, log }: Ca
   log('')
   for (const line of report) log(line)
 
-  const file = join(root, THRESHOLDS_FILE)
-  const tmp = `${file}.tmp`
-  let committed: boolean
-  try {
-    try {
-      writeFileSync(tmp, json)
-      await renameRetrying(tmp, file)
-    } finally {
-      rmSync(tmp, { force: true })
-    }
-    committed = commitThresholds(root, SUBJECT, [...report, '', engineInfo].join('\n'))
-  } catch (err) {
-    const first = (err instanceof Error ? err.message : String(err)).split('\n')[0]
-    throw new Error(`The result may already be written to ${THRESHOLDS_FILE}. Commit it with: git add -- ${THRESHOLDS_FILE} && git commit -- ${THRESHOLDS_FILE} or discard it with: git restore --staged --worktree -- ${THRESHOLDS_FILE} (for a newly added file: git rm --cached -- ${THRESHOLDS_FILE}, then delete the file)\n${first}`)
-  }
+  const committed = await saveResult(root, THRESHOLDS_FILE, json, SUBJECT, [...report, '', engineInfo].join('\n'))
   log('')
   log(committed ? 'Committed. Next: git push (git push -u origin HEAD for a new branch)' : 'The thresholds did not change: nothing to commit.')
   return { committed }
