@@ -27,6 +27,8 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     dataDir: tempDir(),
     katago: { ...DEFAULT_CONFIG.katago, commandOverride: [process.execPath, FAKE_KATAGO] },
     analysis: { reviewVisits: 10, endVisits: 5, variationVisits: 40 },
+    // Its own object: saving the level changes it in place.
+    player: { ...DEFAULT_CONFIG.player },
     ...overrides,
   }
 }

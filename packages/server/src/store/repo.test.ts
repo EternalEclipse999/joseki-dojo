@@ -37,10 +37,12 @@ describe('migrations', () => {
 
   it('applies only the migrations not recorded yet', () => {
     const db = openDb(':memory:')
-    const next = { version: 6, name: '006_extra.sql', sql: 'CREATE TABLE extra (id INTEGER PRIMARY KEY)' }
-    expect(migrate(db, [...MIGRATIONS, next])).toEqual([6])
+    const next = { version: 8, name: '008_extra.sql', sql: 'CREATE TABLE extra (id INTEGER PRIMARY KEY)' }
+    expect(migrate(db, [...MIGRATIONS, next])).toEqual([8])
     expect(migrate(db, [...MIGRATIONS, next])).toEqual([])
-    expect(db.prepare('SELECT name FROM schema_migrations ORDER BY version').all()).toEqual([{ name: '001_init.sql' }, { name: '002_traps.sql' }, { name: '003_starts.sql' }, { name: '004_cards.sql' }, { name: '005_app_state.sql' }, { name: '006_extra.sql' }])
+    expect(db.prepare('SELECT name FROM schema_migrations ORDER BY version').all()).toEqual([
+      { name: '001_init.sql' }, { name: '002_traps.sql' }, { name: '003_starts.sql' }, { name: '004_cards.sql' }, { name: '005_app_state.sql' }, { name: '006_graph_cards.sql' }, { name: '007_card_raw.sql' }, { name: '008_extra.sql' },
+    ])
   })
 })
 
@@ -114,6 +116,22 @@ describe('movesBefore', () => {
   })
 })
 
+describe('migration 7', () => {
+  it('marks the card reviews the player re-rated before the manual mark existed', () => {
+    const db = new Database(':memory:')
+    migrate(db, MIGRATIONS.slice(0, 6))
+    db.prepare("INSERT INTO cards (id, kind, card_key, data_json, fsrs_json, due, created_at) VALUES ('c1', 'position', 'k', '{}', '{}', 'x', 'x')").run()
+    const review = db.prepare("INSERT INTO card_reviews (card_id, reviewed_at, rating, auto_rating, state_before_json, session_id) VALUES ('c1', 'x', ?, ?, '{}', ?)")
+    review.run('good', 'good', 's1')
+    review.run('easy', 'hard', 's2')
+    expect(migrate(db)).toEqual([7])
+    expect(db.prepare('SELECT session_id, manual, raw_json FROM card_reviews ORDER BY id').all()).toEqual([
+      { session_id: 's1', manual: 0, raw_json: null },
+      { session_id: 's2', manual: 1, raw_json: null },
+    ])
+  })
+})
+
 describe('migration 2 and trap attempts', () => {
   it('upgrades an existing v1 database', () => {
     const db = new Database(':memory:')
@@ -123,7 +141,7 @@ describe('migration 2 and trap attempts', () => {
       `INSERT INTO sessions (id, created_at, mode, environment, user_color, bot_rank, corner, status, initial_moves_json)
        VALUES ('s1', '2026-10-06T10:00:00.000Z', 'free', 'empty', 'B', '7k', 'TR', 'playing', '[]')`,
     ).run()
-    expect(migrate(db)).toEqual([2, 3, 4, 5])
+    expect(migrate(db)).toEqual([2, 3, 4, 5, 6, 7])
     const cols = db.prepare("SELECT name FROM pragma_table_info('sessions')").all() as { name: string }[]
     expect(cols.map((c) => c.name)).toContain('trap_json')
     expect(db.prepare('SELECT id, trap_json FROM sessions').all()).toEqual([{ id: 's1', trap_json: null }])

@@ -3,10 +3,12 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { localize, translator, type AnalysisSettings, type ClientMessage, type HealthResponse, type InstallStatus, type Language, type LocalizedText, type NewsId, type ProblemAnswer, type ProblemView, type Rating, type RepetitionInfo, type ResolvedSettings, type ReviewData, type SessionSettings, type SessionView, type StartCardState, type StartsInfo, type TrapsInfo, type Vertex } from '@joseki-dojo/shared'
 import { LoaderCircle, RefreshCw } from 'lucide-preact'
 import { buildStartTree } from './start-tree'
-import { answerProblem, DojoSocket, failureText, fetchCardSummary, fetchDueCard, fetchHealth, fetchInstall, fetchNews, fetchReview, fetchSettings, fetchStartCards, fetchStarts, fetchTraps, fetchUi, markNews, rateReview, recheckHealth, saveLanguage } from './api'
+import { answerProblem, DojoSocket, failureText, fetchCardSummary, fetchDueCard, fetchHealth, fetchInstall, fetchNews, fetchProgress, fetchReview, fetchSettings, fetchStartCards, fetchStarts, fetchTraps, fetchUi, markNews, rateReview, recheckHealth, saveLanguage } from './api'
 import { I18nContext, pickLanguage, rememberLanguage, storedLanguage, type I18n } from './i18n'
 import { needsLanguageScreen } from './language-gate'
+import { afterLeaving, afterPoll, leftAnswer, LEFT_REVIEW_POLL_MS, without, type LeftTraining } from './left-reviews'
 import { afterAction, fromStartup, NO_NEWS, type NewsAction, type NewsShown } from './news'
+import type { ColorViews } from './progress'
 import { AppHeader, type Section } from './components/AppHeader'
 import { AppUpdateBanner } from './components/AppUpdateBanner'
 import { Bar } from './components/Bar'
@@ -66,6 +68,12 @@ export function App() {
   const [dueCount, setDueCount] = useState(0)
   // Repetition spec 6: the position cards' states by start id, for the marks in the «Из списка» tree.
   const [startCards, setStartCards] = useState<Record<string, StartCardState>>({})
+  // Spec (progress part 2) 6: the colour whose progress the start screen shows (on «Из списка» only; null in the other
+  // modes and while the screen is not shown), and the progress of the list for it.
+  const [progressColor, setProgressColor] = useState<SessionSettings['userColor'] | null>(null)
+  const [progressViews, setProgressViews] = useState<ColorViews | null>(null)
+  // Trainings left before their review was ready (left-reviews.ts): their cards are recorded with the review.
+  const [waitingReviews, setWaitingReviews] = useState<readonly LeftTraining[]>([])
   // The queue ran out: «На сегодня всё» on the «Повторение» tab (a flag, so that a language switch retranslates it); a section switch clears it.
   const [queueDone, setQueueDone] = useState(false)
   // Repetition spec 4.4: a re-rating in the review failed (kept as a text key, so that a language switch retranslates it).
@@ -136,9 +144,11 @@ export function App() {
             if (msg.cardId === exploredCard.current) setProblemVariationUpdate(msg)
             break
           case 'reviewReady':
-            if (!follow.concerns(msg.sessionId)) break
-            // The server recorded the training's card before this message: the header's count and the tree are stale.
+            // The server recorded the training's cards before this message — a left training's too: the header's count,
+            // the tree and the progress are stale.
             setCardsTick((n) => n + 1)
+            setWaitingReviews((w) => without(w, [msg.sessionId]))
+            if (!follow.concerns(msg.sessionId)) break
             fetchReview(msg.sessionId)
               .then((r) => r && follow.concerns(r.sessionId) && setReview(r))
               .catch((e: unknown) => {
@@ -317,6 +327,21 @@ export function App() {
     }
   }, [ready, healthTick, cardsTick, session?.status, section])
 
+  // Spec (progress part 2) 6: the progress of the list for the start screen's colour on «Из списка», both colours for a
+  // random one. It is read when the start screen comes back, on a colour change, when a training's review is ready (a
+  // left one's too) and when a level change is saved (`cardsTick`: the cards moved). Not while a training is being started
+  // (the queue's next card passes through the start screen). A failure keeps the card marks.
+  const onStartScreen = ready && !session && section === 'game' && !starting
+  useEffect(() => {
+    if (!onStartScreen || progressColor === null) return
+    let cancelled = false
+    const views: Promise<ColorViews> = progressColor === 'random' ? Promise.all([fetchProgress('B'), fetchProgress('W')]) : fetchProgress(progressColor).then((v) => [v] as const)
+    views.then((v) => !cancelled && setProgressViews(v)).catch(() => !cancelled && setProgressViews(null))
+    return () => {
+      cancelled = true
+    }
+  }, [onStartScreen, healthTick, cardsTick, progressColor])
+
   // While a finished session has no review yet, poll for it: reviewReady may have been missed
   // (socket drop) and the server does not re-send it on resync.
   const finishedId = session?.status === 'finished' ? session.id : null
@@ -346,6 +371,42 @@ export function App() {
       clearTimeout(timer)
     }
   }, [finishedId, hasReview])
+
+  // A finished training left before its review was ready (back to the start screen, the next training, the queue) waits
+  // for it: the server still records its cards then.
+  const pendingReview = finishedId !== null && !hasReview ? finishedId : null
+  const shownSession = session?.id ?? null
+  const lastPending = useRef<string | null>(null)
+  useEffect(() => {
+    const pending = lastPending.current
+    lastPending.current = pendingReview
+    setWaitingReviews((w) => afterLeaving(w, pending, shownSession, Date.now()))
+  }, [pendingReview, shownSession])
+
+  // While the start screen shows, the left trainings' reviews are asked for gently: once another training started, the
+  // socket no longer hears of them. A review ready re-reads the counts, the marks and the progress, and is forgotten; so
+  // is a training whose session is gone, or whose review is still not ready long after it was left (afterPoll).
+  useEffect(() => {
+    if (!onStartScreen || waitingReviews.length === 0) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const tick = async (): Promise<void> => {
+      const answers = await Promise.all(waitingReviews.map((w) => leftAnswer(fetchReview(w.id))))
+      if (cancelled) return
+      const { drop, ready } = afterPoll(waitingReviews, answers, Date.now())
+      if (drop.length === 0) {
+        timer = setTimeout(() => void tick(), LEFT_REVIEW_POLL_MS)
+        return
+      }
+      if (ready) setCardsTick((n) => n + 1)
+      setWaitingReviews((w) => without(w, drop)) // the others, if any, are asked for again by the next run
+    }
+    void tick()
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [onStartScreen, waitingReviews])
 
   const send = (msg: ClientMessage): void => socket.send(msg)
   const sendStarting = (msg: ClientMessage): void => {
@@ -559,7 +620,7 @@ export function App() {
     }
   } else if (section === 'settings') {
     crumb = t('app.crumb.settings')
-    screen = <SettingsScreen onClose={() => setSection('game')} onSaved={() => setHealthTick((n) => n + 1)} onRepick={startRepick} />
+    screen = <SettingsScreen onClose={() => setSection('game')} onSaved={() => setHealthTick((n) => n + 1)} onLevelSaved={() => setCardsTick((n) => n + 1)} onRepick={startRepick} />
   } else if (!health || (health.state !== 'ready' && !installChecked)) {
     screen = (
       <main class="loading">
@@ -591,6 +652,8 @@ export function App() {
         startTree={startTree}
         last={lastSettings}
         cards={startCards}
+        progress={progressViews}
+        onProgressColor={setProgressColor}
         busy={starting || !connected}
         onStart={(s) => {
           setQueue(false)

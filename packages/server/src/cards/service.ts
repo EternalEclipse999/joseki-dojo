@@ -4,10 +4,13 @@ import { DEFAULT_CONFIG, type Thresholds } from '../config'
 import { EngineError } from '../engine/engine'
 import type { AnalysisResponse, KataGoQueryBody } from '../engine/katago-types'
 import { baseQuery } from '../engine/query'
+import { moveRating } from '../progress/record'
+import type { MoveRaw } from '../progress/repo'
+import { replayCard } from '../progress/replay'
 import { categorize } from '../review/compute'
 import type { StartBook } from '../starts/book'
 import type { SessionRecord } from '../store/records'
-import { positionRating } from './grade'
+import { positionRating, positionRaw, ratePosition, type PositionRaw } from './grade'
 import { candidateLoss, findProblems, lossAfter, problemKey, zoneStones, type ProblemData } from './problem'
 import type { CardRepo, CardRow, ReviewRow } from './repo'
 import { dayStart, inLearningSteps, newState, schedule, stageOf } from './schedule'
@@ -30,6 +33,8 @@ export interface CardServiceDeps {
     thresholds: () => Thresholds
     visits: () => number
   }
+  /** One-line diagnostics: an old training that a level replay could not rebuild. */
+  log?: (line: string) => void
 }
 
 interface PositionData {
@@ -43,10 +48,48 @@ export const LEARN_AHEAD_MS = 20 * 60_000
 
 const startIdOf = (c: CardRow): string => String((c.data as Partial<PositionData>).startId ?? '')
 
+/** The same as JSON: a level replay writes only what it changed. */
+const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
+
 const addDays = (d: Date, n: number): Date => {
   const x = new Date(d)
   x.setDate(x.getDate() + n)
   return x
+}
+
+/** What a level-change replay derives anew for a review. */
+type Replayed = Pick<ReviewRow, 'auto' | 'worst' | 'raw'>
+
+/**
+ * Spec (progress part 2) 5: a position review at `th`, from its raw losses; an older review without them from its
+ * training rebuilt at `th` (`reviewOf`) while it is in the database, else from its stored worst move. The losses it is
+ * rated from become its raw losses. An older review with an unpunished bot mistake as its worst (the bot's loss is not
+ * kept) or without a worst move stays as it is.
+ */
+function replayedPosition(r: ReviewRow, th: Thresholds, reviewOf: (sessionId: string) => ReviewData | null): Replayed {
+  let raw = r.raw as PositionRaw | null
+  if (!raw && r.sessionId) {
+    const rebuilt = reviewOf(r.sessionId)
+    raw = rebuilt ? positionRaw(rebuilt) : null
+  }
+  if (!raw && r.worst && r.worst.category !== 'unpunished') raw = { moves: [{ loss: r.worst.loss }], opponent: [] }
+  if (!raw) return { auto: r.auto, worst: r.worst, raw: null }
+  const { rating, worst } = ratePosition(raw, th)
+  return { auto: rating, worst, raw }
+}
+
+/**
+ * Spec (progress part 2) 5: a problem review at `th`. An answer is rated from its loss and whether it was the best move
+ * (an older answer from its stored worst move, or as the best move when it was «Легко»); the review of a training that
+ * made or repeated the problem stays «Снова» (spec repetition 4.2).
+ */
+function replayedProblem(r: ReviewRow, th: Thresholds): Replayed {
+  if (r.sessionId !== null) return { auto: r.auto, worst: r.worst, raw: r.raw }
+  const older: MoveRaw | null = r.worst ? { loss: r.worst.loss, best: false } : r.auto === 'easy' ? { loss: 0, best: true } : null
+  const raw = (r.raw as MoveRaw | null) ?? older
+  if (!raw) return { auto: r.auto, worst: r.worst, raw: null }
+  const category = categorize(raw.loss, th)
+  return { auto: moveRating(raw, th), worst: category === 'exact' ? null : { category, loss: raw.loss }, raw }
 }
 
 /** Spec (repetition) 4–5: cards, their schedule and the queue: position cards and «find a good move» problem cards. */
@@ -87,7 +130,8 @@ export class CardService {
       }
       const stateBefore = card.state
       this.d.repo.updateState(card.id, schedule(stateBefore, auto.rating, now))
-      this.d.repo.insertReview({ cardId: card.id, reviewedAt: now.toISOString(), rating: auto.rating, auto: auto.rating, worst: auto.worst, stateBefore, sessionId: rec.id })
+      // Spec (progress part 2) 5: the raw losses too, so that a level change re-rates the review without the training.
+      this.d.repo.insertReview({ cardId: card.id, reviewedAt: now.toISOString(), rating: auto.rating, auto: auto.rating, worst: auto.worst, stateBefore, sessionId: rec.id, raw: positionRaw(review) })
     })
   }
 
@@ -107,7 +151,7 @@ export class CardService {
         }
         const stateBefore = card.state
         this.d.repo.updateState(card.id, schedule(stateBefore, 'again', now))
-        this.d.repo.insertReview({ cardId: card.id, reviewedAt: now.toISOString(), rating: 'again', auto: 'again', worst: null, stateBefore, sessionId: rec.id })
+        this.d.repo.insertReview({ cardId: card.id, reviewedAt: now.toISOString(), rating: 'again', auto: 'again', worst: null, stateBefore, sessionId: rec.id, raw: null })
       })
     }
   }
@@ -222,8 +266,10 @@ export class CardService {
       }
     }
     const { loss, best } = judged
-    const category = categorize(loss, judge?.thresholds() ?? DEFAULT_CONFIG.thresholds)
-    const auto: Rating = best ? 'easy' : category === 'exact' ? 'good' : category === 'inaccuracy' ? 'hard' : 'again'
+    const thresholds = judge?.thresholds() ?? DEFAULT_CONFIG.thresholds
+    const category = categorize(loss, thresholds)
+    const raw: MoveRaw = { loss, best }
+    const auto = moveRating(raw, thresholds)
     const now = this.now()
     // The card is read again after the await: a concurrent answer may have moved its state.
     const fresh = this.d.repo.card(cardId)
@@ -232,7 +278,7 @@ export class CardService {
     const state = schedule(stateBefore, auto, now)
     const reviewId = this.d.repo.transaction(() => {
       this.d.repo.updateState(cardId, state)
-      return this.d.repo.insertReview({ cardId, reviewedAt: now.toISOString(), rating: auto, auto, worst: category === 'exact' ? null : { category, loss }, stateBefore, sessionId: null })
+      return this.d.repo.insertReview({ cardId, reviewedAt: now.toISOString(), rating: auto, auto, worst: category === 'exact' ? null : { category, loss }, stateBefore, sessionId: null, raw })
     })
     const row = this.d.repo.review(reviewId)!
     return {
@@ -241,6 +287,39 @@ export class CardService {
       leadAfter: measured ?? p.analysis.scoreLeadBlack - colorSign(p.toMove) * loss,
       repetition: this.info(row, { ...fresh, state }),
     }
+  }
+
+  /**
+   * Spec (progress part 2) 5: every card again at `thresholds` (the new level's), in one transaction: each review's auto
+   * rating and worst move derived anew (replayedPosition, replayedProblem; a manual rating stays), the FSRS history
+   * replayed from the card's creation, with the state before each review that `rate` starts from; only what changed is
+   * written. `reviewOf` rebuilds a training's review at `thresholds` from the database, null when the training is gone. A
+   * training it fails on is logged and falls back to its stored worst move, so that one unreadable old training cannot
+   * block every level change.
+   */
+  replayLevel(thresholds: Thresholds, reviewOf: (sessionId: string) => ReviewData | null = () => null): void {
+    const rebuilt = (sessionId: string): ReviewData | null => {
+      try {
+        return reviewOf(sessionId)
+      } catch (err) {
+        this.d.log?.(`level replay: training ${sessionId} not rebuilt, its stored worst move is used: ${err instanceof Error ? err.message : String(err)}`)
+        return null
+      }
+    }
+    this.d.repo.transaction(() => {
+      for (const card of this.d.repo.cards()) {
+        const rows = this.d.repo.reviewsOf(card.id)
+        const derived = rows.map((r) => (card.kind === 'position' ? replayedPosition(r, thresholds, rebuilt) : replayedProblem(r, thresholds)))
+        const replayed = rows.map((r, i) => ({ reviewedAt: r.reviewedAt, manual: r.manual ? r.rating : null, auto: derived[i].auto }))
+        const { state, before } = replayCard(replayed, (r) => r.auto, card.createdAt)
+        rows.forEach((r, i) => {
+          const next = { ...derived[i], rating: r.manual ? r.rating : derived[i].auto, stateBefore: before[i] }
+          const unchanged = next.rating === r.rating && next.auto === r.auto && same(next.worst, r.worst) && same(next.stateBefore, r.stateBefore) && same(next.raw, r.raw)
+          if (!unchanged) this.d.repo.replaceReview(r.id, next)
+        })
+        if (!same(state, card.state)) this.d.repo.updateState(card.id, state)
+      }
+    })
   }
 
   /** Spec (problem variations) 3.1: the moves and the side to move of a problem card; null for anything else. */

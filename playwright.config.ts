@@ -5,13 +5,15 @@ export default defineConfig({
   timeout: 30_000,
   use: { baseURL: 'http://127.0.0.1:5180' },
   projects: [
-    { name: 'chromium', use: { browserName: 'chromium' }, testIgnore: ['languages.spec.ts', 'problems.spec.ts', 'news.spec.ts'] },
+    { name: 'chromium', use: { browserName: 'chromium' }, testIgnore: ['languages.spec.ts', 'problems.spec.ts', 'news.spec.ts', 'progress.spec.ts'] },
     // It saves other languages, so it runs against its own server (5183), not the one the other specs read Russian from.
     { name: 'languages', use: { browserName: 'chromium', baseURL: 'http://127.0.0.1:5183' }, testMatch: 'languages.spec.ts' },
     // A mistake in a training needs the fake KataGo with a penalty stone, so it has its own server (5184).
     { name: 'problems', use: { browserName: 'chromium', baseURL: 'http://127.0.0.1:5184' }, testMatch: 'problems.spec.ts' },
     // The novelties need an install that already has a training, so their own server (5185).
     { name: 'news', use: { browserName: 'chromium', baseURL: 'http://127.0.0.1:5185' }, testMatch: 'news.spec.ts' },
+    // The progress needs a joseki graph with weights over the start list, so its own server (5186).
+    { name: 'progress', use: { browserName: 'chromium', baseURL: 'http://127.0.0.1:5186' }, testMatch: 'progress.spec.ts' },
   ],
   // Playwright starts these one after another: the first builds the web UI that the second serves too.
   webServer: [
@@ -65,6 +67,13 @@ export default defineConfig({
       // The novelties need an install that already has a training, so their own server: its database is seeded before the first start.
       command: 'npx tsx e2e/news-server.ts',
       url: 'http://127.0.0.1:5185/api/health',
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      // The progress of the list: a small graph with weights for two levels, written before the first start.
+      command: 'npx tsx e2e/progress-server.ts',
+      url: 'http://127.0.0.1:5186/api/health',
       reuseExistingServer: false,
       timeout: 120_000,
     },

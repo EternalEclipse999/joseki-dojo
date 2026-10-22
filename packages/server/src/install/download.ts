@@ -24,6 +24,19 @@ export async function renameRetrying(from: string, to: string): Promise<void> {
   }
 }
 
+/** renameRetrying for a caller that cannot wait asynchronously (a write inside a database transaction): the same retries, blocking. */
+export function renameRetryingSync(from: string, to: string): void {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      renameSync(from, to)
+      return
+    } catch (err) {
+      if (attempt >= 5 || !LOCK_CODES.has((err as NodeJS.ErrnoException).code ?? '')) throw err
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200)
+    }
+  }
+}
+
 export async function sha256File(file: string): Promise<string> {
   const hash = createHash('sha256')
   await pipeline(

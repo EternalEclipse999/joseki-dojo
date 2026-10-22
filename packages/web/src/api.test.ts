@@ -1,6 +1,6 @@
 import { localize } from '@joseki-dojo/shared'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { answerProblem, ApiError, deleteCard, failureText, fetchCards, fetchSettings, rateReview, saveLanguage } from './api'
+import { answerProblem, ApiError, deleteCard, failureText, fetchCards, fetchProgress, fetchSettings, rateReview, saveLanguage } from './api'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -75,5 +75,15 @@ describe('API errors', () => {
       vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'refused' }, { status })))
       expect(failureText(await caught(answerProblem('c1', [15, 3])))).toEqual({ key: 'error.api.answer', params: { status: String(status) } })
     }
+  })
+
+  it('the progress is asked for one colour; a refusal rejects (the start screen then keeps the card marks)', async () => {
+    const view = { hasWeights: false, level: '5k', color: 'W', overall: { percent: 0, due: 0 }, positions: {} }
+    const fetch = vi.fn(async () => Response.json(view))
+    vi.stubGlobal('fetch', fetch)
+    await expect(fetchProgress('W')).resolves.toEqual(view)
+    expect(fetch).toHaveBeenCalledWith('/api/progress?color=W', undefined)
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 500 })))
+    await expect(fetchProgress('B')).rejects.toThrow('progress: HTTP 500')
   })
 })

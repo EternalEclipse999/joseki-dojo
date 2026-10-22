@@ -1,6 +1,6 @@
 import { translator } from '@joseki-dojo/shared'
 import { describe, expect, it } from 'vitest'
-import { colorLabel, dayStart, formatCount, formatPoints, formatWhen, levelLabel, moveLabel, pointsText, rankLabel } from './format'
+import { colorLabel, dayStart, formatCount, formatPercent, formatPoints, formatWhen, levelLabel, moveLabel, pointsText, rankLabel } from './format'
 
 const t = translator('ru')
 
@@ -18,6 +18,12 @@ describe('format', () => {
     expect([0, 1, 3.4, 5].map((n) => pointsText(n, t, 'ru'))).toEqual(['0,0 очка', '1,0 очка', '3,4 очка', '5,0 очка'])
     expect(pointsText(1, translator('en'), 'en')).toBe('1.0 points')
     expect(pointsText(5.1, translator('ja'), 'ja')).toBe('5.1目')
+  })
+
+  it('writes a share as a whole percent in the reader’s language', () => {
+    expect([0, 0.424, 0.425, 1].map((n) => formatPercent(n, 'ru').replace(/\s/g, ' '))).toEqual(['0 %', '42 %', '43 %', '100 %'])
+    expect(formatPercent(0.07, 'en')).toBe('7%')
+    expect(formatPercent(0.5, 'ja')).toBe('50%')
   })
 
   it('groups the thousands of a visit count', () => {

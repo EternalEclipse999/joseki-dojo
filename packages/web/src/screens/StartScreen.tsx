@@ -1,9 +1,10 @@
-import { useState } from 'preact/hooks'
+import { useEffect, useMemo, useState } from 'preact/hooks'
 import { ArrowRight, Dice3, ListChecks, Play, Shuffle, Swords } from 'lucide-preact'
-import { BOT_RANKS, DEFAULT_BOT_RANK, isBotRank, type MessageKey, type SessionSettings, type StartCardState } from '@joseki-dojo/shared'
-import { StartTree } from '../components/StartTree'
-import { rankLabel } from '../format'
+import { BOT_RANKS, DEFAULT_BOT_RANK, isBotRank, type MessageKey, type ProgressView, type SessionSettings, type StartCardState } from '@joseki-dojo/shared'
+import { PercentBar, StartTree } from '../components/StartTree'
+import { capitalize, formatPercent, rankLabel } from '../format'
 import { useI18n } from '../i18n'
+import { mergeColors, treeProgress, viewsFor, type ColorViews } from '../progress'
 import { RANK_MARKS, rankAt, rankIndex } from '../rank-scale'
 import { buildStartTree, findById, findNode, nodeTitle, type StartTreeNode } from '../start-tree'
 
@@ -55,6 +56,13 @@ export interface StartScreenProps {
   last?: SessionSettings | null
   /** Repetition spec 6: the position cards' states by start id, marked in the tree. */
   cards?: Record<string, StartCardState>
+  /** Spec (progress part 2) 6: the progress of the list for the colour picked here; null while unknown or when it failed. */
+  progress?: ColorViews | null
+  /**
+   * The colour whose progress the screen shows — the colour picked, on «Из списка» only; null in the other modes and when
+   * the screen goes — so that the progress is read for it alone (on the first render too).
+   */
+  onProgressColor?: (color: ColorChoice | null) => void
 }
 
 /** Spec 5: a new training — mode, corner, colour, bot strength and environment. */
@@ -68,7 +76,7 @@ const initialTreeKey = (tree: StartTreeNode, lastStartId: string | null): string
   return readTreeKey()
 }
 
-export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, startsCount = 0, startTree: tree, last = null, cards }: StartScreenProps) {
+export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, startsCount = 0, startTree: tree, last = null, cards, progress = null, onProgressColor }: StartScreenProps) {
   const { t, language } = useI18n()
   // Without a tree: the empty corner alone, which turns «Из списка» off.
   const startTree = tree ?? buildStartTree([], [], [], t('tree.root'), language)
@@ -87,6 +95,17 @@ export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, starts
     writeTreeKey(node.key)
   }
   const canStart = !busy && !(mode === 'list' && startId === null)
+  const progressColor = mode === 'list' ? userColor : null
+  useEffect(() => {
+    onProgressColor?.(progressColor)
+    return () => onProgressColor?.(null)
+  }, [progressColor])
+  // Spec (progress part 2) 6.2: with weights, the rows' percents replace the card marks; without them nothing changes.
+  // While a colour switch is being read, the previous colour's numbers stay, dimmed (viewsFor).
+  const shown = viewsFor(progress, userColor)
+  const weighted = shown && shown.views.every((v) => v.hasWeights) ? shown.views : null
+  const stale = shown?.stale === true
+  const rows = useMemo(() => (weighted ? treeProgress(startTree, weighted) : null), [startTree, weighted])
   const start = (): void => {
     if (canStart) onStart({ mode, environment: 'empty', userColor, botRank, corner, ...(mode === 'list' && startId ? { startId } : {}) })
   }
@@ -128,7 +147,12 @@ export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, starts
             </label>
           </div>
         </div>
-        {mode === 'list' && <StartTree root={startTree} current={current} onCurrent={pick} onStart={start} cards={cards} />}
+        {mode === 'list' && (
+          <>
+            {weighted && <ProgressSummary views={weighted} stale={stale} />}
+            <StartTree root={startTree} current={current} onCurrent={pick} onStart={start} cards={cards} progress={rows} progressStale={stale} />
+          </>
+        )}
 
         <div class="options">
           <div role="radiogroup" aria-label={t('start.corner.label')}>
@@ -217,6 +241,30 @@ export function StartScreen({ onStart, busy, defaultRank, trapsCount = 0, starts
         </div>
       </div>
     </main>
+  )
+}
+
+/**
+ * Spec (progress part 2) 6.1: «Освоено N %» for the colour, its bar and the positions due (none: no line); for a random
+ * colour both colours' percents over the bar of their mean. `stale`: another colour's numbers while the colour picked is
+ * being read — dimmed and busy.
+ */
+function ProgressSummary({ views, stale }: { views: ColorViews; stale: boolean }) {
+  const { language, t } = useI18n()
+  const percent = (v: ProgressView): string => formatPercent(v.overall.percent, language)
+  const overall = views.length === 2 ? mergeColors(views[0], views[1]).overall : views[0].overall
+  const head =
+    views.length === 2
+      ? [t('progress.black', { percent: percent(views[0]) }), t('progress.white', { percent: percent(views[1]) })].join(t('common.listSeparator'))
+      : t('progress.mastered', { percent: percent(views[0]) })
+  return (
+    <div class={stale ? 'progress-summary stale' : 'progress-summary'} aria-busy={stale || undefined}>
+      <div class="progress-summary-head">
+        <b>{capitalize(head)}</b>
+        {overall.due > 0 && <span>{capitalize(t('progress.due', { count: overall.due }))}</span>}
+      </div>
+      <PercentBar value={overall.percent} />
+    </div>
   )
 }
 

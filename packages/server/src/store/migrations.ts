@@ -128,4 +128,48 @@ CREATE TABLE app_state (
 );
 `,
   },
+  {
+    version: 6,
+    name: '006_graph_cards.sql',
+    sql: `
+CREATE TABLE graph_cards (
+  key TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('move', 'rest')),
+  color TEXT NOT NULL CHECK (color IN ('B', 'W')),
+  fsrs_json TEXT NOT NULL,
+  due TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (key, kind, color)
+);
+
+CREATE TABLE graph_reviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  card_key TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  color TEXT NOT NULL,
+  reviewed_at TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  manual TEXT CHECK (manual IN ('again', 'hard', 'good', 'easy')),
+  auto TEXT NOT NULL CHECK (auto IN ('again', 'hard', 'good', 'easy')),
+  raw_json TEXT NOT NULL,
+  FOREIGN KEY (card_key, kind, color) REFERENCES graph_cards (key, kind, color) ON DELETE CASCADE
+);
+CREATE INDEX graph_reviews_card ON graph_reviews (card_key, kind, color, id);
+CREATE UNIQUE INDEX graph_reviews_session ON graph_reviews (card_key, kind, color, session_id);
+
+CREATE TABLE graph_seen (
+  key TEXT PRIMARY KEY,
+  first_at TEXT NOT NULL
+);
+`,
+  },
+  {
+    version: 7,
+    name: '007_card_raw.sql',
+    sql: `
+ALTER TABLE card_reviews ADD COLUMN raw_json TEXT;
+ALTER TABLE card_reviews ADD COLUMN manual INTEGER NOT NULL DEFAULT 0;
+UPDATE card_reviews SET manual = 1 WHERE rating <> auto_rating;
+`,
+  },
 ]

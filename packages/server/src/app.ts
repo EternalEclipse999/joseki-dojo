@@ -17,6 +17,7 @@ import { registerStartsRoutes } from './api/starts-routes'
 import { registerTrapsRoutes } from './api/traps-routes'
 import { registerNewsRoutes } from './api/news-routes'
 import { registerPlayerRoutes } from './api/player-routes'
+import { registerProgressRoutes } from './api/progress-routes'
 import { registerUiRoutes } from './api/ui-routes'
 import { handleSocket } from './api/ws'
 import { HumanBot } from './bot/bot'
@@ -29,6 +30,8 @@ import { toErrorMessage } from './errors'
 import { GraphBook } from './graph/book'
 import { InstallerService } from './install/installer'
 import { NewsService } from './news/service'
+import { GraphCardRepo } from './progress/repo'
+import { GraphProgressService } from './progress/service'
 import { ReviewService } from './review/service'
 import { thresholdsFor, type ThresholdTable } from './review/thresholds'
 import { VariationService } from './review/variation'
@@ -58,6 +61,8 @@ export interface AppServices {
   /** Spec (progress) 3.4: the joseki graph with its weights; empty when there is none. */
   graph: GraphBook
   cards: CardService
+  /** Spec (progress part 2): the graph cards recorded from every training. */
+  progress: GraphProgressService
   ui: UiService
   player: PlayerService
   /** Spec (whats-new) 3.2: which novelties are new for this player. */
@@ -103,17 +108,21 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
   const starts = options.starts ?? StartBook.empty()
   const graph = options.graph ?? GraphBook.empty()
   const health = new HealthMonitor(config, engine)
+  const thresholdsOf = (level: string) => thresholdsFor(level, options.thresholds ?? null, config.thresholds)
+  const levelThresholds = () => thresholdsOf(config.player.level)
   const cards = new CardService({
     repo: new CardRepo(db),
     starts,
+    log: options.log,
     judge: {
       analyze: (q) => engine.analyze(q),
       ready: () => health.get().state === 'ready',
-      thresholds: () => thresholdsFor(config.player.level, options.thresholds ?? null, config.thresholds),
+      thresholds: levelThresholds,
       visits: () => config.analysis.reviewVisits,
     },
   })
-  const reviews = new ReviewService({ repo, analysis, config, publish, traps, thresholds: options.thresholds ?? null, cards, log: options.log })
+  const progress = new GraphProgressService({ repo: new GraphCardRepo(db), graph, starts, thresholds: levelThresholds, level: () => config.player.level })
+  const reviews = new ReviewService({ repo, analysis, config, publish, traps, thresholds: options.thresholds ?? null, cards, progress, log: options.log })
   const variations = new VariationService({ repo, engine, config, problems: (id) => cards.problemBase(id) })
   const sessions = new SessionService({
     repo,
@@ -134,8 +143,18 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
   const settings = new SettingsService({ config, engine, health, lock, configFile, modelsDir: join(enginesDir, 'models'), commandFor, onSwitched: () => variations.clear() })
   const installer = new InstallerService({ config, lock, enginesDir, settings, commandFor, log, engine, health, fetch })
   const ui = new UiService(config, configFile)
-  const player = new PlayerService(config, configFile)
-  return { config, db, engine, health, sessions, reviews, variations, settings, installer, hub, traps, starts, graph, cards, ui, player, news }
+  const player = new PlayerService({
+    config,
+    configFile,
+    transaction: (fn) => db.transaction(fn)(),
+    // Spec (progress part 2) 5: every card again with the new level's thresholds.
+    replay: (level) => {
+      const thresholds = thresholdsOf(level)
+      progress.replayLevel(thresholds)
+      cards.replayLevel(thresholds, (sessionId) => reviews.rebuild(sessionId, thresholds))
+    },
+  })
+  return { config, db, engine, health, sessions, reviews, variations, settings, installer, hub, traps, starts, graph, cards, progress, ui, player, news }
 }
 
 export async function buildApp(services: AppServices, webDist: string | null = null): Promise<FastifyInstance> {
@@ -162,6 +181,7 @@ export async function buildApp(services: AppServices, webDist: string | null = n
   registerCardsRoutes(app, services.cards)
   registerUiRoutes(app, services.ui)
   registerPlayerRoutes(app, services.player)
+  registerProgressRoutes(app, services.progress)
   registerNewsRoutes(app, services.news)
   if (webDist && existsSync(webDist)) await app.register(fastifyStatic, { root: webDist })
   return app

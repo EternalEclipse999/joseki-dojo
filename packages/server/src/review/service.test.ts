@@ -5,6 +5,9 @@ import { AnalysisScheduler } from '../analysis/scheduler'
 import { CardRepo } from '../cards/repo'
 import { CardService } from '../cards/service'
 import { decodeJdb, encodeJdb } from '../jdb'
+import { TEST_THRESHOLDS, walkBook } from '../progress/fixture'
+import { GraphCardRepo } from '../progress/repo'
+import { GraphProgressService } from '../progress/service'
 import { StartBook } from '../starts/book'
 import { TEST_STARTS_LIST, testStartsTree } from '../starts/fixture'
 import { SessionError } from '../session/session'
@@ -14,11 +17,12 @@ import { SessionRepo } from '../store/repo'
 import { ReviewService } from './service'
 import type { ThresholdTable } from './thresholds'
 
-function setup(thresholds: ThresholdTable | null = null, cards?: CardService, start?: SessionRecord['settings']['start']) {
+function setup(thresholds: ThresholdTable | null = null, cards?: CardService, start?: SessionRecord['settings']['start'], progress?: GraphProgressService) {
   const engine = new StubEngine()
   const repo = new SessionRepo(openDb(':memory:'))
   const config = testConfig()
   const published: ServerMessage[] = []
+  const logs: string[] = []
   const reviews = new ReviewService({
     repo,
     config,
@@ -26,7 +30,9 @@ function setup(thresholds: ThresholdTable | null = null, cards?: CardService, st
     publish: (_id, msg) => published.push(msg),
     thresholds,
     cards,
+    progress,
     now: () => '2026-10-06T10:10:00.000Z',
+    log: (line) => logs.push(line),
   })
   const rec: SessionRecord = {
     id: 's1',
@@ -46,7 +52,7 @@ function setup(thresholds: ThresholdTable | null = null, cards?: CardService, st
   repo.insertSession(rec)
   // Black's lead per position: the bot (White) loses 3 on turn 1, the user gives back 1 on turn 2.
   engine.lead = (q) => [0, 0, 3, 2][q.moves.length]
-  return { engine, repo, reviews, published }
+  return { engine, repo, reviews, published, logs }
 }
 
 describe('ReviewService', () => {
@@ -82,6 +88,16 @@ describe('ReviewService', () => {
     }
     expect(await categories(null)).toEqual(['exact', 'mistake', 'inaccuracy'])
     expect(await categories(table)).toEqual(['exact', 'blunder', 'mistake'])
+  })
+
+  it('rebuilds the review of a training at other thresholds from its stored analyses; nothing without them', async () => {
+    const { reviews } = setup()
+    const kyu = { inaccuracy: 2, mistake: 4, blunder: 8, punished: 2 }
+    expect(reviews.rebuild('s1', kyu)).toBeNull()
+    await reviews.prepare('s1')
+    expect(reviews.rebuild('s1', kyu)?.moveReviews.map((m) => m.category)).toEqual(['exact', 'inaccuracy', 'exact'])
+    expect(reviews.rebuild('s1', TEST_THRESHOLDS)?.moveReviews.map((m) => m.category)).toEqual(['exact', 'mistake', 'inaccuracy'])
+    expect(reviews.rebuild('nope', kyu)).toBeNull()
   })
 
   it('reuses stored analyses', async () => {
@@ -140,5 +156,33 @@ describe('ReviewService', () => {
     const got = reviews.get('s1')
     expect(got.status === 'ok' && got.review.repetition).toBeFalsy()
     expect(real.list()).toHaveLength(1)
+  })
+
+  it('records the graph cards of a training after its card repetition', async () => {
+    const graphCards = new GraphCardRepo(openDb(':memory:'))
+    const progress = new GraphProgressService({ repo: graphCards, graph: walkBook(), starts: StartBook.empty(), thresholds: () => TEST_THRESHOLDS, level: () => '7k' })
+    const calls: string[] = []
+    const cards = { recordTraining: () => calls.push('cards'), repetitionOf: () => null } as unknown as CardService
+    const recordTraining = progress.recordTraining.bind(progress)
+    progress.recordTraining = (rec, review) => {
+      calls.push('progress')
+      recordTraining(rec, review)
+    }
+    await setup(null, cards, undefined, progress).reviews.prepare('s1')
+    expect(calls).toEqual(['cards', 'progress'])
+    // Q16 and P14 are the user's: P14 is not an edge of node 2, so there is no rest after it.
+    expect(graphCards.allCards().map((c) => [c.kind, c.color])).toEqual([['move', 'B'], ['move', 'B']])
+  })
+
+  it('never lets a failing graph card hook break the review or the card repetition', async () => {
+    const starts = StartBook.fromBase(decodeJdb(encodeJdb(testStartsTree()))).withList(JSON.stringify(TEST_STARTS_LIST), () => {})
+    const cards = new CardService({ repo: new CardRepo(openDb(':memory:')), starts })
+    const progress = { recordTraining: () => { throw new Error('boom') } } as unknown as GraphProgressService
+    const { engine, reviews, published, logs } = setup(null, cards, { id: starts.list()[0].id, name: 'X', mirror: false }, progress)
+    engine.lead = () => 0
+    const review = await reviews.prepare('s1')
+    expect(review.repetition?.auto).toBe('good')
+    expect(published.some((m) => m.type === 'reviewReady')).toBe(true)
+    expect(logs).toEqual(['graph card hook failed for session s1: boom'])
   })
 })
