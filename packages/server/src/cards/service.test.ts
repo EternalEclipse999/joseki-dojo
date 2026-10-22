@@ -1,20 +1,25 @@
-import { colorSign, type Actor, type Category, type Color, type Corner, type ReviewData, type Vertex } from '@joseki-dojo/shared'
-import { describe, expect, it } from 'vitest'
+import { colorSign, type Actor, type Category, type Color, type Corner, type Rating, type RepetitionInfo, type ReviewData, type Vertex } from '@joseki-dojo/shared'
+import { describe, expect, it, vi } from 'vitest'
 import { decodeJdb, encodeJdb, toTopRight } from '../jdb'
 import { StartBook } from '../starts/book'
 import { TEST_STARTS_LIST, testStartsTree } from '../starts/fixture'
 import { openDb } from '../store/db'
 import type { SessionRecord } from '../store/records'
-import { DEFAULT_CONFIG } from '../config'
+import { DEFAULT_CONFIG, type Thresholds } from '../config'
 import { EngineError } from '../engine/engine'
 import type { AnalysisResponse, KataGoQueryBody } from '../engine/katago-types'
 import { CardRepo } from './repo'
+import { newState, schedule } from './schedule'
 import { CardError, CardService, LEARN_AHEAD_MS } from './service'
 
 const book = (list = TEST_STARTS_LIST): StartBook => StartBook.fromBase(decodeJdb(encodeJdb(testStartsTree()))).withList(JSON.stringify(list), () => {})
 const listedId = (): string => book().list()[0].id
 /** The same base with the first position taken off the list: its cards are orphans. */
 const shorterList = (): StartBook => book({ branches: [], positions: TEST_STARTS_LIST.positions.slice(1) })
+
+// Thresholds like a kyu level's, where 1.5 points is exact, and like a dan level's, where it is a mistake.
+const KYU: Thresholds = { inaccuracy: 2, mistake: 4, blunder: 8, punished: 2 }
+const DAN: Thresholds = { inaccuracy: 0.5, mistake: 1, blunder: 3, punished: 0.5 }
 
 function setup(start = new Date('2026-10-15T10:00:00'), repo = new CardRepo(openDb(':memory:')), starts = book()) {
   let now = start
@@ -169,6 +174,112 @@ describe('a position card whose start left the list', () => {
     expect(orphan.list()).toEqual([expect.objectContaining({ id: 'card1', startId: listedId(), moves: [], orphan: true })])
     orphan.remove('card1')
     expect(orphan.list()).toEqual([])
+  })
+})
+
+describe('replaying the position cards at another level', () => {
+  const at = new Date('2026-10-15T10:00:00')
+  const once = (rating: Rating) => schedule(newState(at), rating, at)
+
+  it('re-rates a review from its raw losses and replays the card; back again restores it', () => {
+    const { service, repo } = setup(at)
+    // A training at a kyu level, where its 1.5-point move is exact.
+    service.recordTraining(...training('s1', listedId(), [[1.5, 'exact']]))
+    const recorded = repo.card('card1')!.state
+    expect(repo.reviewBySession('card1', 's1')!.raw).toEqual({ moves: [{ loss: 1.5 }], opponent: [] })
+    service.replayLevel(DAN)
+    expect(service.repetitionOf('s1')).toMatchObject({ auto: 'again', rating: 'again', worst: { category: 'mistake', loss: 1.5 } })
+    expect(repo.card('card1')!.state).toEqual(once('again'))
+    service.replayLevel(KYU)
+    expect(service.repetitionOf('s1')).toMatchObject({ auto: 'good', rating: 'good', worst: null })
+    expect(repo.card('card1')!.state).toEqual(recorded)
+  })
+
+  it('keeps a manual rating through every replay, also one that a level makes equal to the auto rating', () => {
+    const { service, repo } = setup(at)
+    service.recordTraining(...training('s1', listedId(), [[1.5, 'exact']]))
+    const { reviewId } = service.repetitionOf('s1')!
+    service.rate(reviewId, 'again')
+    service.replayLevel(DAN)
+    service.replayLevel(KYU)
+    expect(service.repetitionOf('s1')).toMatchObject({ auto: 'good', rating: 'again' })
+    expect(repo.card('card1')!.state).toEqual(once('again'))
+    // A later re-rating starts from the replayed state before the review.
+    expect(repo.review(reviewId)!.stateBefore).toEqual(newState(at))
+    expect(service.rate(reviewId, 'hard').due).toBe(once('hard').due)
+  })
+
+  /** A position card with one review recorded before the raw losses were kept: its worst move, and the training `sessionId`. */
+  function older(worst: RepetitionInfo['worst'], auto: Rating, sessionId = 'gone') {
+    const { service, repo } = setup(at)
+    repo.insertCard({ id: 'old', kind: 'position', key: `position:${listedId()}`, data: { startId: listedId(), userColor: 'B', botRank: '5k' }, state: once(auto), createdAt: at.toISOString() })
+    const id = repo.insertReview({ cardId: 'old', reviewedAt: at.toISOString(), rating: auto, auto, worst, stateBefore: newState(at), sessionId, raw: null })
+    return { service, repo, id }
+  }
+
+  it('re-categorises the stored worst move of an older review whose training is gone; an unpunished bot mistake and a clean training stay', () => {
+    const { service, repo, id } = older({ category: 'inaccuracy', loss: 1.5 }, 'hard')
+    service.replayLevel(DAN)
+    expect(repo.review(id)).toMatchObject({ auto: 'again', rating: 'again', worst: { category: 'mistake', loss: 1.5 } })
+    service.replayLevel(KYU)
+    expect(repo.review(id)).toMatchObject({ auto: 'good', rating: 'good', worst: null })
+    // The loss is kept from the first replay on, so a stricter level finds it again.
+    service.replayLevel(DAN)
+    expect(repo.review(id)).toMatchObject({ auto: 'again', worst: { category: 'mistake', loss: 1.5 }, raw: { moves: [{ loss: 1.5 }], opponent: [] } })
+    expect(repo.card('old')!.state).toEqual(once('again'))
+    for (const [worst, auto] of [[{ category: 'unpunished', loss: 3 }, 'again'], [null, 'good']] as const) {
+      const kept = older(worst, auto)
+      kept.service.replayLevel(KYU)
+      kept.service.replayLevel(DAN)
+      expect(kept.repo.review(kept.id)).toMatchObject({ auto, rating: auto, worst, raw: null })
+      expect(kept.repo.card('old')!.state).toEqual(once(auto))
+    }
+  })
+
+  it('re-derives an older review from its training while the training is in the database, and keeps its raw losses', () => {
+    const { service, repo, id } = older(null, 'good', 's1')
+    // The training as the review service rebuilds it (only its losses count).
+    const [, rebuilt] = training('s1', listedId(), [[0.25, 'exact'], [1.5, 'exact']])
+    const asked: string[] = []
+    service.replayLevel(DAN, (sessionId) => {
+      asked.push(sessionId)
+      return rebuilt
+    })
+    expect(asked).toEqual(['s1'])
+    expect(repo.review(id)).toMatchObject({ auto: 'again', worst: { category: 'mistake', loss: 1.5 }, raw: { moves: [{ loss: 0.25 }, { loss: 1.5 }], opponent: [] } })
+    // The raw losses are kept: the training is not asked for again.
+    service.replayLevel(KYU, (sessionId) => {
+      asked.push(sessionId)
+      return null
+    })
+    expect(asked).toEqual(['s1'])
+    expect(repo.review(id)).toMatchObject({ auto: 'good', worst: null })
+  })
+
+  it('falls back to the stored worst move of an older review whose training cannot be rebuilt, and logs it', () => {
+    const { repo, id } = older({ category: 'inaccuracy', loss: 1.5 }, 'hard', 's1')
+    const lines: string[] = []
+    const service = new CardService({ repo, starts: book(), now: () => at, log: (line) => lines.push(line) })
+    service.replayLevel(DAN, () => {
+      throw new Error('damaged analysis')
+    })
+    expect(repo.review(id)).toMatchObject({ auto: 'again', worst: { category: 'mistake', loss: 1.5 }, raw: { moves: [{ loss: 1.5 }], opponent: [] } })
+    expect(lines).toEqual([expect.stringMatching(/training s1 not rebuilt.*damaged analysis/)])
+  })
+
+  it('writes only what a replay changes', () => {
+    const { service, repo } = setup(at)
+    service.recordTraining(...training('s1', listedId(), [[1.5, 'exact']]))
+    const replaced = vi.spyOn(repo, 'replaceReview')
+    const updated = vi.spyOn(repo, 'updateState')
+    // Recorded as exact, as the kyu thresholds rate 1.5 points: nothing to write. The dan ones change the review and the
+    // card once; a second replay at them changes nothing.
+    service.replayLevel(KYU)
+    expect([replaced.mock.calls.length, updated.mock.calls.length]).toEqual([0, 0])
+    service.replayLevel(DAN)
+    expect([replaced.mock.calls.length, updated.mock.calls.length]).toEqual([1, 1])
+    service.replayLevel(DAN)
+    expect([replaced.mock.calls.length, updated.mock.calls.length]).toEqual([1, 1])
   })
 })
 
@@ -383,6 +494,28 @@ describe('answering a problem', () => {
     expect(err).toMatchObject({ code: 'card_not_found' })
     expect(repo.card('card1')).toMatchObject({ deleted: true, state: { reps: 1 } })
     expect(repo.latestReviewId('card1')).toBe(before)
+  })
+
+  it('is re-rated from its answer loss at another level; the review of the training that made the problem stays «Снова»', async () => {
+    const { service, repo, setNow } = problemSetup()
+    const made = new Date('2026-10-15T10:00:00')
+    const answered = new Date('2026-10-15T10:30:00')
+    setNow(answered)
+    // 0.8 points: an inaccuracy at the default thresholds, exact at the kyu ones.
+    const { reviewId } = (await service.answer('card1', [14, 2])).repetition
+    expect(repo.review(reviewId)).toMatchObject({ auto: 'hard', raw: { loss: 0.8, best: false } })
+    service.replayLevel(KYU)
+    expect(repo.review(reviewId)).toMatchObject({ auto: 'good', rating: 'good', worst: null })
+    expect(repo.reviewBySession('card1', 's1')).toMatchObject({ auto: 'again', rating: 'again' })
+    expect(repo.card('card1')!.state).toEqual(schedule(schedule(newState(made), 'again', made), 'good', answered))
+    service.replayLevel(DEFAULT_CONFIG.thresholds)
+    expect(repo.review(reviewId)).toMatchObject({ auto: 'hard', worst: { category: 'inaccuracy', loss: 0.8 } })
+    // Answers recorded before the raw losses were kept: from the stored loss; the best move stays «Легко».
+    const older = repo.insertReview({ cardId: 'card1', reviewedAt: answered.toISOString(), rating: 'again', auto: 'again', worst: { category: 'mistake', loss: 2.5 }, stateBefore: newState(made), sessionId: null, raw: null })
+    const best = repo.insertReview({ cardId: 'card1', reviewedAt: answered.toISOString(), rating: 'easy', auto: 'easy', worst: null, stateBefore: newState(made), sessionId: null, raw: null })
+    service.replayLevel(KYU)
+    expect(repo.review(older)).toMatchObject({ auto: 'hard', worst: { category: 'inaccuracy', loss: 2.5 } })
+    expect(repo.review(best)).toMatchObject({ auto: 'easy', worst: null })
   })
 
   it('records the answer as a review that can be re-rated', async () => {

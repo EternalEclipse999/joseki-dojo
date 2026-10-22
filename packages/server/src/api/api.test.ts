@@ -5,12 +5,16 @@ import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WebSocket from 'ws'
+import { State } from 'ts-fsrs'
 import type { AboutInfo, ClientMessage, ServerMessage } from '@joseki-dojo/shared'
 import { fakeEngine, serviceOptions, testConfig } from '../../test/helpers'
 import { buildApp, createServices, type AppServices } from '../app'
 import { CardRepo } from '../cards/repo'
 import { newState } from '../cards/schedule'
 import { HealthMonitor } from '../engine/health'
+import { lineKey } from '../graph/fixture'
+import { weightedBook } from '../progress/fixture'
+import { GraphCardRepo } from '../progress/repo'
 import { StartBook } from '../starts/book'
 import { TEST_STARTS_LIST, testStartsTree } from '../starts/fixture'
 import { TrapBook } from '../traps/book'
@@ -362,6 +366,38 @@ describe('/api/player', () => {
     expect(bad.status).toBe(400)
     expect(((await bad.json()) as { error: { key: string } }).error.key).toBe('error.player.level')
     expect(await (await fetch(`http://${host}/api/player`)).json()).toEqual({ level: '1d' })
+  })
+})
+
+describe('GET /api/progress', () => {
+  it('reports no weights without a graph, and refuses a missing or unknown colour', async () => {
+    expect(await (await fetch(`http://${host}/api/progress?color=B`)).json()).toEqual({ hasWeights: false, level: '7k', color: 'B', overall: { percent: 0, due: 0 }, positions: {} })
+    for (const query of ['', '?color=X', '?color=b']) {
+      const bad = await fetch(`http://${host}/api/progress${query}`)
+      expect(bad.status).toBe(400)
+      expect(await bad.json()).toEqual({ error: 'bad_color' })
+    }
+  })
+
+  it("serves the progress of the graph's list positions for a colour at the player's level", async () => {
+    const config = testConfig()
+    // Black's Q16, on the list, is a leaf where White is to move.
+    const graph = weightedBook([{ line: [], move: 'Q16', p: 1 }], { 'list-q16': ['Q16'] }, '7k')
+    const withGraph = createServices(config, fakeEngine(), serviceOptions(config, { graph }))
+    const other = await buildApp(withGraph)
+    try {
+      const now = new Date()
+      const state = { ...newState(now), state: State.Review, reps: 1, stability: 21, due: new Date(now.getTime() + 86_400_000).toISOString() }
+      new GraphCardRepo(withGraph.db).upsert({ key: lineKey(['Q16']), kind: 'move', color: 'W', state, createdAt: now.toISOString() })
+      const get = async (query: string) => (await other.inject({ method: 'GET', url: `/api/progress${query}`, headers: { host: '127.0.0.1:1' } })).json()
+      // White's move card at Q16 is learned; its rest card (all of Q16's weight, as Q16 has no good edges) is not there.
+      expect(await get('?color=W')).toEqual({ hasWeights: true, level: '7k', color: 'W', overall: { percent: 0.5, due: 0 }, positions: { 'list-q16': { percent: 0.5, weight: 1, due: false } } })
+      expect((await get('?color=B')).positions).toEqual({ 'list-q16': { percent: 0, weight: 1, due: false } })
+    } finally {
+      await other.close()
+      await withGraph.engine.stop()
+      withGraph.db.close()
+    }
   })
 })
 

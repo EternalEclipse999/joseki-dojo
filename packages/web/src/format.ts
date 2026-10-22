@@ -2,6 +2,7 @@ import { vertexToGtp, type Actor, type Category, type Color, type Corner, type L
 
 const oneDecimalFormats = new Map<Language, Intl.NumberFormat>()
 const integerFormats = new Map<Language, Intl.NumberFormat>()
+const percentFormats = new Map<Language, Intl.NumberFormat>()
 const cachedFormat = (cache: Map<Language, Intl.NumberFormat>, lang: Language, options?: Intl.NumberFormatOptions): Intl.NumberFormat => {
   let format = cache.get(lang)
   if (!format) cache.set(lang, (format = new Intl.NumberFormat(lang, options)))
@@ -31,6 +32,12 @@ export const pointsText = (n: number, t: Translate, lang: Language): string => t
 
 /** Visit counts with grouped thousands («1 200» / "1,200"). */
 export const formatCount = (n: number, lang: Language): string => cachedFormat(integerFormats, lang).format(Math.round(n))
+
+/** Spec (progress part 2) 6: a share 0..1 as a whole percent in the language («42 %», "42%"). */
+export const formatPercent = (n: number, lang: Language): string => cachedFormat(percentFormats, lang, { style: 'percent', maximumFractionDigits: 0 }).format(n)
+
+/** The first letter in upper case: a lowercase catalog text that opens a line. */
+export const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
 
 export const moveLabel = (v: MoveVertex, t: Translate): string => (v === 'pass' ? t('common.pass') : vertexToGtp(v))
 

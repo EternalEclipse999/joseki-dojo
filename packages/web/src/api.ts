@@ -1,4 +1,4 @@
-import type { AboutInfo, CardListItem, CardSummary, ClientMessage, DueCard, HealthResponse, InstallStatus, Language, LocalizedText, MessageKey, NewsId, NewsView, PlayerSettings, ProblemAnswer, Rating, RepetitionInfo, ReviewData, ServerMessage, SettingsResponse, SettingsUpdate, SettingsView, StartCardState, StartsInfo, Theme, TrapsInfo, UiSettings, Vertex } from '@joseki-dojo/shared'
+import type { AboutInfo, CardListItem, CardSummary, ClientMessage, Color, DueCard, HealthResponse, InstallStatus, Language, LocalizedText, MessageKey, NewsId, NewsView, PlayerSettings, ProblemAnswer, ProgressView, Rating, RepetitionInfo, ReviewData, ServerMessage, SettingsResponse, SettingsUpdate, SettingsView, StartCardState, StartsInfo, Theme, TrapsInfo, UiSettings, Vertex } from '@joseki-dojo/shared'
 import type { NewsAction } from './news'
 
 /** Spec (languages) 6: a failed request, kept as a key so that it is shown in the reader's language. */
@@ -157,6 +157,13 @@ export async function fetchStartCards(): Promise<Record<string, StartCardState>>
   const res = await request('/api/cards/starts')
   if (!res.ok) throw failed('error.api.cards', res)
   return (await res.json()) as Record<string, StartCardState>
+}
+
+/** Spec (progress part 2) 4: the progress of the start list for `color` at the player's level. A failure is not shown: the tree keeps its card marks. */
+export async function fetchProgress(color: Color): Promise<ProgressView> {
+  const res = await request(`/api/progress?color=${color}`)
+  if (!res.ok) throw new Error(`progress: HTTP ${res.status}`)
+  return (await res.json()) as ProgressView
 }
 
 /**

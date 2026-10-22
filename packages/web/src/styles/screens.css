@@ -122,15 +122,20 @@
 .page.wide { max-width: 760px; }
 .section p { line-height: 1.55; }
 .status-line.error { color: var(--critical-text); }
+/* Spec (progress part 2) 5: the level's select while its save replays the cards — focusable, its changes ignored. */
+select[aria-disabled='true'] { opacity: 0.5; cursor: progress; }
 .visits { display: flex; gap: 16px; flex-wrap: wrap; }
 
-.start-tree { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; margin-top: 12px; border-radius: 10px; }
+.start-tree { --outline: 220px; display: grid; grid-template-columns: var(--outline) minmax(0, 1fr); gap: 16px; margin-top: 12px; border-radius: 10px; }
+/* Spec (progress part 2) 6.2: the rows' bars and percents need a wider outline. */
+.start-tree.with-progress { --outline: 256px; }
 .start-tree:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-.start-outline { display: grid; align-content: start; gap: 1px; }
+.start-outline { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 1px; }
 .start-outline-row { justify-content: flex-start; gap: 4px; width: 100%; height: auto; padding: 4px 6px; border: 0; border-radius: 6px; background: none; color: var(--text); font-weight: 400; text-align: left; white-space: normal; }
 .start-outline-row.on-path { color: var(--accent-text); }
 .start-outline-row.current, .start-outline-row.current:hover:not(:disabled) { background: var(--accent-bg); color: var(--accent-text); font-weight: 500; }
 .start-outline-row.rare .start-outline-name, .start-card.rare .start-card-name { color: var(--text-3); }
+.start-outline-name { min-width: 0; overflow-wrap: anywhere; }
 .start-outline-arrow { width: 12px; flex: none; color: var(--text-3); }
 .start-count { margin-left: auto; padding-left: 6px; font-size: 11px; font-weight: 400; color: var(--text-2); }
 .start-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 8px; font-size: 13px; color: var(--text-2); }
@@ -140,7 +145,7 @@
 .start-focus { display: flex; align-items: flex-start; gap: 14px; }
 .start-board { width: 250px; height: 250px; flex: none; }
 .start-info { display: grid; gap: 4px; min-width: 0; }
-.start-info-name { font-size: 16px; font-weight: 600; }
+.start-info-name { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; font-size: 16px; font-weight: 600; }
 .start-info-sub { font-size: 13px; color: var(--text-2); }
 .start-rare { font-size: 11px; font-weight: 400; color: var(--warning-text); }
 .start-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; margin-top: 12px; }
@@ -160,6 +165,21 @@
 .start-card .start-rare + .card-mark, .start-outline-row .start-rare + .card-mark, .card-mark + .start-count { margin-left: 0; }
 .start-tree .badge.due { background: var(--accent); color: var(--on-accent); font-variant-numeric: tabular-nums; }
 .start-info-card { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
+/* Spec (progress part 2) 6: the summary above «Из списка», the thin bars and percents of the rows, the shown node's percent. */
+.pbar { display: inline-block; width: 24px; height: 4px; flex: none; overflow: hidden; border-radius: 2px; background: color-mix(in srgb, var(--text-3) 28%, transparent); }
+.pbar > span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.progress-summary { display: grid; gap: 8px; margin-top: 12px; padding: 10px 12px; border-radius: var(--radius); background: var(--surface); }
+.progress-summary-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 16px; }
+.progress-summary-head b { font-size: 20px; font-weight: 500; line-height: 1.25; font-variant-numeric: tabular-nums; }
+.progress-summary-head span { font-size: 13px; color: var(--text-2); }
+.progress-summary .pbar { width: 100%; height: 6px; border-radius: 3px; }
+.start-progress { display: inline-flex; align-items: center; gap: 6px; flex: none; margin-left: auto; padding-left: 6px; }
+.start-rare + .start-progress { margin-left: 0; }
+.start-percent { min-width: 3.2em; font-size: 11px; font-weight: 400; color: var(--text-2); text-align: right; font-variant-numeric: tabular-nums; }
+.start-info-progress { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 13px; font-weight: 400; color: var(--text-2); white-space: nowrap; }
+.start-info-due { display: inline-flex; align-items: center; gap: 6px; }
+/* A colour switch being read: the previous colour's numbers stay in place, dimmed, until the new ones come. */
+.progress-summary.stale, .start-tree.stale .start-progress, .start-tree.stale .start-info-progress { opacity: 0.45; }
 .corner-mark { cursor: pointer; }
 .corner-mark-disc { fill: var(--board); }
 .corner-mark text { fill: var(--board-accent); font-weight: 600; }

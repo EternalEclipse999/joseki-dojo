@@ -312,6 +312,28 @@ export interface StartCardState {
   dueNow: boolean
 }
 
+/** Spec (progress part 2) 4.2–4.4: a start list position's progress for the player's colour at the player's level. */
+export interface ProgressEntry {
+  /** 0..1: the mean percent of the cards under the position, each weighted by the probability of meeting it there. */
+  percent: number
+  /** The probability of reaching the position from the empty corner. */
+  weight: number
+  /** A card under the position is due. */
+  due: boolean
+}
+
+/** Spec (progress part 2) 4: the progress of the start list for one colour at the player's level; without weights, none. */
+export interface ProgressView {
+  /** The graph has weights for the level; when false, `overall` is zero and `positions` is empty. */
+  hasWeights: boolean
+  level: string
+  color: Color
+  /** The positions' percents weighted by their weights, and the number of positions due. */
+  overall: { percent: number; due: number }
+  /** By list id. */
+  positions: Record<string, ProgressEntry>
+}
+
 /** Spec (repetition) 4.1: where a «find a good move» problem came from. */
 export type ProblemSource = 'mistake' | 'unpunished'
 

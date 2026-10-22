@@ -18,13 +18,17 @@ const PATH_FIELDS: { key: PathKey; label: MessageKey; models: boolean }[] = [
   { key: 'humanModel', label: 'settings.engine.humanModel', models: true },
 ]
 
-/** The player's level: saved at once, without «Сохранить и проверить». */
-function LevelSection() {
+/**
+ * The player's level: saved at once, without «Сохранить и проверить». Spec (progress part 2) 5: the save replays every
+ * card, so «Пересчёт прогресса…» shows meanwhile and the level cannot change again until it is done (rapid changes would
+ * queue full replays); `onSaved` tells the app that the cards and the progress moved.
+ */
+function LevelSection({ onSaved }: { onSaved: () => void }) {
   const { language, t } = useI18n()
   const [level, setLevel] = useState<string | null>(null)
   const [error, setError] = useState<LocalizedText | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
-  const latest = useRef(0)
+  const [saving, setSaving] = useState(false)
   const confirmed = useRef<string | null>(null)
   const load = (): void => {
     setError(null)
@@ -41,19 +45,20 @@ function LevelSection() {
   }
   useEffect(load, [])
   const choose = (next: string): void => {
-    const request = ++latest.current
     setLevel(next)
     setError(null)
+    setSaving(true)
     savePlayer(next)
       .then((p) => {
         confirmed.current = p.level
-        if (request === latest.current) setLevel(p.level)
+        setLevel(p.level)
+        onSaved()
       })
       .catch((e: unknown) => {
-        if (request !== latest.current) return
         setLevel(confirmed.current)
         setError(failureText(e))
       })
+      .finally(() => setSaving(false))
   }
   return (
     <section class="card section">
@@ -61,13 +66,34 @@ function LevelSection() {
         <h2>{t('settings.level.title')}</h2>
         <p>{t('settings.level.hint')}</p>
       </div>
-      <select aria-label={t('settings.level.title')} value={level ?? ''} disabled={level === null} onChange={(e) => choose(e.currentTarget.value)}>
+      {/* While the save is on its way the select keeps the keyboard focus (a disabled one would drop it): aria-disabled, and a
+          change meanwhile is undone. */}
+      <select
+        aria-label={t('settings.level.title')}
+        value={level ?? ''}
+        disabled={level === null}
+        aria-disabled={saving}
+        onChange={(e) => {
+          if (saving) e.currentTarget.value = level ?? ''
+          else choose(e.currentTarget.value)
+        }}
+      >
         {PLAYER_LEVELS.map((l) => (
           <option key={l} value={l}>
             {levelLabel(l, t)}
           </option>
         ))}
       </select>
+      {/* Mounted throughout and filled while saving, so that screen readers announce the text (a status region added
+          together with its text is often not read); out of the layout while empty. */}
+      <p class={saving ? 'status-line' : 'sr-only'} role="status">
+        {saving && (
+          <>
+            <LoaderCircle class="spin" aria-hidden="true" />
+            {t('settings.level.recomputing')}
+          </>
+        )}
+      </p>
       {error && <p class="hint error">{errorText(error, language)}</p>}
       {loadFailed && (
         <button type="button" class="btn" onClick={load}>
@@ -139,7 +165,7 @@ const VISIT_FIELDS: { key: VisitsKey; label: MessageKey }[] = [
   { key: 'endVisits', label: 'settings.analysis.endVisits' },
 ]
 
-export function SettingsScreen({ onClose, onSaved, onRepick }: { onClose: () => void; onSaved: () => void; onRepick: () => void }) {
+export function SettingsScreen({ onClose, onSaved, onLevelSaved, onRepick }: { onClose: () => void; onSaved: () => void; onLevelSaved: () => void; onRepick: () => void }) {
   const { language, t } = useI18n()
   const [view, setView] = useState<SettingsView | null>(null)
   const [form, setForm] = useState<SettingsUpdate | null>(null)
@@ -213,7 +239,7 @@ export function SettingsScreen({ onClose, onSaved, onRepick }: { onClose: () => 
           </p>
         )}
 
-        <LevelSection />
+        <LevelSection onSaved={onLevelSaved} />
 
         <ThemeSection />
 

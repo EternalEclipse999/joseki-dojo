@@ -18,3 +18,4 @@ e2e/starts-i18n.test.json
 e2e/config.run.json
 e2e/.problems/
 e2e/.news/
+e2e/.progress/

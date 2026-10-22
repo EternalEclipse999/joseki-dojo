@@ -1,6 +1,8 @@
-import type { ReviewData } from '@joseki-dojo/shared'
+import type { PlayedMove, ReviewData } from '@joseki-dojo/shared'
 import { describe, expect, it } from 'vitest'
-import { positionRating } from './grade'
+import type { Thresholds } from '../config'
+import { buildReview } from '../review/compute'
+import { positionRating, positionRaw, ratePosition } from './grade'
 
 /** A review with user moves of the given losses/categories (all in the zone) and optional punishment events. */
 function review(user: { loss: number; category: 'exact' | 'inaccuracy' | 'mistake' | 'blunder'; inZone?: boolean }[], punished: boolean[] = []): ReviewData {
@@ -46,5 +48,43 @@ describe('positionRating', () => {
 
   it('is no repetition without in-zone user moves', () => {
     expect(positionRating(review([{ loss: 9, category: 'blunder', inZone: false }]))).toBeNull()
+  })
+})
+
+describe('positionRaw and ratePosition', () => {
+  // Black's in-zone moves lose 0.5, 1.25 and 1.5; White's in-zone move loses 2.5 and is answered by the 1.25; White's
+  // move outside the zone loses 3. `leads` is Black's lead before each move and after the last.
+  const moves: PlayedMove[] = [
+    { color: 'B', vertex: [15, 3], actor: 'user', inZone: true },
+    { color: 'W', vertex: [16, 5], actor: 'bot', inZone: true },
+    { color: 'B', vertex: [14, 5], actor: 'user', inZone: true },
+    { color: 'W', vertex: [3, 3], actor: 'bot', inZone: false },
+    { color: 'B', vertex: [13, 2], actor: 'user', inZone: true },
+  ]
+  const leads = [0, -0.5, 2, 0.75, 3.75, 2.25]
+  const at = (thresholds: Thresholds): ReviewData =>
+    buildReview({
+      sessionId: 's', settings: { mode: 'list', environment: 'empty', userColor: 'B', botRank: '7k', corner: 'TR' }, initialMoves: [], moves, thresholds,
+      analyses: leads.map((scoreLead, t) => ({ rootInfo: { currentPlayer: t % 2 === 0 ? 'B' : 'W', scoreLead, winrate: 0.5, visits: 1 }, moveInfos: [], ownership: null })),
+    })
+  const TEST: Thresholds = { inaccuracy: 0.5, mistake: 2, blunder: 5, punished: 1 }
+  const KYU: Thresholds = { inaccuracy: 2, mistake: 4, blunder: 8, punished: 2 }
+  const DAN: Thresholds = { inaccuracy: 0.5, mistake: 1, blunder: 3, punished: 0.5 }
+
+  it('keep every in-zone user loss and every in-zone bot move the user answered, whatever the thresholds', () => {
+    const raw = { moves: [{ loss: 0.5 }, { loss: 1.25 }, { loss: 1.5 }], opponent: [{ loss: 2.5, replyLoss: 1.25 }] }
+    expect([positionRaw(at(TEST)), positionRaw(at(KYU))]).toEqual([raw, raw])
+  })
+
+  it('rate the raw losses at any thresholds as positionRating rates the review built at them', () => {
+    const raw = positionRaw(at(TEST))!
+    expect(ratePosition(raw, TEST)).toEqual({ rating: 'again', worst: { category: 'unpunished', loss: 1.25 } })
+    expect(ratePosition(raw, KYU)).toEqual({ rating: 'good', worst: null })
+    expect(ratePosition(raw, DAN)).toEqual({ rating: 'again', worst: { category: 'mistake', loss: 1.5 } })
+    for (const th of [TEST, KYU, DAN]) expect(ratePosition(raw, th)).toEqual(positionRating(at(th)))
+  })
+
+  it('are no repetition without in-zone user moves', () => {
+    expect(positionRaw(review([{ loss: 9, category: 'blunder', inZone: false }]))).toBeNull()
   })
 })

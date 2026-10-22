@@ -1,7 +1,8 @@
 import type { ReviewData, ServerMessage } from '@joseki-dojo/shared'
 import type { AnalysisScheduler } from '../analysis/scheduler'
 import type { CardService } from '../cards/service'
-import type { AppConfig } from '../config'
+import type { AppConfig, Thresholds } from '../config'
+import type { GraphProgressService } from '../progress/service'
 import { TrapBook } from '../traps/book'
 import { SessionError } from '../session/session'
 import type { SessionRecord, StoredAnalysis } from '../store/records'
@@ -23,8 +24,10 @@ export interface ReviewServiceDeps {
   thresholds?: ThresholdTable | null
   /** Spec (repetition) 4.2, 5.3. */
   cards?: CardService
+  /** Spec (progress part 2) 3.4: the graph cards. */
+  progress?: GraphProgressService
   now?: () => string
-  /** One-line diagnostics; the card hook logs here instead of breaking the review. */
+  /** One-line diagnostics; the card hooks log here instead of breaking the review. */
   log?: (line: string) => void
 }
 
@@ -69,6 +72,11 @@ export class ReviewService {
     } catch (err) {
       this.d.log?.(`card hook failed for session ${sessionId}: ${err instanceof Error ? err.message : String(err)}`)
     }
+    try {
+      this.d.progress?.recordTraining(rec, review)
+    } catch (err) {
+      this.d.log?.(`graph card hook failed for session ${sessionId}: ${err instanceof Error ? err.message : String(err)}`)
+    }
     this.d.publish(sessionId, { type: 'reviewReady', sessionId })
     return this.withRepetition(review)
   }
@@ -85,6 +93,22 @@ export class ReviewService {
     return { status: 'ok', review: this.withRepetition(this.assemble(rec, analyses)) }
   }
 
+  /**
+   * Spec (progress part 2) 5: the review of a training at other thresholds, from its moves and the analyses stored for
+   * it; null when the session or one of its analyses is no longer in the database.
+   */
+  rebuild(sessionId: string, thresholds: Thresholds): ReviewData | null {
+    const rec = this.d.repo.getSession(sessionId)
+    if (!rec) return null
+    const analyses: StoredAnalysis[] = []
+    for (let t = 0; t <= rec.moves.length; t++) {
+      const row = this.d.repo.getAnalysis(sessionId, t, 'position')
+      if (!row) return null
+      analyses.push(row.analysis)
+    }
+    return this.assemble(rec, analyses, thresholds)
+  }
+
   /** Spec (repetition) 5.3: the card repetition of this training, if any. */
   private withRepetition(review: ReviewData): ReviewData {
     let repetition = null
@@ -96,14 +120,15 @@ export class ReviewService {
     return repetition ? { ...review, repetition } : review
   }
 
-  private assemble(rec: SessionRecord, analyses: StoredAnalysis[]): ReviewData {
+  /** The review at `thresholds`, by default the player level's. */
+  private assemble(rec: SessionRecord, analyses: StoredAnalysis[], thresholds = thresholdsFor(this.d.config.player.level, this.d.thresholds ?? null, this.d.config.thresholds)): ReviewData {
     return buildReview({
       sessionId: rec.id,
       settings: rec.settings,
       initialMoves: rec.initialMoves,
       moves: rec.moves,
       analyses,
-      thresholds: thresholdsFor(this.d.config.player.level, this.d.thresholds ?? null, this.d.config.thresholds),
+      thresholds,
       trap: trapReview(rec.settings, rec.initialMoves.length, rec.moves, this.d.traps ?? TrapBook.empty()),
     })
   }

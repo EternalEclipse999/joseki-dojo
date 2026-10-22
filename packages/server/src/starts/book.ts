@@ -216,6 +216,11 @@ export class StartBook {
     return colorAt(path.length - 1)
   }
 
+  /** Whether place() knows `id`: a start of the base (normal or dubious), a branch or a group's corner stone. */
+  canPlace(id: string): boolean {
+    return this.paths.has(id) || this.dubiousPaths.has(id) || this.treeStarts.has(id)
+  }
+
   /** Spec (starts) 5.2: the moves of `id` in `corner`, mirrored in the corner's diagonal when `mirror`; Black first, or White first when `swapColors`. */
   place(id: string, corner: Corner, mirror: boolean, swapColors = false): Move[] {
     const path = this.paths.get(id) ?? this.dubiousPaths.get(id) ?? this.treeStarts.get(id)?.path
