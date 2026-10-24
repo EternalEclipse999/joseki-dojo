@@ -1,0 +1,167 @@
+{
+  "method": {
+    "positions": 500,
+    "visits": 2000,
+    "seed": 1,
+    "coverage": 0.98,
+    "shares": {
+      "inaccuracy": 0.25,
+      "mistake": 0.1,
+      "blunder": 0.03
+    },
+    "katago": "KataGo 1.18.1; networks: kata1-b18c384nbt-s9996604416-d4316597426.bin.gz, b18c384nbt-humanv0.bin.gz",
+    "date": "2026-10-24T15:28:18.403Z"
+  },
+  "levels": {
+    "20k": {
+      "inaccuracy": 1.65,
+      "mistake": 3.1,
+      "blunder": 5.85
+    },
+    "19k": {
+      "inaccuracy": 1.65,
+      "mistake": 3.05,
+      "blunder": 5.8
+    },
+    "18k": {
+      "inaccuracy": 1.55,
+      "mistake": 2.95,
+      "blunder": 5.6
+    },
+    "17k": {
+      "inaccuracy": 1.55,
+      "mistake": 2.9,
+      "blunder": 5.5
+    },
+    "16k": {
+      "inaccuracy": 1.5,
+      "mistake": 2.8,
+      "blunder": 5.3
+    },
+    "15k": {
+      "inaccuracy": 1.5,
+      "mistake": 2.7,
+      "blunder": 5.25
+    },
+    "14k": {
+      "inaccuracy": 1.45,
+      "mistake": 2.6,
+      "blunder": 4.95
+    },
+    "13k": {
+      "inaccuracy": 1.4,
+      "mistake": 2.55,
+      "blunder": 4.85
+    },
+    "12k": {
+      "inaccuracy": 1.4,
+      "mistake": 2.45,
+      "blunder": 4.5
+    },
+    "11k": {
+      "inaccuracy": 1.35,
+      "mistake": 2.35,
+      "blunder": 4.4
+    },
+    "10k": {
+      "inaccuracy": 1.3,
+      "mistake": 2.3,
+      "blunder": 4.25
+    },
+    "9k": {
+      "inaccuracy": 1.25,
+      "mistake": 2.25,
+      "blunder": 4.05
+    },
+    "8k": {
+      "inaccuracy": 1.25,
+      "mistake": 2.15,
+      "blunder": 3.8
+    },
+    "7k": {
+      "inaccuracy": 1.2,
+      "mistake": 2,
+      "blunder": 3.65
+    },
+    "6k": {
+      "inaccuracy": 1.15,
+      "mistake": 1.9,
+      "blunder": 3.45
+    },
+    "5k": {
+      "inaccuracy": 1.1,
+      "mistake": 1.8,
+      "blunder": 3.25
+    },
+    "4k": {
+      "inaccuracy": 1,
+      "mistake": 1.7,
+      "blunder": 3
+    },
+    "3k": {
+      "inaccuracy": 0.95,
+      "mistake": 1.6,
+      "blunder": 2.8
+    },
+    "2k": {
+      "inaccuracy": 0.9,
+      "mistake": 1.5,
+      "blunder": 2.6
+    },
+    "1k": {
+      "inaccuracy": 0.85,
+      "mistake": 1.45,
+      "blunder": 2.45
+    },
+    "1d": {
+      "inaccuracy": 0.8,
+      "mistake": 1.35,
+      "blunder": 2.25
+    },
+    "2d": {
+      "inaccuracy": 0.75,
+      "mistake": 1.2,
+      "blunder": 2.15
+    },
+    "3d": {
+      "inaccuracy": 0.7,
+      "mistake": 1.15,
+      "blunder": 2
+    },
+    "4d": {
+      "inaccuracy": 0.65,
+      "mistake": 1.05,
+      "blunder": 1.85
+    },
+    "5d": {
+      "inaccuracy": 0.65,
+      "mistake": 1,
+      "blunder": 1.75
+    },
+    "6d": {
+      "inaccuracy": 0.6,
+      "mistake": 0.95,
+      "blunder": 1.65
+    },
+    "7d": {
+      "inaccuracy": 0.55,
+      "mistake": 0.9,
+      "blunder": 1.6
+    },
+    "8d": {
+      "inaccuracy": 0.5,
+      "mistake": 0.85,
+      "blunder": 1.5
+    },
+    "9d": {
+      "inaccuracy": 0.35,
+      "mistake": 0.8,
+      "blunder": 1.4
+    },
+    "pro": {
+      "inaccuracy": 0.3,
+      "mistake": 0.7,
+      "blunder": 1.35
+    }
+  }
+}
