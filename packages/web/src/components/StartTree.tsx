@@ -2,7 +2,7 @@ import { useRef, useState } from 'preact/hooks'
 import type { Language, StartCardState, Translate } from '@joseki-dojo/shared'
 import { capitalize, formatPercent, formatWhen } from '../format'
 import { useI18n, useT } from '../i18n'
-import type { NodePercent } from '../progress'
+import { dueLine, type NodePercent } from '../progress'
 import { nodeProgress, type NodeProgress, type StartTreeNode } from '../start-tree'
 import { CornerBoard } from './CornerBoard'
 
@@ -141,6 +141,9 @@ export function StartTree({ root, current, onCurrent, onStart, cards = NO_CARDS,
   const shown = hovered ?? current
   const shownCard = shown.id ? (cards[shown.id] ?? null) : null
   const shownRow = rows?.get(shown.key)
+  // «Когда повторять»: with weights only a future due of the position's graph cards (part 3 spec 6.4: the earlier of both
+  // colours for a random colour; a due position has the mark beside the percent), else its position card's line.
+  const shownDue = dueLine(rows !== null, shownRow, shownCard, new Date())
   const go = (n: StartTreeNode): void => {
     setHover(null)
     onCurrent(n)
@@ -231,10 +234,10 @@ export function StartTree({ root, current, onCurrent, onStart, cards = NO_CARDS,
             </div>
             <div class="start-info-sub">{details(shown, t)}</div>
             {shown.rare && <div class="start-rare">{t('tree.rarelyPlayed')}</div>}
-            {shownCard && (
+            {shownDue && (
               <div class="start-info-card">
-                <span class={markClass(shownCard)} aria-hidden="true" />
-                {capitalize(shownCard.dueNow ? t('tree.card.due') : t('tree.card.next', { when: formatWhen(shownCard.due, new Date(), language, t) }))}
+                {shownCard && !rows && <span class={markClass(shownCard)} aria-hidden="true" />}
+                {capitalize(shownDue.now ? t('tree.card.due') : t('tree.card.next', { when: formatWhen(shownDue.at, new Date(), language, t) }))}
               </div>
             )}
           </div>

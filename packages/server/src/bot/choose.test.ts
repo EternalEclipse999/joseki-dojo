@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { gtpToVertex, PASS_INDEX, Position, vertexToIndex, zoneVertices, type Corner, type Vertex } from '@joseki-dojo/shared'
-import { chooseBotMove, LOCAL_RADIUS, type BotChoiceInput } from './choose'
+import { gtpToVertex, indexToVertex, inZone, PASS_INDEX, Position, vertexToIndex, zoneVertices, type Corner, type MoveVertex, type Vertex } from '@joseki-dojo/shared'
+import { chooseBotMove, LOCAL_RADIUS, MISTAKE_TENUKI_RATE, naturalMoves, type BotChoiceInput } from './choose'
 import { mulberry32, type Rng } from './rng'
 
 const policy = (entries: Record<string, number>, pass = 0): number[] => {
@@ -130,5 +130,72 @@ describe('chooseBotMove', () => {
     const p = policy({ Q16: 0.2, R16: 0.8 })
     expect(chooseBotMove(input(p, { josekiStarted: false, temperature: 1 }), seq(0.1))).toEqual({ kind: 'zone', vertex: Q16 })
     expect(chooseBotMove(input(p, { josekiStarted: false, temperature: 0.5 }), seq(0.1))).toEqual({ kind: 'zone', vertex: R16 })
+  })
+})
+
+describe('naturalMoves', () => {
+  it('gives only the best outside point in a settled corner', () => {
+    expect(naturalMoves(input(policy({ Q16: 0.25, D4: 0.75, D16: 0.1 })))).toEqual([{ vertex: D4, tenuki: true, p: 1 }])
+  })
+
+  it('leaves a calm corner with the mistake rate and shares the rest among the zone moves by the policy', () => {
+    expect(naturalMoves(input(policy({ Q16: 0.45, R16: 0.15, D4: 0.3, D16: 0.1 })))).toEqual([
+      { vertex: D4, tenuki: true, p: MISTAKE_TENUKI_RATE },
+      { vertex: Q16, tenuki: false, p: expect.closeTo(0.95 * 0.75, 12) },
+      { vertex: R16, tenuki: false, p: expect.closeTo(0.95 * 0.25, 12) },
+    ])
+  })
+
+  it('never leaves a sharp corner or one where the joseki has not started, its best outside point listed with p 0', () => {
+    expect(naturalMoves(input(policy({ Q16: 0.9, D4: 0.1 })))).toEqual([
+      { vertex: D4, tenuki: true, p: 0 },
+      { vertex: Q16, tenuki: false, p: 1 },
+    ])
+    expect(naturalMoves(input(policy({ Q16: 0.1, D4: 0.9 }), { josekiStarted: false }))).toEqual([
+      { vertex: D4, tenuki: true, p: 0 },
+      { vertex: Q16, tenuki: false, p: 1 },
+    ])
+    // Without a legal point outside the zone there is no tenuki to list.
+    const p = policy({ Q16: 0.9 })
+    for (let i = 0; i < PASS_INDEX; i++) if (!inZone('TR', indexToVertex(i) as Vertex)) p[i] = -1
+    expect(naturalMoves(input(p))).toEqual([{ vertex: Q16, tenuki: false, p: 1 }])
+  })
+
+  it('tenukis for certain when the zone has no playable point, and passes when nothing is playable', () => {
+    const p = policy({ D4: 0.5 })
+    for (const v of zoneVertices('TR')) p[vertexToIndex(v)] = -1
+    expect(naturalMoves(input(p, { josekiStarted: false }))).toEqual([{ vertex: D4, tenuki: true, p: 1 }])
+    const nothing = new Array<number>(362).fill(-1)
+    nothing[PASS_INDEX] = 1
+    expect(naturalMoves(input(nothing))).toEqual([{ vertex: 'pass', tenuki: true, p: 1 }])
+  })
+
+  it('weighs the zone moves by policy^(1/temperature)', () => {
+    expect(naturalMoves(input(policy({ Q16: 0.16, R16: 0.64 }), { josekiStarted: false, temperature: 2 }))).toEqual([
+      // No policy outside the zone: its first point is the best, never played.
+      { vertex: [0, 0], tenuki: true, p: 0 },
+      { vertex: Q16, tenuki: false, p: expect.closeTo(1 / 3, 12) },
+      { vertex: R16, tenuki: false, p: expect.closeTo(2 / 3, 12) },
+    ])
+  })
+
+  it('is the distribution chooseBotMove samples from', () => {
+    // An empty board where every point is legal: Position.isLegal plays the move, too slow for 20 000 draws of 361 points.
+    const position = { isLegal: () => true, colorAt: () => null } as unknown as Position
+    const calm = input(policy({ Q16: 0.4, R16: 0.15, R17: 0.05, K10: 0.05, D4: 0.3, D16: 0.05 }), { position, temperature: 1.5 })
+    const key = (v: MoveVertex): string => (v === 'pass' ? 'pass' : v.join(','))
+    const draws = 20_000
+    const rng = mulberry32(7)
+    const counts = new Map<string, number>()
+    for (let i = 0; i < draws; i++) {
+      const c = chooseBotMove(calm, rng)
+      const k = key(c.kind === 'pass' ? 'pass' : c.vertex)
+      counts.set(k, (counts.get(k) ?? 0) + 1)
+    }
+    const natural = naturalMoves(calm)
+    expect(natural.reduce((s, m) => s + m.p, 0)).toBeCloseTo(1, 12)
+    // K10 is outside the local area: neither samples it.
+    expect(natural.map((m) => key(m.vertex)).sort()).toEqual([...counts.keys()].sort())
+    for (const m of natural) expect(Math.abs(counts.get(key(m.vertex))! / draws - m.p)).toBeLessThan(0.01)
   })
 })

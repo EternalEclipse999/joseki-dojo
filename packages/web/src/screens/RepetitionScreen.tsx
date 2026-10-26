@@ -3,7 +3,7 @@ import type { CardKind, CardListItem, CardSummary, LocalizedText, Translate } fr
 import { deleteCard, failureText, fetchCardSummary, fetchCards } from '../api'
 import { CornerBoard } from '../components/CornerBoard'
 import { errorText } from '../error-text'
-import { dayStart, formatWhen } from '../format'
+import { colorLabel, dayStart, formatWhen } from '../format'
 import { useI18n } from '../i18n'
 import { findById, nodeTitle, type StartTreeNode } from '../start-tree'
 
@@ -24,14 +24,18 @@ const REFRESH_MIN_MS = 30_000
 
 const FILTERS = ['all', 'position', 'move'] as const
 
-/** A card row's title: a problem by its source, the corner's group and the move; a position by its name in the tree. */
+/**
+ * A card row's title: a problem by its source, the corner's group and the move; a position by its name in the tree, and
+ * a position's graph item (part 3 spec 6.2) by its name and colour.
+ */
 function cardTitle(c: CardListItem, tree: StartTreeNode, t: Translate): string {
   if (c.problem) {
     const { source, group, moveNumber } = c.problem
     return `${t(`repetition.kind.${source}`)}${group ? ` · ${group}` : ''} · ${t('repetition.problemMove', { n: moveNumber })}`
   }
   const node = c.startId ? findById(tree, c.startId) : null
-  return node ? nodeTitle(node) : t('repetition.kind.position')
+  const name = node ? nodeTitle(node) : t('repetition.kind.position')
+  return c.graph ? `${name} · ${colorLabel(c.graph.color, t)}` : name
 }
 
 /** Spec (repetition) 5.1: what is due, the week ahead, the cards. */
@@ -163,9 +167,12 @@ export function RepetitionScreen({ tree, busy, notice, onStartQueue, onChanged }
                       </span>
                     )}
                   </div>
-                  <button class="ghost sm" aria-label={t('repetition.deleteNamed', { name })} onClick={() => remove(c)}>
-                    {t('repetition.delete')}
-                  </button>
+                  {/* Part 3 spec 6.2: a graph item is no card but its cards' due: nothing to delete. */}
+                  {!c.graph && (
+                    <button class="ghost sm" aria-label={t('repetition.deleteNamed', { name })} onClick={() => remove(c)}>
+                      {t('repetition.delete')}
+                    </button>
+                  )}
                 </div>
               )
             })}

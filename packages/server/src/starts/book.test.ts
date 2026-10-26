@@ -198,6 +198,9 @@ describe('dubious starts', () => {
     const draws = (...d: number[]) => () => d.shift() ?? 0
     expect(dubiousBook().pick(() => 0, draws(0.05, 0))).toBe(D)
     expect(dubiousBook().pick(() => 0, draws(0.5, 0))).toBe(A)
+    expect([dubiousBook().drawDubious(draws(0.05)), dubiousBook().drawDubious(draws(0.5)), book().drawDubious(draws(0.05))]).toEqual([true, false, false])
+    // The kind drawn before: no share draw.
+    expect([dubiousBook().pick(() => 0, draws(0), true), dubiousBook().pick(() => 0, draws(0), false)]).toEqual([D, A])
   })
 
   it('picks a dubious start without a share draw when there is nothing else', () => {

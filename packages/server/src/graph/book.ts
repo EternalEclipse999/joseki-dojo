@@ -229,9 +229,19 @@ function walk(g: GraphArrays): Walk {
   return { order, back }
 }
 
-/** The weights file, kept as it was read (compressed), and the one level decoded from it last. */
+/** One level's probabilities: `edge` by global edge index, `rest` by node. */
+export interface LevelArrays {
+  edge: Float32Array
+  rest: Float32Array
+}
+
+/** The levels kept decoded: enough for a training's bot and player levels and the progress at the player's. */
+const KEPT_LEVELS = 4
+
+/** The weights file, kept as it was read (compressed), and the last KEPT_LEVELS levels asked for, decoded. */
 class Weights {
-  private level: { index: number; edge: Float32Array; rest: Float32Array } | null = null
+  /** By level index, the one asked for least recently first. */
+  private readonly decoded = new Map<number, LevelArrays>()
 
   constructor(
     private readonly bytes: Uint8Array,
@@ -239,14 +249,31 @@ class Weights {
     readonly levels: Map<string, number>,
   ) {}
 
-  /** Level `index`: decoded on its first use, it replaces the level decoded before. */
-  at(index: number): { edge: Float32Array; rest: Float32Array } {
-    if (this.level?.index !== index) {
-      this.level = null // the old level goes before the new one is decoded
-      this.level = { index, ...decodeWeightsLevel(this.bytes, this.graph, index) }
+  /** Level `index`: decoded on its first use; a level beyond KEPT_LEVELS drops the one asked for least recently. */
+  at(index: number): LevelArrays {
+    let level = this.decoded.get(index)
+    if (level) this.decoded.delete(index)
+    else {
+      // The old level goes before the new one is decoded.
+      if (this.decoded.size === KEPT_LEVELS) this.decoded.delete(this.decoded.keys().next().value!)
+      level = decodeWeightsLevel(this.bytes, this.graph, index)
     }
-    return this.level
+    this.decoded.set(index, level)
+    return level
   }
+}
+
+/** 1 for an edge that is ideal or good in either dictionary, by global edge index. */
+function goodEdges(g: GraphArrays): Uint8Array {
+  const byCode = new Map<number, number>()
+  const good = new Uint8Array(g.edgeCount)
+  for (let e = 0; e < g.edgeCount; e++) {
+    const code = g.edgeCategories[e]
+    let is = byCode.get(code)
+    if (is === undefined) byCode.set(code, (is = categoryList(code).some((c) => c.category === 'ideal' || c.category === 'good') ? 1 : 0))
+    good[e] = is
+  }
+  return good
 }
 
 const NO_LIST_IDS: readonly string[] = []
@@ -257,18 +284,20 @@ const NO_LIST_IDS: readonly string[] = []
  * The graph is kept in flat typed arrays (no object per node or edge): node i is the index of the files, 0 the empty
  * corner; the edges are numbered globally in node order, node i owning firstEdge(i) .. firstEdge(i + 1) - 1 (the indices
  * of the weights file; edges(i)[k] is edge firstEdge(i) + k, and probabilities(i, level).edges[k] belongs to it). Keys and
- * paths are decoded on request. Of the weights, the file's bytes are kept and one level is decoded at a time: the level
- * asked for last.
+ * paths are decoded on request. Of the weights, the file's bytes are kept and a level is decoded when it is asked for; the
+ * last four levels asked for stay decoded.
  *
  * Index arguments: node(), nodeOfTraining(), listNode() return null and edges() / probabilities() return nothing for
  * what is not in the graph; the node accessors (nodeKey … firstEdge) take an index of the graph and throw a RangeError
- * for anything else, as backEdge() does for an edge index.
+ * for anything else, as the edge accessors (edgeTarget, goodEdge, backEdge) do for an edge index.
  *
  * Spec (progress part 2) 4.2: the graph's cycles are cut once at load, each at its shallowest node (see Walk): the cut
  * edges (backEdge) and a topological order of the graph without them (topoOrder).
  */
 export class GraphBook {
   readonly hasWeights: boolean
+  /** goodEdges(), built on first use. */
+  private good: Uint8Array | null = null
 
   private constructor(
     private readonly g: GraphArrays,
@@ -388,8 +417,18 @@ export class GraphBook {
    * leaves the graph on it.
    */
   backEdge(edge: number): boolean {
-    if (!(Number.isInteger(edge) && edge >= 0 && edge < this.g.edgeCount)) throw new RangeError(`No edge ${edge} in the joseki graph`)
-    return this.walk.back[edge] === 1
+    return this.walk.back[this.checkedEdge(edge)] === 1
+  }
+
+  /** The node an edge (a global index) leads to, -1 for an edge without a node. */
+  edgeTarget(edge: number): number {
+    return this.g.edgeTo[this.checkedEdge(edge)]
+  }
+
+  /** The edge (a global index) is ideal or good in either dictionary. */
+  goodEdge(edge: number): boolean {
+    this.good ??= goodEdges(this.g)
+    return this.good[this.checkedEdge(edge)] === 1
   }
 
   /** Spec (progress part 2) 4.2: every node, each before the targets of its edges that are not back edges. */
@@ -403,14 +442,22 @@ export class GraphBook {
   }
 
   /**
-   * Spec 3.3: the probabilities of a node's edges (in the order of edges()) and of its rest at a level; null without
-   * weights, for an unknown level or for a node outside the graph. Asking for another level than the last one decodes it
-   * from the weights file and drops the last one.
+   * Spec 3.3: the arrays of `level`, or null without it; the last four levels asked for stay decoded, and asking for a
+   * level again gives the same arrays while it does. They are shared, so never change them.
+   */
+  levelArrays(level: string): LevelArrays | null {
+    const l = this.weights?.levels.get(level)
+    return this.weights && l !== undefined && this.g.nodeCount > 0 ? this.weights.at(l) : null
+  }
+
+  /**
+   * Spec 3.3: the probabilities of a node's edges (in the order of edges()) and of its rest at a level, read through
+   * levelArrays(); null without weights, for an unknown level or for a node outside the graph.
    */
   probabilities(node: number, level: string): { edges: number[]; rest: number } | null {
-    const l = this.weights?.levels.get(level)
-    if (!this.weights || l === undefined || !this.inRange(node)) return null
-    const { edge, rest } = this.weights.at(l)
+    const arrays = this.levelArrays(level)
+    if (!arrays || !this.inRange(node)) return null
+    const { edge, rest } = arrays
     const { firstEdge } = this.g
     // A plain loop: the progress asks for every node, and Array.from over a typed array view is several times slower.
     const edges: number[] = []
@@ -425,5 +472,10 @@ export class GraphBook {
   private checked(node: number): number {
     if (!this.inRange(node)) throw new RangeError(`No node ${node} in the joseki graph`)
     return node
+  }
+
+  private checkedEdge(edge: number): number {
+    if (!(Number.isInteger(edge) && edge >= 0 && edge < this.g.edgeCount)) throw new RangeError(`No edge ${edge} in the joseki graph`)
+    return edge
   }
 }

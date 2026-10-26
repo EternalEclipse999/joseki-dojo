@@ -1,6 +1,6 @@
 import { translator } from '@joseki-dojo/shared'
 import { describe, expect, it } from 'vitest'
-import { colorLabel, dayStart, formatCount, formatPercent, formatPoints, formatWhen, levelLabel, moveLabel, pointsText, rankLabel } from './format'
+import { colorLabel, dayStart, formatCount, formatPercent, formatPercentPair, formatPoints, formatWhen, levelLabel, moveLabel, pointsText, rankLabel } from './format'
 
 const t = translator('ru')
 
@@ -24,6 +24,15 @@ describe('format', () => {
     expect([0, 0.424, 0.425, 1].map((n) => formatPercent(n, 'ru').replace(/\s/g, ' '))).toEqual(['0 %', '42 %', '43 %', '100 %'])
     expect(formatPercent(0.07, 'en')).toBe('7%')
     expect(formatPercent(0.5, 'ja')).toBe('50%')
+  })
+
+  it('writes a pair of percents whole, or with one decimal when they are equal whole', () => {
+    const pair = (before: number, after: number, lang: 'ru' | 'en' = 'ru'): string[] => formatPercentPair(before, after, lang).map((s) => s.replace(/\s/g, ' '))
+    expect(pair(0.34, 0.36)).toEqual(['34 %', '36 %'])
+    expect(pair(0.341, 0.344)).toEqual(['34,1 %', '34,4 %'])
+    expect(pair(0.3412, 0.3414)).toEqual(['34,1 %', '34,1 %'])
+    expect(pair(0.341, 0.344, 'en')).toEqual(['34.1%', '34.4%'])
+    expect(pair(0.36, 0.34, 'en')).toEqual(['36%', '34%'])
   })
 
   it('groups the thousands of a visit count', () => {

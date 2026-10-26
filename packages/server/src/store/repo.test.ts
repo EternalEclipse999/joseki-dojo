@@ -37,11 +37,11 @@ describe('migrations', () => {
 
   it('applies only the migrations not recorded yet', () => {
     const db = openDb(':memory:')
-    const next = { version: 8, name: '008_extra.sql', sql: 'CREATE TABLE extra (id INTEGER PRIMARY KEY)' }
-    expect(migrate(db, [...MIGRATIONS, next])).toEqual([8])
+    const next = { version: 9, name: '009_extra.sql', sql: 'CREATE TABLE extra (id INTEGER PRIMARY KEY)' }
+    expect(migrate(db, [...MIGRATIONS, next])).toEqual([9])
     expect(migrate(db, [...MIGRATIONS, next])).toEqual([])
     expect(db.prepare('SELECT name FROM schema_migrations ORDER BY version').all()).toEqual([
-      { name: '001_init.sql' }, { name: '002_traps.sql' }, { name: '003_starts.sql' }, { name: '004_cards.sql' }, { name: '005_app_state.sql' }, { name: '006_graph_cards.sql' }, { name: '007_card_raw.sql' }, { name: '008_extra.sql' },
+      { name: '001_init.sql' }, { name: '002_traps.sql' }, { name: '003_starts.sql' }, { name: '004_cards.sql' }, { name: '005_app_state.sql' }, { name: '006_graph_cards.sql' }, { name: '007_card_raw.sql' }, { name: '008_graph_training_progress.sql' }, { name: '009_extra.sql' },
     ])
   })
 })
@@ -124,7 +124,7 @@ describe('migration 7', () => {
     const review = db.prepare("INSERT INTO card_reviews (card_id, reviewed_at, rating, auto_rating, state_before_json, session_id) VALUES ('c1', 'x', ?, ?, '{}', ?)")
     review.run('good', 'good', 's1')
     review.run('easy', 'hard', 's2')
-    expect(migrate(db)).toEqual([7])
+    expect(migrate(db, MIGRATIONS.slice(0, 7))).toEqual([7])
     expect(db.prepare('SELECT session_id, manual, raw_json FROM card_reviews ORDER BY id').all()).toEqual([
       { session_id: 's1', manual: 0, raw_json: null },
       { session_id: 's2', manual: 1, raw_json: null },
@@ -141,7 +141,7 @@ describe('migration 2 and trap attempts', () => {
       `INSERT INTO sessions (id, created_at, mode, environment, user_color, bot_rank, corner, status, initial_moves_json)
        VALUES ('s1', '2026-10-06T10:00:00.000Z', 'free', 'empty', 'B', '7k', 'TR', 'playing', '[]')`,
     ).run()
-    expect(migrate(db)).toEqual([2, 3, 4, 5, 6, 7])
+    expect(migrate(db)).toEqual([2, 3, 4, 5, 6, 7, 8])
     const cols = db.prepare("SELECT name FROM pragma_table_info('sessions')").all() as { name: string }[]
     expect(cols.map((c) => c.name)).toContain('trap_json')
     expect(db.prepare('SELECT id, trap_json FROM sessions').all()).toEqual([{ id: 's1', trap_json: null }])

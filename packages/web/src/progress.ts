@@ -1,4 +1,4 @@
-import type { ProgressEntry, ProgressView, SessionSettings } from '@joseki-dojo/shared'
+import type { ProgressEntry, ProgressView, SessionSettings, StartCardState } from '@joseki-dojo/shared'
 import type { StartTreeNode } from './start-tree'
 
 /** The progress for the start screen's colour: one colour's view, or Black's and White's for a random colour. */
@@ -8,6 +8,15 @@ export type ColorViews = readonly [ProgressView] | readonly [ProgressView, Progr
 export interface NodePercent {
   percent: number
   due: number
+  /** Part 3 spec 6.4: a position's earliest due, ISO (the earlier of both colours); null for a branch, a group and the root. */
+  dueAt: string | null
+}
+
+/** Part 3 spec 6.4: the earliest due of a position's entries (one per colour); null when none has one. */
+function earliestDue(entries: readonly ProgressEntry[]): string | null {
+  let first: string | null = null
+  for (const { dueAt } of entries) if (dueAt !== null && (first === null || Date.parse(dueAt) < Date.parse(first))) first = dueAt
+  return first
 }
 
 /**
@@ -15,7 +24,7 @@ export interface NodePercent {
  * `view` (the positions nested in it are already in its percent). A branch, a group and the root are Σ (weight ×
  * percent) / Σ weight over the positions under them — a nested position counted on its own with its own weight — and
  * `due` counts those due. A node with no position of `view` at or under it has no row; one whose positions have no weight
- * at all is 0 %.
+ * at all is 0 %. Only a position's own row has a `dueAt` (part 3 spec 6.4).
  */
 export function aggregate(tree: StartTreeNode, view: ProgressView): Map<string, NodePercent> {
   const rows = new Map<string, NodePercent>()
@@ -30,8 +39,8 @@ export function aggregate(tree: StartTreeNode, view: ProgressView): Map<string, 
       sum.due += s.due
       sum.any ||= s.any
     }
-    if (own) rows.set(n.key, { percent: own.percent, due: own.due ? 1 : 0 })
-    else if (sum.any) rows.set(n.key, { percent: sum.weight > 0 ? sum.score / sum.weight : 0, due: sum.due })
+    if (own) rows.set(n.key, { percent: own.percent, due: own.due ? 1 : 0, dueAt: own.dueAt })
+    else if (sum.any) rows.set(n.key, { percent: sum.weight > 0 ? sum.score / sum.weight : 0, due: sum.due, dueAt: null })
     return sum
   }
   walk(tree)
@@ -42,14 +51,14 @@ const mean = (xs: readonly number[]): number => xs.reduce((a, b) => a + b, 0) / 
 
 /**
  * Spec (progress part 2) 6.1 and the owner's answer 2: the view of a random colour — each position's percent and weight
- * the mean of both colours', due when it is due in either; the whole list the mean of both percents, its due count the
- * positions due in either. `color` stays Black's: the view is of both.
+ * the mean of both colours', due when it is due in either, its due the earlier of both (part 3 spec 6.4); the whole list
+ * the mean of both percents, its due count the positions due in either. `color` stays Black's: the view is of both.
  */
 export function mergeColors(black: ProgressView, white: ProgressView): ProgressView {
   const positions: Record<string, ProgressEntry> = {}
   for (const id of new Set([...Object.keys(black.positions), ...Object.keys(white.positions)])) {
     const both = [black.positions[id], white.positions[id]].filter((e): e is ProgressEntry => e !== undefined)
-    positions[id] = { percent: mean(both.map((e) => e.percent)), weight: mean(both.map((e) => e.weight)), due: both.some((e) => e.due) }
+    positions[id] = { percent: mean(both.map((e) => e.percent)), weight: mean(both.map((e) => e.weight)), due: both.some((e) => e.due), dueAt: earliestDue(both) }
   }
   return {
     hasWeights: black.hasWeights && white.hasWeights,
@@ -60,10 +69,28 @@ export function mergeColors(black: ProgressView, white: ProgressView): ProgressV
   }
 }
 
+/** The «когда повторять» line of the selected position: due now, or at an ISO time. */
+export interface DueLine {
+  now: boolean
+  at: string
+}
+
+/**
+ * The separate due line of the selected position. With progress rows it shows only a future due: when the position is due
+ * now the «пора повторить» mark beside the percent says so, and a second one would repeat it. Without rows the position
+ * card's line, due or future.
+ */
+export function dueLine(hasRows: boolean, row: NodePercent | undefined, card: StartCardState | null, now: Date): DueLine | null {
+  if (!hasRows) return card ? { now: card.dueNow, at: card.due } : null
+  if (!row?.dueAt || row.due > 0 || Date.parse(row.dueAt) <= now.getTime()) return null
+  return { now: false, at: row.dueAt }
+}
+
 /**
  * Spec (progress part 2) 6.2: the rows of the tree for the start screen's colour — one colour's view, or Black's and
  * White's for a random colour: then a node has a row when either colour has one, its percent the mean of both colours'
- * rows (so the root matches the summary's bar), and its due positions those due in either, counted as `aggregate` does.
+ * rows (so the root matches the summary's bar), and its due positions those due in either, counted as `aggregate` does;
+ * a position's `dueAt` is the earlier of both colours', as in `mergeColors`.
  */
 export function treeProgress(tree: StartTreeNode, views: ColorViews): Map<string, NodePercent> {
   if (views.length === 1) return aggregate(tree, views[0])
@@ -75,7 +102,7 @@ export function treeProgress(tree: StartTreeNode, views: ColorViews): Map<string
     const ownDue = own.some((e) => e.due) ? 1 : 0
     const due = n.children.reduce((sum, c) => sum + walk(c), ownDue)
     const percents = colors.map((c) => c.get(n.key)).filter((r): r is NodePercent => r !== undefined).map((r) => r.percent)
-    if (percents.length > 0) rows.set(n.key, { percent: mean(percents), due: own.length > 0 ? ownDue : due })
+    if (percents.length > 0) rows.set(n.key, { percent: mean(percents), due: own.length > 0 ? ownDue : due, dueAt: earliestDue(own) })
     return due
   }
   walk(tree)

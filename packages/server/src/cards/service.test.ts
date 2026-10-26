@@ -8,6 +8,7 @@ import type { SessionRecord } from '../store/records'
 import { DEFAULT_CONFIG, type Thresholds } from '../config'
 import { EngineError } from '../engine/engine'
 import type { AnalysisResponse, KataGoQueryBody } from '../engine/katago-types'
+import type { GraphQueueItem } from '../progress/service'
 import { CardRepo } from './repo'
 import { newState, schedule } from './schedule'
 import { CardError, CardService, LEARN_AHEAD_MS } from './service'
@@ -55,6 +56,14 @@ describe('CardService', () => {
     service.recordTraining(...training('s1', null, [[0, 'exact']]))
     service.recordTraining(...training('s2', 'deadbeef', [[0, 'exact']]))
     service.recordTraining(...training('s3', listedId(), []))
+    expect(service.list()).toEqual([])
+  })
+
+  it('records no position card for a deep start of the graph (part 3 spec 5.5)', () => {
+    const { service } = setup()
+    const [rec, review] = training('s1', listedId(), [[0, 'exact']])
+    const start = { ...rec.settings.start!, graph: { setup: 0, path: [], leave: false } }
+    service.recordTraining({ ...rec, settings: { ...rec.settings, start } }, review)
     expect(service.list()).toEqual([])
   })
 
@@ -381,6 +390,90 @@ describe('problem cards', () => {
     service.rate(repo.reviewBySession('card1', 's1')!.id, 'easy')
     const nextDue = service.list()[0].due
     expect(service.due()).toEqual({ card: null, nextDue })
+  })
+})
+
+describe('the queue with weights (part 3 spec 6.2)', () => {
+  const at = (time: string, day = '2026-10-15'): string => new Date(`${day}T${time}`).toISOString()
+  /** A graph item of the list position `listId` for `color`, its due-setting card learned unless said otherwise. */
+  const item = (listId: string, color: Color, due: string, o: Partial<GraphQueueItem> = {}): GraphQueueItem => ({ listId, color, due, stage: 'learned', learning: false, moves: ['Q16'], ...o })
+
+  /**
+   * At 10:00 a training of the first list position makes its position card (card1) and a problem card (card2), both due at
+   * 10:01; the graph items are `items()`. The card ids start with `prefix`.
+   */
+  function queueSetup(items: () => GraphQueueItem[] | null, prefix = 'card') {
+    let now = new Date('2026-10-15T10:00:00')
+    let n = 0
+    const repo = new CardRepo(openDb(':memory:'))
+    const service = new CardService({ repo, starts: book(), now: () => now, newId: () => `${prefix}${++n}`, graphQueue: items })
+    service.recordTraining(...problemTraining('s1', 'TR', listedId()))
+    return { service, repo, setNow: (d: Date) => (now = d) }
+  }
+
+  it('summarizes the problems and the graph items, without the position cards', () => {
+    const items = [item('a', 'B', at('10:00:30')), item('b', 'W', at('10:00:00', '2026-10-17'), { stage: 'learning' })]
+    const { service, setNow } = queueSetup(() => items)
+    setNow(new Date('2026-10-15T11:00:00'))
+    // Due now: the problem and the item a; the position card, due as well, is out.
+    expect(service.summary()).toEqual({ dueNow: 2, dueByKind: { position: 1, move: 1 }, forecast: [2, 0, 1, 0, 0, 0, 0], total: 3, learned: 1, nextDue: null })
+    setNow(new Date('2026-10-15T10:00:10'))
+    expect(service.summary()).toMatchObject({ dueNow: 0, nextDue: items[0].due })
+  })
+
+  it('lists the problems and the graph items by due, without the position cards; an item cannot be deleted', () => {
+    const items = [item('a', 'B', at('10:30:00')), item('b', 'W', at('10:00:30'), { stage: 'learning', learning: true, moves: ['Q16', 'O17'] })]
+    const { service } = queueSetup(() => items)
+    const listed = service.list()
+    expect(listed.map((c) => c.id)).toEqual(['graph:b:W', 'card2', 'graph:a:B'])
+    expect(listed[0]).toEqual({ id: 'graph:b:W', kind: 'position', startId: 'b', moves: ['Q16', 'O17'], due: items[1].due, stage: 'learning', lastRating: null, reps: 0, orphan: false, problem: null, graph: { color: 'W' } })
+    expect(service.list('position').map((c) => c.id)).toEqual(['graph:b:W', 'graph:a:B'])
+    expect(service.list('move').map((c) => c.id)).toEqual(['card2'])
+    expect(() => service.remove('graph:b:W')).toThrowError(expect.objectContaining({ code: 'card_not_found' }))
+    // The tree's states of the position cards stay: what it shows is the web's choice (part 3 spec 6.4).
+    expect(service.startStates()[listedId()]).toMatchObject({ stage: 'learning' })
+  })
+
+  it('serves the most overdue of the problems and the graph items; on an equal due a problem first, then the deeper position', () => {
+    let items: GraphQueueItem[] = []
+    const { service, setNow } = queueSetup(() => items)
+    setNow(new Date('2026-10-15T11:00:00'))
+    // The problem, due at 10:01, is more overdue than the item.
+    items = [item('a', 'B', at('10:30:00'))]
+    expect(service.due()).toMatchObject({ card: { id: 'card2', kind: 'move' } })
+    // One card sets the due of nested positions: the deepest comes first, whatever the order of the items.
+    items = [item('a', 'B', at('10:00:30')), item('deep', 'B', at('10:00:30'), { moves: ['Q16', 'O17', 'R14'] })]
+    expect(service.due()).toEqual({ card: { id: 'graph:deep:B', kind: 'graph', startId: 'deep', userColor: 'B' } })
+    // On an equal due a problem comes before every graph item, whatever its id.
+    items = [item('a', 'W', service.list('move')[0].due)]
+    expect(service.due()).toMatchObject({ card: { id: 'card2' } })
+    const late = queueSetup(() => items, 'zz')
+    late.setNow(new Date('2026-10-15T11:00:00'))
+    items = [item('a', 'W', late.service.list('move')[0].due)]
+    expect('zz2' > 'graph:a:W').toBe(true)
+    expect(late.service.due()).toMatchObject({ card: { id: 'zz2' } })
+    expect(late.service.list().map((c) => c.id)).toEqual(['zz2', 'graph:a:W'])
+  })
+
+  it('serves a graph item ahead of its due only while its card is in its learning steps, within the learn-ahead', () => {
+    let items: GraphQueueItem[] = []
+    const { service, repo } = queueSetup(() => items)
+    // «Легко» moves the problem days away.
+    service.rate(repo.reviewBySession('card2', 's1')!.id, 'easy')
+    items = [item('a', 'B', at('10:10:00'))]
+    expect(service.due()).toEqual({ card: null, nextDue: items[0].due })
+    items = [item('a', 'B', at('10:10:00'), { stage: 'learning', learning: true })]
+    expect(service.due()).toEqual({ card: { id: 'graph:a:B', kind: 'graph', startId: 'a', userColor: 'B' } })
+    items = [item('a', 'B', new Date(new Date('2026-10-15T10:00:00').getTime() + LEARN_AHEAD_MS + 60_000).toISOString(), { stage: 'learning', learning: true })]
+    expect(service.due()).toEqual({ card: null, nextDue: items[0].due })
+  })
+
+  it('works with the position cards as before without weights for the level', () => {
+    const { service, setNow } = queueSetup(() => null)
+    setNow(new Date('2026-10-15T11:00:00'))
+    expect(service.summary()).toMatchObject({ dueNow: 2, dueByKind: { position: 1, move: 1 }, total: 2 })
+    expect(service.list().map((c) => c.id)).toEqual(['card1', 'card2'])
+    expect(service.due()).toEqual({ card: { id: 'card1', kind: 'position', startId: listedId(), userColor: 'B', botRank: '5k' } })
   })
 })
 

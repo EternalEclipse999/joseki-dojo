@@ -2,14 +2,15 @@ import { describe, expect, it, vi } from 'vitest'
 import { gtpToVertex, inZone, Position, vertexToIndex, zoneVertices, type ServerMessage, type SessionSettings, type SessionView, type Vertex } from '@joseki-dojo/shared'
 import { isHumanQuery, isTenukiQuery, StubEngine, testConfig } from '../../test/helpers'
 import { AnalysisScheduler } from '../analysis/scheduler'
-import { HumanBot } from '../bot/bot'
+import { HumanBot, type BotGuide, type BotRequest, type MoveChooser } from '../bot/bot'
 import { mulberry32 } from '../bot/rng'
 import type { AppConfig } from '../config'
 import { EngineError } from '../engine/engine'
 import type { KataGoQueryBody } from '../engine/katago-types'
 import { openDb } from '../store/db'
+import type { SessionRecord } from '../store/records'
 import { SessionRepo } from '../store/repo'
-import { SessionService } from './service'
+import { SessionService, type SessionServiceDeps } from './service'
 import { SessionError } from './session'
 
 const settings = (over: Partial<SessionSettings> = {}): SessionSettings => ({
@@ -21,7 +22,7 @@ const settings = (over: Partial<SessionSettings> = {}): SessionSettings => ({
   ...over,
 })
 
-function setup(config: Partial<AppConfig> = {}, repo = new SessionRepo(openDb(':memory:')), engine = new StubEngine()) {
+function setup(config: Partial<AppConfig> = {}, repo = new SessionRepo(openDb(':memory:')), engine = new StubEngine(), deps: Partial<SessionServiceDeps> = {}) {
   const cfg = testConfig(config)
   const published: { id: string; msg: ServerMessage }[] = []
   const finished: string[] = []
@@ -37,6 +38,7 @@ function setup(config: Partial<AppConfig> = {}, repo = new SessionRepo(openDb(':
     rng: mulberry32(7),
     newId: () => `s${++n}`,
     now: () => '2026-10-06T10:00:00.000Z',
+    ...deps,
   })
   const errors = (): ServerMessage[] => published.filter((p) => p.msg.type === 'error').map((p) => p.msg)
   return { service, engine, repo, published, finished, errors }
@@ -234,6 +236,96 @@ describe('SessionService', () => {
     expect(r).toMatchObject({ parentSessionId: v.id, initialMoves: [{ color: 'B', vertex: [15, 3] }], moves: [], toMove: 'W' })
     await vi.waitFor(() => expect(service.view(r.id).moves).toHaveLength(1))
     expect(() => service.replayFrom(v.id, 5)).toThrow(SessionError)
+  })
+
+  it("hands the bot the trainer's guide, never in a trap (part 3 spec 5.4)", async () => {
+    let guided = 0
+    const guide: BotGuide = () => (guided++, null)
+    const asked: string[] = []
+    const trainer: SessionServiceDeps['trainer'] = {
+      randomStart: () => null,
+      queueStart: () => null,
+      guideFor: (rec: SessionRecord) => {
+        asked.push(rec.id)
+        return guide
+      },
+    }
+    const requests: BotRequest[] = []
+    const bot: MoveChooser = {
+      chooseMove: async (req) => {
+        requests.push(req)
+        return [3, 15]
+      },
+    }
+    const { service, repo } = setup({}, undefined, undefined, { bot, trainer })
+    const v = service.start(settings({ userColor: 'W' }))
+    await vi.waitFor(() => expect(service.view(v.id).moves).toHaveLength(1))
+    // A traps session whose trap the book does not know: its bot plays as usual, unguided.
+    repo.insertSession({
+      id: 'trap',
+      createdAt: '2026-10-06T10:00:00.000Z',
+      finishedAt: null,
+      settings: { mode: 'traps', environment: 'empty', userColor: 'W', botRank: '7k', corner: 'TR', trap: { id: 'deadbeef', index: 2, mirror: false, swapColors: false } },
+      status: 'playing',
+      parentSessionId: null,
+      initialMoves: [
+        { color: 'B', vertex: [15, 3] },
+        { color: 'W', vertex: [13, 2] },
+      ],
+      moves: [],
+      summary: null,
+    })
+    service.resync('trap')
+    await vi.waitFor(() => expect(service.view('trap').moves).toHaveLength(1))
+    expect(requests.map((r) => typeof r.guide)).toEqual(['function', 'undefined'])
+    expect(asked).toEqual([v.id])
+    // The bot's guide calls the trainer's.
+    expect(requests[0].guide!([], mulberry32(1))).toBeNull()
+    expect(guided).toBe(1)
+  })
+
+  it("offers no end after the guide's move outside the corner, but after the bot's own (part 3 spec 5.4)", async () => {
+    // The guide: D4 outside the corner at the bot's second move, the user's first stone (not legal) at its third.
+    const guides: Record<number, BotGuide> = { 3: () => [3, 15], 5: () => [15, 3] }
+    const trainer: SessionServiceDeps['trainer'] = { randomStart: () => null, queueStart: () => null, guideFor: (rec) => guides[rec.moves.length] ?? null }
+    const { service, engine } = setup({}, undefined, undefined, { trainer })
+    engine.human = (q) => cornerPolicy(q, 0.9)
+    const v = service.start(settings())
+    service.playUserMove(v.id, [15, 3])
+    await vi.waitFor(() => expect(service.view(v.id).moves).toHaveLength(2))
+    service.playUserMove(v.id, freeZonePoint(service.view(v.id)))
+    await vi.waitFor(() => expect(service.view(v.id).moves).toHaveLength(4))
+    expect(service.view(v.id).moves[3]).toMatchObject({ actor: 'bot', vertex: [3, 15], inZone: false })
+    expect(service.view(v.id).endProposed).toBe(false)
+    // The guide's move is not legal: the bot plays its own, which leaves the corner, and the end is proposed.
+    service.playUserMove(v.id, freeZonePoint(service.view(v.id)))
+    await vi.waitFor(() => expect(service.view(v.id).moves).toHaveLength(6))
+    expect(service.view(v.id).moves[5]).toMatchObject({ actor: 'bot', inZone: false })
+    expect(service.view(v.id).endProposed).toBe(true)
+  })
+
+  it('lets the bot play unguided when the trainer fails, and logs it (part 3 spec 5.4)', async () => {
+    const log: string[] = []
+    let calls = 0
+    const trainer: SessionServiceDeps['trainer'] = {
+      randomStart: () => null,
+      queueStart: () => null,
+      guideFor: () => {
+        if (++calls === 1) throw new Error('boom')
+        return () => {
+          throw new Error('bang')
+        }
+      },
+    }
+    const { service, errors } = setup({}, undefined, undefined, { trainer, log: (line) => log.push(line) })
+    // The bot opens: guideFor fails; then the guide itself fails.
+    const v = service.start(settings({ userColor: 'W' }))
+    await vi.waitFor(() => expect(service.view(v.id).moves).toHaveLength(1))
+    service.playUserMove(v.id, freeZonePoint(service.view(v.id)))
+    await vi.waitFor(() => expect(service.view(v.id).moves).toHaveLength(3))
+    expect(service.view(v.id).moves.map((m) => m.actor)).toEqual(['bot', 'user', 'bot'])
+    expect(errors()).toEqual([])
+    expect(log).toEqual([`trainer: no guide for session ${v.id}, the bot plays unguided: boom`, `trainer: the guide of session ${v.id} failed, the bot plays unguided: bang`])
   })
 
   it('restarts the review on resync of a finished session without a summary', () => {

@@ -203,9 +203,19 @@ export class StartBook {
     return node ? { name: node.name, ...(node.group ? { group: node.group } : {}) } : null
   }
 
-  /** Spec (starts) 5.3: a dubious start with probability DUBIOUS_SHARE (when there are both kinds), weight 1 / (1 + shows) inside the set. */
-  pick(shows: (id: string) => number, rng: Rng): string | null {
-    const dubious = this.dubiousPaths.size > 0 && (this.paths.size === 0 || rng() < DUBIOUS_SHARE)
+  /**
+   * Spec (starts) 5.3: whether a «Случайно» pick takes a dubious start — with probability DUBIOUS_SHARE (one draw) when
+   * there are both kinds, always when there are only dubious ones, never without them.
+   */
+  drawDubious(rng: Rng): boolean {
+    return this.dubiousPaths.size > 0 && (this.paths.size === 0 || rng() < DUBIOUS_SHARE)
+  }
+
+  /**
+   * Spec (starts) 5.3: a dubious start or a normal one — the kind `dubious`, drawn by drawDubious unless given — weight
+   * 1 / (1 + shows) inside the set.
+   */
+  pick(shows: (id: string) => number, rng: Rng, dubious = this.drawDubious(rng)): string | null {
     return pickLeastShown(dubious ? this.dubiousIds() : this.ids(), shows, rng)
   }
 

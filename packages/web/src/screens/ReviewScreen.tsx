@@ -1,13 +1,13 @@
 import type { JSX } from 'preact'
 import { useState } from 'preact/hooks'
 import { FolderOpen, GitBranch, LoaderCircle, Map as MapIcon, Play, RotateCcw, Swords } from 'lucide-preact'
-import type { Actor, MessageKey, ReviewData, Translate, TrapVerdict } from '@joseki-dojo/shared'
+import type { Actor, MessageKey, ProgressDelta, ReviewData, Translate, TrapVerdict } from '@joseki-dojo/shared'
 import { ownershipMap } from '../board-maps'
 import { Board } from '../components/Board'
 import { LossBar } from '../components/LossBar'
 import { RepetitionPanel, type RepetitionLink } from '../components/RepetitionPanel'
 import { BranchSteps, DeeperControls, VariationCandidates, VariationHead } from '../components/VariationAside'
-import { CATEGORY_LABEL, formatPoints, moveLabel, ZERO_LOSS } from '../format'
+import { CATEGORY_LABEL, formatPercentPair, formatPoints, moveLabel, ZERO_LOSS } from '../format'
 import { useI18n, useT } from '../i18n'
 import { summaryTiles } from '../review-summary'
 import { richText } from '../rich-text'
@@ -140,6 +140,21 @@ function trapNote(review: ReviewData, turn: number, t: Translate): JSX.Element |
   )
 }
 
+/**
+ * Part 3 spec 7: the progress the training gained — the percent of its list position (or of the whole list) before and
+ * after it, and the positions it reviewed for the first time. The colour is the crumbs' and the matchup's.
+ */
+function ProgressGain({ delta }: { delta: ProgressDelta }) {
+  const { t, language } = useI18n()
+  const [before, after] = formatPercentPair(delta.before, delta.after, language)
+  return (
+    <div class="progress-gain">
+      <p>{t(delta.listId === null ? 'review.progress.overall' : 'review.progress.position', { before, after })}</p>
+      {delta.newPositions > 0 && <p>{t('review.progress.new', { count: delta.newPositions })}</p>}
+    </div>
+  )
+}
+
 interface ReviewLoadedProps {
   review: ReviewData
   onReplay: (turn: number) => void
@@ -154,7 +169,7 @@ interface ReviewLoadedProps {
 /**
  * Spec 7: summary, loss chart, move navigator, candidates and the branch, next to the board.
  * Variations spec 3–5: a variation instead of a game move, its deepening analysis and KataGo's replies.
- * Repetition spec 5.3: the repetition panel above them.
+ * Repetition spec 5.3: the repetition panel above them; part 3 spec 7: the progress gained above it.
  */
 function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variations, repetition }: ReviewLoadedProps) {
   const { t, language } = useI18n()
@@ -185,7 +200,10 @@ function ReviewLoaded({ review, onReplay, onNew, onNext, labels, busy, variation
         onClick={onBoardClick}
       />
       <aside class="panel">
-        {repetition && (review.repetition || repetition.queue) && <RepetitionPanel info={review.repetition ?? null} link={repetition} busy={busy} />}
+        {review.progress && <ProgressGain delta={review.progress} />}
+        {repetition && (review.repetition || repetition.queue) && (
+          <RepetitionPanel info={review.repetition ?? null} link={repetition} busy={busy} counted={review.progress !== undefined} />
+        )}
         <div class="metrics">
           {summaryTiles(review.summary, t, language).map((tile) => (
             <div class="metric" key={tile.k}>

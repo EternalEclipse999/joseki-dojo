@@ -30,6 +30,8 @@ export interface SessionSettings {
   corner: Corner | 'random'
   /** Mode 'list': the id of the chosen node of the tree — a position, a branch or a group's corner stone. */
   startId?: string
+  /** Mode 'list', a colour of B or W: the queue's start of the position by its due card (part 3 spec 6.3). */
+  queue?: boolean
 }
 
 /** The trap of a traps-mode session and how its canonical form was put on the board. */
@@ -59,6 +61,21 @@ export interface StartRef {
   dubious?: boolean
   /** The colours of a dubious start were swapped so that the user answers the dubious move. */
   swapColors?: boolean
+  /** Part 3 spec 5: a start the trainer chose deeper in the graph; `id` and the name are then the deepest list position on its way. */
+  graph?: GraphStartRef
+}
+
+/** Part 3 spec 5.3–5.4: a deep start of the joseki graph and the way from it to its target. */
+export interface GraphStartRef {
+  /** The number of initial moves (the setup): a replay from move N has more, and is neither guided nor recorded. */
+  setup: number
+  /**
+   * The way from the start to the target: the position keys of its nodes after the start, one per move, the target last.
+   * A move follows it when it reaches the next key, so either of a symmetric node's twin moves does.
+   */
+  path: string[]
+  /** The target is a rest card: the bot leaves the graph once the path is played. */
+  leave: boolean
 }
 
 export interface ResolvedSettings {
@@ -159,6 +176,8 @@ export interface ReviewData {
   trap?: ReviewTrap
   /** Spec (repetition) 5.3: present when this training is a position card repetition. */
   repetition?: RepetitionInfo
+  /** Part 3 spec 7: the progress the training gained; none without weights or for a training that is not recorded. */
+  progress?: ProgressDelta
 }
 
 export type HealthState = 'starting' | 'ready' | 'failed'
@@ -297,12 +316,15 @@ export interface CardListItem {
   orphan: boolean
   /** Problem cards: the source, the corner's group, the move number and the zone's stones (top-right, GTP). */
   problem: { source: ProblemSource; group: StartGroup | null; moveNumber: number; black: string[]; white: string[] } | null
+  /** Part 3 spec 6.2: a position's graph item — its colour; not deletable. */
+  graph?: { color: Color }
 }
 
-/** Spec (repetition) 5.2: the next card of the queue. */
+/** Spec (repetition) 5.2: the next card of the queue; part 3 spec 6.2: with weights, a list position for a colour instead of a position card. */
 export type DueCard =
   | { card: { id: string; kind: 'position'; startId: string; userColor: Color; botRank: string } }
   | { card: { id: string; kind: 'move'; problem: ProblemView } }
+  | { card: { id: string; kind: 'graph'; startId: string; userColor: Color } }
   | { card: null; nextDue: string | null }
 
 /** Spec (repetition) 6: a position card's state for the tree. */
@@ -318,8 +340,10 @@ export interface ProgressEntry {
   percent: number
   /** The probability of reaching the position from the empty corner. */
   weight: number
-  /** A card under the position is due. */
+  /** Part 3 spec 6.1: the position's due is reached — the earliest due of the cards that set it. */
   due: boolean
+  /** Part 3 spec 6.1: the earliest due of the cards that set the position's due, ISO; null without such a card. */
+  dueAt: string | null
 }
 
 /** Spec (progress part 2) 4: the progress of the start list for one colour at the player's level; without weights, none. */
@@ -332,6 +356,18 @@ export interface ProgressView {
   overall: { percent: number; due: number }
   /** By list id. */
   positions: Record<string, ProgressEntry>
+}
+
+/** Part 3 spec 7: the progress a training gained, for its position (or the whole list: listId null) and colour. */
+export interface ProgressDelta {
+  listId: string | null
+  /** The colour the training was recorded under: a role, Black being the side that started the corner. */
+  color: Color
+  /** 0..1: the percent before the training's reviews and right after them. */
+  before: number
+  after: number
+  /** The move cards the training reviewed for the first time. */
+  newPositions: number
 }
 
 /** Spec (repetition) 4.1: where a «find a good move» problem came from. */

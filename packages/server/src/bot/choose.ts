@@ -25,6 +25,13 @@ export interface BotChoiceInput {
 
 export type BotChoice = { kind: 'zone'; vertex: Vertex } | { kind: 'tenuki'; vertex: Vertex } | { kind: 'pass' }
 
+/** A move the bot may play and its probability (0 for a tenuki it never plays); `tenuki`: the move outside the corner (the best outside point, or a pass). */
+export interface NaturalMove {
+  vertex: Vertex | 'pass'
+  tenuki: boolean
+  p: number
+}
+
 interface Entry {
   vertex: Vertex
   p: number
@@ -36,6 +43,54 @@ interface Entry {
  * started. Zone moves are sampled from policy^(1/temperature) over the local area around the stones in the zone.
  */
 export function chooseBotMove(input: BotChoiceInput, rng: Rng): BotChoice {
+  const { zone, outside, pIn, pOut } = splitPolicy(input)
+
+  const tenuki = (): BotChoice => {
+    const best = bestOutside(outside)
+    return best ? { kind: 'tenuki', vertex: best.vertex } : { kind: 'pass' }
+  }
+
+  if (zone.length === 0) return tenuki()
+  if (input.josekiStarted && pIn + pOut > 0) {
+    const share = pOut / (pIn + pOut)
+    if (share >= SETTLED_SHARE) return tenuki()
+    if (share >= CALM_SHARE && rng() < MISTAKE_TENUKI_RATE) return tenuki()
+  }
+  return { kind: 'zone', vertex: sample(localZone(zone, input), input.temperature, rng) }
+}
+
+/**
+ * Part 3 spec 5.4: the distribution chooseBotMove samples from (Σ p = 1) — the tenuki with the probability its rule gives
+ * (1 settled, MISTAKE_TENUKI_RATE calm, else 0), the rest over the local area's zone moves ∝ policy^(1/temperature),
+ * evenly when none of them has policy. The tenuki is listed whenever there is an outside point, with p 0 where the bot
+ * never leaves (a sharp corner, a joseki not started): a guide plays it for a tenuki edge of a deep start's path. Other
+ * moves the bot never plays are left out; chooseBotMove itself is unchanged.
+ */
+export function naturalMoves(input: BotChoiceInput): NaturalMove[] {
+  const { zone, outside, pIn, pOut } = splitPolicy(input)
+  const best = bestOutside(outside)
+  const tenuki = (p: number): NaturalMove => ({ vertex: best ? best.vertex : 'pass', tenuki: true, p })
+
+  if (zone.length === 0) return [tenuki(1)]
+  let tenukiRate = 0
+  if (input.josekiStarted && pIn + pOut > 0) {
+    const share = pOut / (pIn + pOut)
+    if (share >= SETTLED_SHARE) return [tenuki(1)]
+    if (share >= CALM_SHARE) tenukiRate = MISTAKE_TENUKI_RATE
+  }
+  const local = localZone(zone, input)
+  const weights = weightsOf(local, input.temperature)
+  const total = weights.reduce((a, b) => a + b, 0)
+  const moves: NaturalMove[] = best || tenukiRate > 0 ? [tenuki(tenukiRate)] : []
+  for (let i = 0; i < local.length; i++) {
+    const share = total > 0 ? weights[i] / total : 1 / local.length
+    if (share > 0) moves.push({ vertex: local[i].vertex, tenuki: false, p: (1 - tenukiRate) * share })
+  }
+  return moves
+}
+
+/** The legal points of the human policy in the zone and outside it, and the policy mass of each side (a pass counts outside). */
+function splitPolicy(input: BotChoiceInput): { zone: Entry[]; outside: Entry[]; pIn: number; pOut: number } {
   const zone: Entry[] = []
   const outside: Entry[] = []
   for (let i = 0; i < PASS_INDEX; i++) {
@@ -48,21 +103,17 @@ export function chooseBotMove(input: BotChoiceInput, rng: Rng): BotChoice {
   const passMass = Math.max(0, input.humanPolicy[PASS_INDEX] ?? 0)
   const pIn = zone.reduce((s, e) => s + e.p, 0)
   const pOut = outside.reduce((s, e) => s + e.p, 0) + passMass
+  return { zone, outside, pIn, pOut }
+}
 
-  const tenuki = (): BotChoice => {
-    const best = outside.reduce<Entry | null>((b, e) => (b === null || e.p > b.p ? e : b), null)
-    return best ? { kind: 'tenuki', vertex: best.vertex } : { kind: 'pass' }
-  }
+/** The bot's tenuki: the strongest outside point (the first on a tie), null when there is none and the bot passes. */
+const bestOutside = (outside: Entry[]): Entry | null => outside.reduce<Entry | null>((b, e) => (b === null || e.p > b.p ? e : b), null)
 
-  if (zone.length === 0) return tenuki()
-  if (input.josekiStarted && pIn + pOut > 0) {
-    const share = pOut / (pIn + pOut)
-    if (share >= SETTLED_SHARE) return tenuki()
-    if (share >= CALM_SHARE && rng() < MISTAKE_TENUKI_RATE) return tenuki()
-  }
+/** The zone points the bot samples from: the local area, or the whole zone when the local area has no legal point. */
+function localZone(zone: Entry[], input: BotChoiceInput): Entry[] {
   const anchors = localAnchors(input.position, input.corner)
   const local = zone.filter((e) => anchors.some((a) => chebyshev(a, e.vertex) <= LOCAL_RADIUS))
-  return { kind: 'zone', vertex: sample(local.length > 0 ? local : zone, input.temperature, rng) }
+  return local.length > 0 ? local : zone
 }
 
 /** The stones in the zone, or the corner's 4-4 point while the zone is empty. */
@@ -73,8 +124,11 @@ function localAnchors(position: Position, corner: Corner): Vertex[] {
 
 const chebyshev = (a: Vertex, b: Vertex): number => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]))
 
+/** The sampling weights policy^(1/temperature), 0 for a point without policy. */
+const weightsOf = (entries: Entry[], temperature: number): number[] => entries.map((e) => (e.p > 0 ? Math.pow(e.p, 1 / temperature) : 0))
+
 function sample(entries: Entry[], temperature: number, rng: Rng): Vertex {
-  const weights = entries.map((e) => (e.p > 0 ? Math.pow(e.p, 1 / temperature) : 0))
+  const weights = weightsOf(entries, temperature)
   const total = weights.reduce((a, b) => a + b, 0)
   if (total === 0) return entries[Math.floor(rng() * entries.length)].vertex
   let r = rng() * total

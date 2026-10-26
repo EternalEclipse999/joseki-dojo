@@ -12,7 +12,7 @@ export default defineConfig({
     { name: 'problems', use: { browserName: 'chromium', baseURL: 'http://127.0.0.1:5184' }, testMatch: 'problems.spec.ts' },
     // The novelties need an install that already has a training, so their own server (5185).
     { name: 'news', use: { browserName: 'chromium', baseURL: 'http://127.0.0.1:5185' }, testMatch: 'news.spec.ts' },
-    // The progress needs a joseki graph with weights over the start list, so its own server (5186).
+    // The progress and the trainer need a joseki graph with weights over the start list, so their own server (5186).
     { name: 'progress', use: { browserName: 'chromium', baseURL: 'http://127.0.0.1:5186' }, testMatch: 'progress.spec.ts' },
   ],
   // Playwright starts these one after another: the first builds the web UI that the second serves too.
@@ -71,7 +71,8 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      // The progress of the list: a small graph with weights for two levels, written before the first start.
+      // The progress of the list and the trainer: a small graph with weights for two levels, written before the first
+      // start; the fake KataGo punishes B19, so that a tenuki of the user's can be a mistake.
       command: 'npx tsx e2e/progress-server.ts',
       url: 'http://127.0.0.1:5186/api/health',
       reuseExistingServer: false,

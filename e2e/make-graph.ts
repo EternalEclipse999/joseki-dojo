@@ -2,6 +2,11 @@
 // White answer R17 (the first position of the e2e start list, e2e/make-starts.ts, Black to move), Black's O17 or its
 // mirror R14, and Black's R16 or its mirror Q17 (the list's second position). Two levels of weights that differ in how
 // likely the second position is, so that a change of the level changes the progress of the whole list.
+//
+// Under the first position a line of four more moves leads below it (part 3, the trainer's deep starts): Black P17 (or
+// its mirror R15), a White tenuki, Black O16, White P15. The bot's move in it is a tenuki because the fake KataGo's bot
+// always leaves the corner (its human policy is uniform, so most of it lies outside the zone): a training from the list
+// walks down to Black's turn after the tenuki, where a deeper card can fall due and a queue training can start.
 import { writeFileSync } from 'node:fs'
 import { canonicalize, trapId } from '../packages/server/src/jdb'
 import { lineGraph, type LineEdge } from '../packages/server/src/graph/fixture'
@@ -25,6 +30,12 @@ export function writeProgressGraph(graphFile: string, weightsFile: string): void
       edge(['Q16', 'R17'], 'R16', 0.15, 0.35),
       edge(['Q16', 'R17'], 'Q17', 0.15, 0.35),
       edge(['Q16', 'R17'], 'tenuki', 0.1, 0.05),
+      // The line below the first position.
+      edge(['Q16', 'R17'], 'P17', 0.05, 0.02),
+      edge(['Q16', 'R17'], 'R15', 0.05, 0.02),
+      edge(['Q16', 'R17', 'P17'], 'tenuki', 0.3, 0.2),
+      edge(['Q16', 'R17', 'P17', 'tenuki'], 'O16', 0.5, 0.6),
+      edge(['Q16', 'R17', 'P17', 'tenuki', 'O16'], 'P15', 0.4, 0.5),
     ],
     { [firstId]: ['Q16', 'R17'], [secondId]: ['Q16', 'R17', 'R16'] },
   )

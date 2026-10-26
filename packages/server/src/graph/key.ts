@@ -32,6 +32,12 @@ export function trainingKey(moves: readonly Move[], corner: Corner, toMove: Colo
   return zoneKey(movesToTopRight(moves, corner), toMove)
 }
 
+/** Both colours have a stone in the zone of `key` (see positionKey): among its points '1' is Black and '2' White. */
+export const keyHasBothColors = (key: string): boolean => key.includes('1', 2) && key.includes('2', 2)
+
+/** Two graph moves are the same: the same point, or both tenuki. */
+export const sameZoneMove = (a: ZoneMove, b: ZoneMove): boolean => (a === 'tenuki' || b === 'tenuki' ? a === b : a[0] === b[0] && a[1] === b[1])
+
 /** A graph path as board moves: colours alternate from Black, a tenuki is a pass. */
 export const pathMoves = (path: readonly ZoneMove[]): Move[] => path.map((m, i) => ({ color: i % 2 === 0 ? 'B' : 'W', vertex: m === 'tenuki' ? 'pass' : m }))
 

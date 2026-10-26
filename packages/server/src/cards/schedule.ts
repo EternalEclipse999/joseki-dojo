@@ -17,6 +17,9 @@ export const newState = (now: Date): FsrsState => toState(createEmptyCard(now))
 /** Spec (repetition) 4.3: the state after answering `rating` at `now`. */
 export const schedule = (state: FsrsState, rating: Rating, now: Date): FsrsState => toState(scheduler.next(toCard(state), now, GRADES[rating]).card)
 
+/** Spec (progress part 3) 2.1: the FSRS probability of recalling the card at `now` (the app's scheduler); 0 for a new card or one never reviewed. */
+export const recall = (state: FsrsState, now: Date): number => (state.last_review ? scheduler.get_retrievability(toCard(state), now, false) : 0)
+
 /** «изучена» only on the review stage; new, learning and relearning cards are «изучается». */
 export const stageOf = (state: FsrsState): CardStage => (state.state === State.Review ? 'learned' : 'learning')
 

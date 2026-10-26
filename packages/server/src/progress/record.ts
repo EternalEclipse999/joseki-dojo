@@ -1,8 +1,9 @@
-import { inZone, otherColor, sameVertex, type Color, type Move, type Rating, type ReviewData } from '@joseki-dojo/shared'
+import { inZone, otherColor, sameVertex, type Color, type Corner, type Move, type Rating, type ResolvedSettings, type ReviewData } from '@joseki-dojo/shared'
 import type { Thresholds } from '../config'
 import type { GraphBook } from '../graph/book'
-import { toNodeMove, trainingKey, type ZoneMove } from '../graph/key'
+import { sameZoneMove, toNodeMove, trainingKey, type ZoneMove } from '../graph/key'
 import { categorize } from '../review/compute'
+import type { StartBook } from '../starts/book'
 import type { SessionRecord } from '../store/records'
 import type { MoveRaw, RestRaw } from './repo'
 
@@ -47,28 +48,77 @@ export function restRating(raw: RestRaw, th: Thresholds): Rating {
  */
 export const restReviewed = (raw: RestRaw, th: Thresholds): boolean => raw.moves.length > 0 || raw.opponent.some((o) => o.loss >= th.mistake)
 
-const sameMove = (a: ZoneMove, b: ZoneMove): boolean => (a === 'tenuki' || b === 'tenuki' ? a === b : a[0] === b[0] && a[1] === b[1])
+export interface WalkStep {
+  node: number
+  mirrored: boolean
+  /** the move played there, in the node's orientation */
+  move: ZoneMove
+}
+
+/**
+ * Part 2 spec 3.1: `moves` (Black first: the colours are roles) walked from the empty corner. `steps[i]` is the node before
+ * move i; `exit` the index of the move that left the graph (null while in it); `at` the node after the last move, null once left.
+ *
+ * A move outside the zone of `corner` (a pass included) is a tenuki. The walk leaves the graph at a node on a move that is
+ * not among its edges, on an edge without a node, or on a back edge (GraphBook.backEdge: the edge that cuts a cycle of the
+ * graph, a tenuki two-cycle or a ko, spec 4.2 — the progress sends the weight of the same edges to the rest card), and
+ * stops there: the last step is the leaving move's. Before any move it is at the empty corner; without a graph, nowhere.
+ */
+export function graphWalk(moves: readonly Move[], corner: Corner, graph: GraphBook): { steps: WalkStep[]; exit: number | null; at: { node: number; mirrored: boolean } | null } {
+  const steps: WalkStep[] = []
+  let at = graph.nodeOfTraining([], corner, 'B')
+  const walked = new Set<number>()
+  for (let i = 0; at && i < moves.length; i++) {
+    walked.add(at.node)
+    const { color, vertex } = moves[i]
+    // The orientation is read again at every node: it can flip along an edge.
+    const move = toNodeMove(vertex !== 'pass' && inZone(corner, vertex) ? vertex : 'tenuki', corner, at.mirrored)
+    steps.push({ node: at.node, mirrored: at.mirrored, move })
+    const edges = graph.edges(at.node)
+    const k = edges.findIndex((e) => sameZoneMove(e.move, move))
+    const along = k >= 0 && edges[k].to !== null && !graph.backEdge(graph.firstEdge(at.node) + k)
+    const next = along ? graph.nodeOfTraining(moves.slice(0, i + 1), corner, otherColor(color)) : null
+    // A guard only: the graph without its back edges has no cycle, so the walk cannot meet a node twice; should it ever (a
+    // node found by key that is not the edge's target), it leaves the graph there instead of going round.
+    if (!next || walked.has(next.node)) return { steps, exit: i, at: null }
+    at = next
+  }
+  return { steps, exit: null, at }
+}
+
+/**
+ * Spec 2.3: the number of initial moves a training's origin puts on the board — its trap's setup, its start's moves (a deep
+ * start's setup, part 3 spec 5.3), none for a free game; null for a start the book no longer knows (a replay of it cannot be
+ * told apart).
+ */
+export function originLength(settings: ResolvedSettings, starts: StartBook): number | null {
+  const { trap, start, corner } = settings
+  if (trap) return trap.index
+  if (!start) return 0
+  if (start.graph) return start.graph.setup
+  if (!starts.canPlace(start.id)) return null
+  return starts.place(start.id, corner, start.mirror, start.swapColors).length
+}
 
 /**
  * Spec 3.1–3.3: the reviews a training gives, as pure data (no storage). `origin` is the number of initial moves its
- * origin puts on the board (the start's moves, the trap's setup, 0 for a free game): a training with more is a replay
- * from move N and gives nothing (spec 2.3). `seen` tells whether a position was met outside the graph in an earlier training.
+ * origin puts on the board (originLength: the start's moves, the trap's setup, 0 for a free game): a training with more
+ * is a replay from move N and gives nothing (spec 2.3). `seen` tells whether a position was met outside the graph in an
+ * earlier training.
  *
  * The graph's colours are roles: Black is the side that started the corner. A training whose first move is White's (a
  * trap where the user has the trick's colour, a dubious start with swapped colours) is walked with the colours inverted,
  * so it reaches the same nodes as the same moves started by Black, and it is recorded under the inverted player colour
  * (`color`); the keys of the positions it meets after leaving the graph are inverted too.
  *
- * The moves, the initial ones first, are walked through the graph from the empty corner; a move outside the training's
- * zone is a tenuki. The walk leaves the graph at a node on a move that is not among its edges, on an edge without a node,
- * or on a back edge (GraphBook.backEdge: the edge that cuts a cycle of the graph, a tenuki two-cycle or a ko, spec 4.2 —
- * the progress sends the weight of the same edges to the rest card), and stops there. Every node of the walk where the
- * player played a move of the training gets a move card review. The node it left at gets a rest card review for the
- * player's colour, whose raw data keeps everything a rating at another level needs: every in-zone move of the player
- * after the leaving move, and every in-zone move of the opponent from the leaving move on that the player answered,
- * mistake or not. There is no rest review when the player made no in-zone move after the leaving move and the opponent
- * made no mistake at the recording level. `met` lists the player's decision positions after the leaving move: the
- * position before each move of the player in the training, the player to move.
+ * The moves, the initial ones first, are walked through the graph from the empty corner (graphWalk) to the move that
+ * leaves it. Every node of the walk where the player played a move of the training gets a move card review, which keeps
+ * the move in the node's orientation (part 3 spec 4). The node it left at gets a rest card review for the player's
+ * colour, whose raw data keeps everything a rating at another level needs: every in-zone move of the player after the
+ * leaving move, and every in-zone move of the opponent from the leaving move on that the player answered, mistake or not.
+ * There is no rest review when the player made no in-zone move after the leaving move and the opponent made no mistake at
+ * the recording level. `met` lists the player's decision positions after the leaving move: the position before each move
+ * of the player in the training, the player to move.
  */
 export function walkTraining(rec: SessionRecord, review: ReviewData, graph: GraphBook, seen: (key: string) => boolean, thresholds: Thresholds, origin: number): TrainingWalk {
   const { corner, userColor } = rec.settings
@@ -78,46 +128,26 @@ export function walkTraining(rec: SessionRecord, review: ReviewData, graph: Grap
   const player = role(userColor)
   const nothing: TrainingWalk = { color: player, moves: [], rest: null, met: [] }
   if (rec.initialMoves.length !== origin) return nothing
+  // In roles, every training starts with Black at the empty corner.
   const all: Move[] = played.map(({ color, vertex }) => ({ color: role(color), vertex }))
   const start = rec.initialMoves.length
-  // In roles, every training starts with Black at the empty corner.
-  const first = all.length > 0 ? graph.nodeOfTraining([], corner, 'B') : null
-  if (!first) return nothing
-  let at = first
+  const { steps, exit } = graphWalk(all, corner, graph)
   const moves: TrainingWalk['moves'] = []
-  const walked = new Set<number>()
-  let exit: { node: number; index: number } | null = null
-  for (let i = 0; i < all.length; i++) {
-    walked.add(at.node)
-    const { color, vertex } = all[i]
+  // Spec 3.2: the start moves (before turn 0) were not the player's choice; the move that left the graph is reviewed too.
+  for (let i = start; i < steps.length; i++) {
+    if (all[i].color !== player) continue
     const turn = i - start
-    // Spec 3.2: the start moves (before turn 0) were not the player's choice.
-    if (turn >= 0 && color === player) {
-      const best = review.positions[turn]?.candidates[0]?.vertex
-      const raw: MoveRaw = { loss: review.moveReviews[turn].loss, best: best !== undefined && sameVertex(vertex, best) }
-      moves.push({ key: graph.nodeKey(at.node), raw, auto: moveRating(raw, thresholds) })
-    }
-    // The orientation is read again at every node: it can flip along an edge.
-    const move = toNodeMove(vertex !== 'pass' && inZone(corner, vertex) ? vertex : 'tenuki', corner, at.mirrored)
-    const edges = graph.edges(at.node)
-    const k = edges.findIndex((e) => sameMove(e.move, move))
-    const along = k >= 0 && edges[k].to !== null && !graph.backEdge(graph.firstEdge(at.node) + k)
-    const next = along ? graph.nodeOfTraining(all.slice(0, i + 1), corner, otherColor(color)) : null
-    // A guard only: the graph without its back edges has no cycle, so the walk cannot meet a node twice; should it ever (a
-    // node found by key that is not the edge's target), it leaves the graph there instead of going round.
-    if (!next || walked.has(next.node)) {
-      exit = { node: at.node, index: i }
-      break
-    }
-    at = next
+    const best = review.positions[turn]?.candidates[0]?.vertex
+    const raw: MoveRaw = { loss: review.moveReviews[turn].loss, best: best !== undefined && sameVertex(all[i].vertex, best), move: steps[i].move }
+    moves.push({ key: graph.nodeKey(steps[i].node), raw, auto: moveRating(raw, thresholds) })
   }
-  if (!exit) return { ...nothing, moves }
+  if (exit === null) return { ...nothing, moves }
 
   const losses = review.moveReviews.map((m) => m.loss)
   const raw: RestRaw = { moves: [], opponent: [] }
   const met = new Set<string>()
   // The player's decision positions after the leaving move (whose own review, when it is the player's, is its move card's).
-  for (let i = Math.max(exit.index + 1, start); i < all.length; i++) {
+  for (let i = Math.max(exit + 1, start); i < all.length; i++) {
     if (all[i].color !== player) continue
     const turn = i - start
     const key = trainingKey(all.slice(0, i), corner, player).key
@@ -126,10 +156,10 @@ export function walkTraining(rec: SessionRecord, review: ReviewData, graph: Grap
     if (rec.moves[turn].inZone) raw.moves.push({ loss: losses[turn], key, seenBefore })
     // Spec 3.3: an opponent's move is judged at the position after it, where the player has to answer (punish) it.
     const previous = rec.moves[turn - 1]
-    if (i - 1 >= exit.index && previous && all[i - 1].color !== player && previous.inZone) {
+    if (i - 1 >= exit && previous && all[i - 1].color !== player && previous.inZone) {
       raw.opponent.push({ loss: losses[turn - 1], replyLoss: losses[turn], key, seenBefore })
     }
   }
-  const rest = restReviewed(raw, thresholds) ? { key: graph.nodeKey(exit.node), raw, auto: restRating(raw, thresholds) } : null
+  const rest = restReviewed(raw, thresholds) ? { key: graph.nodeKey(steps[exit].node), raw, auto: restRating(raw, thresholds) } : null
   return { color: player, moves, rest, met: [...met] }
 }

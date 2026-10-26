@@ -51,6 +51,43 @@ describe('GraphBook', () => {
     expect([book.hasLevel('1d'), book.hasLevel('5k'), book.hasLevel('9d')]).toEqual([true, true, false])
   })
 
+  it('gives the arrays of a level with the values of probabilities(), the same arrays while it stays decoded', () => {
+    for (const level of ['5k', '1d']) {
+      const { edge, rest } = book.levelArrays(level)!
+      for (let n = 0; n < book.nodeCount; n++) {
+        const p = book.probabilities(n, level)!
+        expect(Array.from(edge.subarray(book.firstEdge(n), book.firstEdge(n + 1)))).toEqual(p.edges)
+        expect(rest[n]).toBe(p.rest)
+      }
+    }
+    // Asked for alternately, the two levels are not decoded again.
+    const first = { '5k': book.levelArrays('5k'), '1d': book.levelArrays('1d') }
+    for (const level of ['5k', '1d', '5k', '1d'] as const) expect(book.levelArrays(level)).toBe(first[level])
+    expect(book.levelArrays('9d')).toBeNull()
+    expect(GraphBook.load(graphBytes, null).levelArrays('5k')).toBeNull()
+    expect(GraphBook.empty().levelArrays('5k')).toBeNull()
+  })
+
+  it('gives the node an edge leads to and whether the edge is good, as edges() has them', () => {
+    for (const g of [walkGraph(), graph]) {
+      const b = GraphBook.load(encodeGraph(g), null)
+      for (let node = 0; node < b.nodeCount; node++) {
+        b.edges(node).forEach((e, k) => {
+          const edge = b.firstEdge(node) + k
+          expect(b.edgeTarget(edge)).toBe(e.to ?? -1)
+          expect(b.goodEdge(edge)).toBe(e.categories.some((c) => c.category === 'ideal' || c.category === 'good'))
+        })
+      }
+    }
+    // testGraph(): good or ideal in either dictionary; R17 only a trick of the second, the tenuki only a question of the first.
+    expect([0, 1, 2, 3, 4].map((e) => book.goodEdge(e))).toEqual([true, true, true, false, false])
+    expect([0, 1, 2, 3, 4].map((e) => book.edgeTarget(e))).toEqual([1, 2, 2, -1, -1])
+    for (const e of [-1, book.edgeCount, 1.5, Number.NaN]) {
+      expect(() => book.edgeTarget(e)).toThrow(RangeError)
+      expect(() => book.goodEdge(e)).toThrow(RangeError)
+    }
+  })
+
   it('works without weights', () => {
     const bare = GraphBook.load(graphBytes, null)
     expect(bare.hasWeights).toBe(false)
@@ -268,7 +305,7 @@ describe('GraphBook in flat arrays', () => {
     expect(() => book.firstEdge(-1)).toThrow(RangeError)
   })
 
-  it('decodes the level asked for and drops the one before, with the values of decodeWeights', () => {
+  it('decodes the levels asked for, with the values of decodeWeights', () => {
     const weights = wideWeights(wide)
     const bytes = encodeWeights(weights, wide)
     const expected = decodeWeights(bytes, wide)
@@ -285,6 +322,18 @@ describe('GraphBook in flat arrays', () => {
     expect(small.probabilities(1, '5k')).toEqual({ edges: [expect.closeTo(0.3, 4), expect.closeTo(0.2, 4), expect.closeTo(0.05, 4)], rest: expect.closeTo(0.45, 4) })
     expect(small.probabilities(1, '1d')).toEqual(first)
     expect(first).toEqual({ edges: [expect.closeTo(0.123456, 4), expect.closeTo(0.333333, 4), expect.closeTo(0.5, 4)], rest: expect.closeTo(0.043211, 4) })
+  })
+
+  it('keeps the arrays of the last four levels asked for decoded', () => {
+    const six = book.withWeights(encodeWeights(wideWeights(wide, 6), wide))
+    const kept = ['1k', '2k', '3k', '4k'].map((level) => six.levelArrays(level)!)
+    // 1k asked for again, so 2k is the level asked for least recently: a fifth level drops it.
+    expect(six.levelArrays('1k')).toBe(kept[0])
+    six.levelArrays('5k')
+    for (const k of [0, 2, 3]) expect(six.levelArrays(`${k + 1}k`)).toBe(kept[k])
+    const again = six.levelArrays('2k')
+    expect(again).not.toBe(kept[1])
+    expect(again).toEqual(kept[1])
   })
 
   it('indexes every node of the committed graph file', () => {
