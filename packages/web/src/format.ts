@@ -3,6 +3,7 @@ import { vertexToGtp, type Actor, type Category, type Color, type Corner, type L
 const oneDecimalFormats = new Map<Language, Intl.NumberFormat>()
 const integerFormats = new Map<Language, Intl.NumberFormat>()
 const percentFormats = new Map<Language, Intl.NumberFormat>()
+const decimalPercentFormats = new Map<Language, Intl.NumberFormat>()
 const cachedFormat = (cache: Map<Language, Intl.NumberFormat>, lang: Language, options?: Intl.NumberFormatOptions): Intl.NumberFormat => {
   let format = cache.get(lang)
   if (!format) cache.set(lang, (format = new Intl.NumberFormat(lang, options)))
@@ -35,6 +36,14 @@ export const formatCount = (n: number, lang: Language): string => cachedFormat(i
 
 /** Spec (progress part 2) 6: a share 0..1 as a whole percent in the language («42 %», "42%"). */
 export const formatPercent = (n: number, lang: Language): string => cachedFormat(percentFormats, lang, { style: 'percent', maximumFractionDigits: 0 }).format(n)
+
+/** Part 3 spec 7: both percents whole, or with one decimal when they are equal whole («34 % → 36 %», «34,1 % → 34,4 %»). */
+export function formatPercentPair(before: number, after: number, lang: Language): [string, string] {
+  const whole: [string, string] = [formatPercent(before, lang), formatPercent(after, lang)]
+  if (whole[0] !== whole[1]) return whole
+  const format = cachedFormat(decimalPercentFormats, lang, { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 })
+  return [format.format(before), format.format(after)]
+}
 
 /** The first letter in upper case: a lowercase catalog text that opens a line. */
 export const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)

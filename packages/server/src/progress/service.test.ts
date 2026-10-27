@@ -3,12 +3,14 @@ import { describe, expect, it, vi } from 'vitest'
 import { newState, schedule } from '../cards/schedule'
 import type { Thresholds } from '../config'
 import { GraphBook } from '../graph/book'
-import { walkGraph } from '../graph/fixture'
+import { lineKey, walkGraph } from '../graph/fixture'
 import { encodeGraph, encodeWeights } from '../graph/format'
 import { decodeJdb, encodeJdb } from '../jdb'
 import { StartBook } from '../starts/book'
 import { TEST_STARTS_LIST, testStartsTree } from '../starts/fixture'
 import { openDb } from '../store/db'
+import { DEEP_LINE, deepBook } from '../trainer/fixture'
+import { computeProgress, nodeCards } from './compute'
 import { keyBefore, TEST_THRESHOLDS, training, uniformWeights, walkBook, type Step } from './fixture'
 import { restRating } from './record'
 import { GraphCardRepo } from './repo'
@@ -129,6 +131,17 @@ describe('GraphProgressService.recordTraining', () => {
     ])
   })
 
+  it("counts a deep start's training from its setup, not the list position's moves (part 3 spec 5.3)", () => {
+    const book = starts()
+    const { repo, service } = setup(book)
+    // Named by the list's Q16 O17 R14 (3 moves), set up by Q16 R14 (2): its moves count, not the name's.
+    const start = { id: book.list()[0].id, name: 'X', mirror: false, graph: { setup: 2, path: [], leave: false } }
+    const settings = { mode: 'random' as const, start }
+    service.recordTraining(...training([['O16', 0.7]], { id: 's1', initial: ['Q16', 'R14'], settings }))
+    service.recordTraining(...training([['Q12']], { id: 's2', parentSessionId: 's1', initial: ['Q16', 'R14', 'O16', 'R12'], settings }))
+    expect(repo.allReviews().map((r) => [r.cardKey, r.kind, r.sessionId])).toEqual([[key(2), 'move', 's1']])
+  })
+
   it('counts a trap training only from its setup, and nothing of a start the book no longer knows', () => {
     const { repo, service } = setup(starts())
     const trap = { id: 'trap', index: 2, mirror: false, swapColors: false }
@@ -136,6 +149,108 @@ describe('GraphProgressService.recordTraining', () => {
     service.recordTraining(...training([['R12'], ['Q12']], { id: 's2', parentSessionId: 's1', initial: ['Q16', 'R14', 'O16'], settings: { mode: 'traps', trap } }))
     service.recordTraining(...training([['O16']], { id: 's3', initial: ['Q16', 'R14'], settings: { mode: 'random', start: { id: 'gone', name: null, mirror: false } } }))
     expect(repo.allReviews().map((r) => [r.cardKey, r.sessionId])).toEqual([[key(2), 's1']])
+  })
+})
+
+describe('GraphProgressService.deltaOf', () => {
+  /** A service on `graph` (default: the weighted walk graph) at the player's level `level`; the thresholds can change. */
+  function deltaSetup(graph = weighted, level = '7k') {
+    const now = new Date('2026-10-21T10:00:00')
+    let thresholds = TEST_THRESHOLDS
+    const repo = new GraphCardRepo(openDb(':memory:'))
+    const log: string[] = []
+    const service = new GraphProgressService({ repo, graph, starts: starts(), thresholds: () => thresholds, level: () => level, now: () => now, log: (l) => log.push(l) })
+    return { repo, service, log, setThresholds: (t: Thresholds) => (thresholds = t) }
+  }
+  /** A deep start named by the list position Q16 (walk-q16), set up by its first `setup` moves. */
+  const deep = (setup: number) => ({ mode: 'random' as const, start: { id: 'walk-q16', name: 'X', mirror: false, graph: { setup, path: [], leave: false } } })
+
+  it("stores the percent of the training's list position before and after its reviews, and the move cards it created", () => {
+    const { service } = deltaSetup()
+    // A free game: the whole list; Black's move cards at the empty corner and at Q16 R14 are new, the rest card is not counted.
+    service.recordTraining(...training(STEPS, { id: 's1' }))
+    const first = service.progress('B')
+    expect(service.deltaOf('s1')).toEqual({ listId: null, color: 'B', before: 0, after: first.overall.percent, newPositions: 2 })
+    expect(first.overall.percent).toBeGreaterThan(0)
+    // A deep start named by Q16: after White's tenuki, Black's R14 at node 3 reviews a move card new to the player.
+    service.recordTraining(...training([['tenuki'], ['R14']], { id: 's2', initial: ['Q16'], settings: deep(1) }))
+    const second = service.progress('B').positions['walk-q16'].percent
+    expect(service.deltaOf('s2')).toEqual({ listId: 'walk-q16', color: 'B', before: first.positions['walk-q16'].percent, after: second, newPositions: 1 })
+    expect(second).toBeGreaterThan(first.positions['walk-q16'].percent)
+    // The same moves again: no move card is new.
+    service.recordTraining(...training([['tenuki'], ['R14']], { id: 's3', initial: ['Q16'], settings: deep(1) }))
+    expect(service.deltaOf('s3')).toMatchObject({ listId: 'walk-q16', before: second, newPositions: 0 })
+  })
+
+  it('takes the whole list for a start that is no list position, in the colour the training is recorded under', () => {
+    const { service } = deltaSetup()
+    // A trap where the user has the trick's colour: recorded under Black, the role of the side that started the corner.
+    const trap = { id: 'trap', index: 2, mirror: false, swapColors: true }
+    service.recordTraining(...training([['O16', 0.7], ['R12'], ['Q12', 2.5]], { id: 's1', first: 'W', initial: ['Q16', 'R14'], settings: { mode: 'traps', userColor: 'W', trap } }))
+    const black = service.progress('B').overall.percent
+    expect(service.deltaOf('s1')).toEqual({ listId: null, color: 'B', before: 0, after: black, newPositions: 1 })
+    expect([black > 0, service.progress('W').overall.percent]).toEqual([true, 0])
+    // A start from the list that the graph has no list position for: only White's rest card at Q16 R14 is reviewed.
+    const id = starts().list()[0].id
+    expect(weighted.listNode(id)).toBeNull()
+    const settings = { mode: 'list' as const, userColor: 'W' as const, start: { id, name: 'X', mirror: false } }
+    service.recordTraining(...training([['Q13', 0.7]], { id: 's2', initial: ['Q16', 'O17', 'R14'], settings }))
+    const white = service.progress('W').overall.percent
+    expect(service.deltaOf('s2')).toEqual({ listId: null, color: 'W', before: 0, after: white, newPositions: 0 })
+    expect(white).toBeGreaterThan(0)
+  })
+
+  it("stores none without weights for the player's level or for a training that gives no review", () => {
+    for (const [graph, level] of [[book, '7k'], [weighted, '9d']] as const) {
+      const { repo, service } = deltaSetup(graph, level)
+      service.recordTraining(...training(STEPS))
+      expect([repo.allReviews().length, service.deltaOf('s1')]).toEqual([3, null])
+    }
+    const { repo, service } = deltaSetup()
+    // A replay from a later move of a deep start's training and a start the book no longer knows.
+    service.recordTraining(...training([['Q12']], { id: 's2', parentSessionId: 's1', initial: ['Q16', 'R14', 'O16', 'R12'], settings: deep(2) }))
+    service.recordTraining(...training([['O16']], { id: 's3', initial: ['Q16', 'R14'], settings: { mode: 'random', start: { id: 'gone', name: null, mirror: false } } }))
+    expect([repo.allReviews(), service.deltaOf('s2'), service.deltaOf('s3')]).toEqual([[], null, null])
+  })
+
+  it('records the cards when the gain fails, before or after the reviews, and logs it', () => {
+    const fail = (on: number) => {
+      const { repo, service, log } = deltaSetup()
+      const progress = service.progress.bind(service)
+      let calls = 0
+      vi.spyOn(service, 'progress').mockImplementation((color) => {
+        if (++calls === on) throw new Error('boom')
+        return progress(color)
+      })
+      service.recordTraining(...training(STEPS))
+      return { reviews: repo.allReviews().length, delta: service.deltaOf('s1'), version: service.version, log }
+    }
+    for (const [on, line] of [[1, 'progress gain: the percent before training s1 failed, no gain is stored: boom'], [2, 'progress gain: training s1 not stored: boom']] as const) {
+      expect(fail(on)).toEqual({ reviews: 3, delta: null, version: 1, log: [line] })
+    }
+    // Storing the gain fails.
+    const { repo, service, log } = deltaSetup()
+    vi.spyOn(repo, 'insertDelta').mockImplementation(() => {
+      throw new Error('disk')
+    })
+    service.recordTraining(...training(STEPS))
+    expect([repo.allReviews().length, service.deltaOf('s1'), log]).toEqual([3, null, ['progress gain: training s1 not stored: disk']])
+  })
+
+  it('keeps the first delta when a training is recorded again', () => {
+    const { repo, service, setThresholds } = deltaSetup()
+    // White's R17, which loses 2.5, is no mistake at these thresholds: only Q16's move card is reviewed.
+    setThresholds({ inaccuracy: 2, mistake: 4, blunder: 8, punished: 2 })
+    const steps: Step[] = [['Q16'], ['R17', 2.5], ['tenuki', 1.5]]
+    service.recordTraining(...training(steps))
+    const first = service.deltaOf('s1')
+    expect(first).toEqual({ listId: null, color: 'B', before: 0, after: service.progress('B').overall.percent, newPositions: 1 })
+    // At stricter thresholds the same training also reviews the rest card at Q16, which changes the percent.
+    setThresholds(TEST_THRESHOLDS)
+    service.recordTraining(...training(steps))
+    expect(repo.allReviews().map((r) => r.kind)).toEqual(['move', 'rest'])
+    expect(service.progress('B').overall.percent).not.toBe(first!.after)
+    expect(service.deltaOf('s1')).toEqual(first)
   })
 })
 
@@ -147,7 +262,7 @@ describe('GraphProgressService.progress', () => {
     const service = new GraphProgressService({ repo, graph: weighted, starts: StartBook.empty(), thresholds: () => TEST_THRESHOLDS, level: () => level, now: () => now })
     const first = service.progress('B')
     // Black reaches Q16 by one of the three good edges of the empty corner.
-    expect(first).toEqual({ hasWeights: true, level: '7k', color: 'B', overall: { percent: 0, due: 0 }, positions: { 'walk-q16': { percent: 0, weight: expect.closeTo(1 / 3, 6), due: false } } })
+    expect(first).toEqual({ hasWeights: true, level: '7k', color: 'B', overall: { percent: 0, due: 0 }, positions: { 'walk-q16': { percent: 0, weight: expect.closeTo(1 / 3, 6), due: false, dueAt: null } } })
     expect(service.progress('B')).toBe(first)
     const white = service.progress('W')
     expect(white.color).toBe('W')
@@ -181,8 +296,90 @@ describe('GraphProgressService.progress', () => {
       const cards = vi.spyOn(repo, 'allCards')
       const service = new GraphProgressService({ repo, graph, starts: StartBook.empty(), thresholds: () => TEST_THRESHOLDS, level: () => level })
       expect(service.progress('B')).toEqual({ hasWeights: false, level, color: 'B', overall: { percent: 0, due: 0 }, positions: {} })
+      expect(service.result('B')).toBeNull()
       expect(cards).not.toHaveBeenCalled()
     }
+  })
+
+  it('finds the cards by the nodes of their keys, skips a key outside the graph and keeps them until the cards change', () => {
+    const now = new Date('2026-10-21T10:00:00')
+    const repo = new GraphCardRepo(openDb(':memory:'))
+    const service = new GraphProgressService({ repo, graph: weighted, starts: StartBook.empty(), thresholds: () => TEST_THRESHOLDS, level: () => '7k', now: () => now })
+    const state = { ...newState(now), state: State.Review, reps: 1, stability: 21, difficulty: 5, last_review: now.toISOString(), due: '2026-10-28T10:00:00.000Z' }
+    const inGraph = { key: key(2), kind: 'move' as const, color: 'B' as const, state, createdAt: now.toISOString() }
+    repo.upsert(inGraph)
+    repo.upsert({ ...inGraph, key: lineKey(['R16']), kind: 'rest' })
+    const cards = service.nodeCards('B')
+    expect(cards.move[2]).toEqual(state)
+    expect([...cards.move, ...cards.rest].filter((c) => c !== null)).toHaveLength(1)
+    expect(service.nodeCards('B')).toBe(cards)
+    // The progress of those cards: the card outside the graph makes no difference; Q16 R14's move card sets the due.
+    const result = service.result('B')!
+    expect(result.view).toBe(service.progress('B'))
+    expect(result.view).toEqual(computeProgress(weighted, '7k', 'B', nodeCards(weighted, [inGraph], 'B'), now).view)
+    expect(result.view.positions['walk-q16']).toMatchObject({ due: false, dueAt: state.due })
+    expect(result.targets.get('walk-q16')).toEqual({ node: 2, kind: 'move', state })
+    service.recordTraining(...training(STEPS))
+    expect(service.nodeCards('B')).not.toBe(cards)
+    expect(service.result('B')).not.toBe(result)
+  })
+})
+
+describe('GraphProgressService.queueItems', () => {
+  const now = new Date('2026-10-26T10:00:00')
+
+  /** deepBook() at 7k with its list position `listId` (Q16 O17 R14, White to move); the player's level is `level()`. */
+  function queueSetup(listId: string, level = () => '7k') {
+    const repo = new GraphCardRepo(openDb(':memory:'))
+    const graph = deepBook(['7k'], listId)
+    const service = new GraphProgressService({ repo, graph, starts: starts(), thresholds: () => TEST_THRESHOLDS, level, now: () => now })
+    /** The node key after the first `n` moves of DEEP_LINE. */
+    const at = (n: number): string => graph.nodeKey(graph.node(lineKey(DEEP_LINE.slice(0, n)))!)
+    return { repo, service, at }
+  }
+
+  it('gives one item per list position and colour with a due-setting card, from that card; null without weights', () => {
+    let level = '7k'
+    const listId = starts().list()[0].id
+    expect(queueSetup(listId).service.queueItems()).toEqual([])
+    const { repo, service, at } = queueSetup(listId, () => level)
+    // Black's move card at Y (after White's tenuki at X) is learned; White's move card at X itself is in its learning steps.
+    const black = { ...newState(now), state: State.Review, reps: 1, stability: 21, difficulty: 5, last_review: now.toISOString(), due: '2026-11-16T10:00:00.000Z' }
+    const white = schedule(newState(now), 'good', now)
+    repo.upsert({ key: at(4), kind: 'move', color: 'B', state: black, createdAt: now.toISOString() })
+    repo.upsert({ key: at(3), kind: 'move', color: 'W', state: white, createdAt: now.toISOString() })
+    expect(service.queueItems()).toEqual([
+      { listId, color: 'B', due: black.due, stage: 'learned', learning: false, moves: ['Q16', 'O17', 'R14'] },
+      { listId, color: 'W', due: white.due, stage: 'learning', learning: true, moves: ['Q16', 'O17', 'R14'] },
+    ])
+    level = '9d'
+    expect(service.queueItems()).toBeNull()
+  })
+
+  it('leaves out a list position of the graph that the start list does not have: it cannot be started', () => {
+    const { repo, service, at } = queueSetup('not-listed')
+    repo.upsert({ key: at(4), kind: 'move', color: 'B', state: schedule(newState(now), 'good', now), createdAt: now.toISOString() })
+    expect(service.result('B')!.targets.has('not-listed')).toBe(true)
+    expect(service.queueItems()).toEqual([])
+  })
+})
+
+describe('GraphProgressService.version', () => {
+  it('grows by one per recording that writes a review and per level replay', () => {
+    const { service } = setup(starts())
+    expect(service.version).toBe(0)
+    const [rec, review] = training(STEPS)
+    service.recordTraining(rec, review)
+    expect(service.version).toBe(1)
+    // Recorded already, and a start the book no longer knows: nothing is written.
+    service.recordTraining(rec, review)
+    service.recordTraining(...training([['O16']], { id: 's3', initial: ['Q16', 'R14'], settings: { mode: 'random', start: { id: 'gone', name: null, mirror: false } } }))
+    expect(service.version).toBe(1)
+    service.recordTraining(...training(STEPS, { id: 's2' }))
+    expect(service.version).toBe(2)
+    service.replayLevel(TEST_THRESHOLDS)
+    service.replayLevel(TEST_THRESHOLDS)
+    expect(service.version).toBe(4)
   })
 })
 
@@ -264,7 +461,7 @@ describe('GraphProgressService.replayLevel', () => {
     // review keeps its rating for a level where it counts.
     expect(repo.card(key(1), 'rest', 'B')!.state).toMatchObject({ state: State.New, reps: 0 })
     expect(repo.reviews(key(1), 'rest', 'B').map((r) => r.auto)).toEqual(['hard'])
-    expect(service.progress('B').positions['walk-q16']).toEqual({ percent: 0, weight: entry.weight, due: false })
+    expect(service.progress('B').positions['walk-q16']).toEqual({ percent: 0, weight: entry.weight, due: false, dueAt: null })
 
     service.replayLevel(TEST_THRESHOLDS)
     expect(repo.card(key(1), 'rest', 'B')!.state).toEqual(recorded)

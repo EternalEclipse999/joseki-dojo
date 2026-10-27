@@ -5,12 +5,13 @@ import { newState, type FsrsState } from '../cards/schedule'
 import { GraphBook } from '../graph/book'
 import { lineKey, testGraph } from '../graph/fixture'
 import { encodeGraph } from '../graph/format'
-import { cardPercent, computeProgress } from './compute'
+import { cardPercent, computeProgress, nodeCards } from './compute'
 import { weightedBook, type WeightedEdge } from './fixture'
-import type { GraphCardKind } from './repo'
+import type { GraphCard, GraphCardKind } from './repo'
 
 const NOW = new Date('2026-10-21T10:00:00.000Z')
 const EARLIER = '2026-10-20T10:00:00.000Z'
+const SOON = '2026-10-24T10:00:00.000Z'
 const LATER = '2026-10-28T10:00:00.000Z'
 
 /** A reviewed card whose percent is `percent` (its stability is 22^percent − 1 days), due at `due`. */
@@ -18,13 +19,14 @@ const card = (percent: number, due = LATER): FsrsState => ({ ...newState(NOW), s
 
 type Cards = [kind: GraphCardKind, line: string[], state: FsrsState][]
 
-/** computeProgress at 5k with the cards given by the lines of their nodes. */
-function progress(book: GraphBook, color: Color, list: Cards = []) {
-  const byKey = new Map(list.map(([kind, line, state]) => [`${kind} ${lineKey(line)}`, state]))
-  return computeProgress(book, '5k', color, (key, kind) => byKey.get(`${kind} ${key}`) ?? null, NOW)
-}
+/** The cards of colour `color` given by the lines of their nodes, as stored. */
+const graphCards = (color: Color, list: Cards): GraphCard[] => list.map(([kind, line, state]) => ({ key: lineKey(line), kind, color, state, createdAt: NOW.toISOString() }))
 
-const entry = (percent: number, weight: number, due = false) => ({ percent: expect.closeTo(percent, 6), weight: expect.closeTo(weight, 6), due })
+/** computeProgress at 5k with the cards given by the lines of their nodes, found by their keys. */
+const compute = (book: GraphBook, color: Color, list: Cards = []) => computeProgress(book, '5k', color, nodeCards(book, graphCards(color, list), color), NOW)
+const progress = (book: GraphBook, color: Color, list: Cards = []) => compute(book, color, list).view
+
+const entry = (percent: number, weight: number, due = false, dueAt: string | null = null) => ({ percent: expect.closeTo(percent, 6), weight: expect.closeTo(weight, 6), due, dueAt })
 
 describe('cardPercent', () => {
   it('is 0 without a card and for a new one, else ln(1 + S) / ln 22 of the stability S in days, up to 1', () => {
@@ -53,7 +55,7 @@ describe('computeProgress', () => {
       ['move', ['Q16', 'R17'], card(0.25)],
       ['move', [], card(1)], // the empty corner is not under Q16
     ])
-    expect(view).toEqual({ hasWeights: true, level: '5k', color: 'B', overall: { percent: expect.closeTo(1 / 3, 6), due: 0 }, positions: { a: entry((0.2 * 0.5 + 0.4 + 0.4 * 0.25) / 1.8, 1) } })
+    expect(view).toEqual({ hasWeights: true, level: '5k', color: 'B', overall: { percent: expect.closeTo(1 / 3, 6), due: 0 }, positions: { a: entry((0.2 * 0.5 + 0.4 + 0.4 * 0.25) / 1.8, 1, false, LATER) } })
   })
 
   it("normalises a player node's good edges, sends the share of a good edge without a node to the rest card and ignores the other edges", () => {
@@ -77,8 +79,8 @@ describe('computeProgress', () => {
     const p = (0.5 + 0.25 * 1 + 0.5 * 0.2) / 2
     // Under Q16 (a list position nested in another, counted on its own): its rest (0.4), then Q16 R14 at 0.6.
     const a = (0.6 * 0.85) / (0.4 + 0.6 * 2)
-    const view = progress(book, 'B', cards)
-    expect(view.positions).toEqual({ a: entry(a, 1), p: entry(p, 0.6) })
+    const { view } = compute(book, 'B', cards)
+    expect(view.positions).toEqual({ a: entry(a, 1, false, LATER), p: entry(p, 0.6, false, LATER) })
     // The whole list: the positions weighted by the probability of reaching them from the empty corner.
     expect(view.overall).toEqual({ percent: expect.closeTo((1 * a + 0.6 * p) / 1.6, 6), due: 0 })
   })
@@ -100,8 +102,8 @@ describe('computeProgress', () => {
     ])
     expect(view.positions).toEqual({
       // Its rest (0.6), the move card of Q16 tenuki (0.4) and the rest card after R14 (0.4).
-      q: entry((0.4 + 0.4 * 0.75) / 1.4, 0.4),
-      m: entry(0.75, 0.4 * 0.4 + 0.6 * 0.6),
+      q: entry((0.4 + 0.4 * 0.75) / 1.4, 0.4, false, LATER),
+      m: entry(0.75, 0.4 * 0.4 + 0.6 * 0.6, false, LATER),
     })
   })
 
@@ -121,14 +123,14 @@ describe('computeProgress', () => {
       ['move', ['Q16', 'tenuki'], card(0.5)],
       ['rest', ['Q16', 'tenuki'], card(1)],
     ])
-    expect(black.positions).toEqual({ a: entry((0.4 * 0.5 + 0.24) / 1.8, 1) })
+    expect(black.positions).toEqual({ a: entry((0.4 * 0.5 + 0.24) / 1.8, 1, false, LATER) })
     // White: Q16's move card (1), its good edges halved; White's tenuki back at Q16 tenuki to its rest card (0.3), the
     // leaf after R14 with White to move (0.2 and 0.2), and the rest card of the leaf Q16 R14 (0.5).
     const white = progress(book, 'W', [
       ['move', ['Q16'], card(1)],
       ['rest', ['Q16', 'tenuki'], card(0.5)],
     ])
-    expect(white.positions).toEqual({ a: entry((1 + 0.3 * 0.5) / 2.2, 1) })
+    expect(white.positions).toEqual({ a: entry((1 + 0.3 * 0.5) / 2.2, 1, false, LATER) })
   })
 
   it('shares a player node equally between good edges the level gives no probability', () => {
@@ -138,7 +140,7 @@ describe('computeProgress', () => {
       { line: [], move: 'R17', p: 0.4, category: 'bad' },
     ]
     const book = weightedBook(edges, { q: ['Q16'] })
-    expect(progress(book, 'B', [['rest', ['Q16'], card(0.5)]]).positions).toEqual({ q: entry(0.5, 0.5) })
+    expect(progress(book, 'B', [['rest', ['Q16'], card(0.5)]]).positions).toEqual({ q: entry(0.5, 0.5, false, LATER) })
     expect(progress(book, 'W').positions).toEqual({ q: entry(0, 0) })
   })
 
@@ -152,21 +154,72 @@ describe('computeProgress', () => {
     const book = weightedBook(edges, { a: ['Q16'], p: ['Q16', 'R14'] })
     const due = (cards: Cards) => {
       const view = progress(book, 'B', cards)
-      return [view.positions.a.due, view.positions.p.due, view.overall.due]
+      return [view.positions.a.due, view.positions.p.due, view.overall.due, view.positions.a.dueAt, view.positions.p.dueAt]
     }
-    expect(due([])).toEqual([false, false, 0])
-    expect(due([['rest', ['Q16', 'R14', 'O16'], card(0, EARLIER)]])).toEqual([true, true, 2])
-    expect(due([['rest', ['Q16'], card(0, EARLIER)]])).toEqual([true, false, 1])
-    expect(due([['move', ['Q16', 'R14'], card(0.5, NOW.toISOString())]])).toEqual([true, true, 2])
+    expect(due([])).toEqual([false, false, 0, null, null])
+    expect(due([['rest', ['Q16', 'R14', 'O16'], card(0, EARLIER)]])).toEqual([true, true, 2, EARLIER, EARLIER])
+    expect(due([['rest', ['Q16'], card(0, EARLIER)]])).toEqual([true, false, 1, EARLIER, null])
+    expect(due([['move', ['Q16', 'R14'], card(0.5, NOW.toISOString())]])).toEqual([true, true, 2, NOW.toISOString(), NOW.toISOString()])
     // Not reached (a bad move of Black's), or not due yet.
-    expect(due([['rest', ['Q16', 'R14', 'S18'], card(0, EARLIER)], ['rest', ['Q16', 'R14', 'O16'], card(0, LATER)]])).toEqual([false, false, 0])
+    expect(due([['rest', ['Q16', 'R14', 'S18'], card(0, EARLIER)], ['rest', ['Q16', 'R14', 'O16'], card(0, LATER)]])).toEqual([false, false, 0, LATER, LATER])
+    // The earliest of the cards with a weight: Q16's rest for Q16, the later cards under Q16 R14.
+    expect(due([['rest', ['Q16'], card(0, SOON)], ['rest', ['Q16', 'R14', 'O16'], card(0, LATER)], ['move', ['Q16', 'R14'], card(0, LATER)]])).toEqual([false, false, 0, SOON, LATER])
+  })
+
+  it("sets no due by a rest card at a node of the player's colour, which still counts in the percent (part 3 spec 6.1)", () => {
+    // At Q16 R14 Black's only good edge P17 has no node: the rest card there takes the node's weight but sets no due.
+    const edges: WeightedEdge[] = [
+      { line: [], move: 'Q16', p: 1 },
+      { line: ['Q16'], move: 'R14', p: 0.6 },
+      { line: ['Q16', 'R14'], move: 'P17', p: 0.5, expanded: false },
+      { line: ['Q16', 'R14'], move: 'S18', p: 0.3, category: 'bad' },
+    ]
+    const book = weightedBook(edges, { a: ['Q16'], p: ['Q16', 'R14'] })
+    const rest = card(1, EARLIER)
+    const move = card(0.5, LATER)
+    const restQ16 = card(0, SOON)
+    const { view, targets } = compute(book, 'B', [
+      ['rest', ['Q16', 'R14'], rest],
+      ['move', ['Q16', 'R14'], move],
+      ['rest', ['Q16'], restQ16],
+    ])
+    expect(view.positions.p).toEqual(entry((0.5 + 1) / 2, 0.6, false, LATER))
+    // Q16, White to move: its own rest card is the earliest and sets the due.
+    expect(view.positions.a).toEqual(entry((0.6 * 1.5) / (0.4 + 0.6 * 2), 1, false, SOON))
+    expect(view.overall.due).toBe(0)
+    // The card that sets each position's due: a move card, and an opponent node's rest card.
+    expect(targets.get('p')).toEqual({ node: book.node(lineKey(['Q16', 'R14'])), kind: 'move', state: move })
+    expect(targets.get('a')).toEqual({ node: book.node(lineKey(['Q16'])), kind: 'rest', state: restQ16 })
+    // With the rest card at Black's node alone, due as it is, nothing sets a due.
+    const only = compute(book, 'B', [['rest', ['Q16', 'R14'], rest]])
+    expect([only.view.positions.a, only.view.positions.p].map((e) => [e.due, e.dueAt])).toEqual([[false, null], [false, null]])
+    expect(only.view.positions.p.percent).toBeCloseTo(0.5, 6)
+    expect(only.targets.size).toBe(0)
+  })
+
+  it('finds the cards by the nodes of their keys: only those of the colour, neither new ones nor keys outside the graph', () => {
+    const book = weightedBook([{ line: [], move: 'Q16', p: 1 }, { line: ['Q16'], move: 'R14', p: 1 }], { a: ['Q16'] })
+    const q16 = book.node(lineKey(['Q16']))!
+    const learned = card(0.5)
+    const cards: GraphCard[] = [
+      ...graphCards('B', [['rest', ['Q16'], learned], ['move', [], newState(NOW)]]),
+      ...graphCards('W', [['move', ['Q16'], learned]]),
+      { key: lineKey(['R16']), kind: 'move', color: 'B', state: learned, createdAt: NOW.toISOString() },
+    ]
+    const black = nodeCards(book, cards, 'B')
+    expect([black.move.length, black.rest.length]).toEqual([book.nodeCount, book.nodeCount])
+    expect(black.rest[q16]).toBe(learned)
+    expect([...black.move, ...black.rest].filter((c) => c !== null)).toEqual([learned])
+    expect(nodeCards(book, cards, 'W').move[q16]).toBe(learned)
   })
 
   it('has nothing without weights, for a level the weights do not have, or without a graph', () => {
     const nothing = (color: Color) => ({ hasWeights: false, level: '5k', color, overall: { percent: 0, due: 0 }, positions: {} })
-    expect(progress(GraphBook.load(encodeGraph(testGraph()), null), 'B')).toEqual(nothing('B'))
-    expect(progress(GraphBook.empty(), 'W')).toEqual(nothing('W'))
     const other = weightedBook([{ line: [], move: 'Q16', p: 1 }], { q: ['Q16'] }, '1d')
-    expect(progress(other, 'B')).toEqual(nothing('B'))
+    for (const [book, color] of [[GraphBook.load(encodeGraph(testGraph()), null), 'B'], [GraphBook.empty(), 'W'], [other, 'B']] as const) {
+      const result = compute(book, color, [['move', [], card(1)]])
+      expect(result.view).toEqual(nothing(color))
+      expect(result.targets.size).toBe(0)
+    }
   })
 })

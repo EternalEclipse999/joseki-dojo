@@ -172,4 +172,18 @@ ALTER TABLE card_reviews ADD COLUMN manual INTEGER NOT NULL DEFAULT 0;
 UPDATE card_reviews SET manual = 1 WHERE rating <> auto_rating;
 `,
   },
+  {
+    version: 8,
+    name: '008_graph_training_progress.sql',
+    sql: `
+CREATE TABLE graph_training_progress (
+  session_id TEXT PRIMARY KEY,
+  list_id TEXT,
+  color TEXT NOT NULL CHECK (color IN ('B', 'W')),
+  before REAL NOT NULL,
+  after REAL NOT NULL,
+  new_moves INTEGER NOT NULL
+);
+`,
+  },
 ]

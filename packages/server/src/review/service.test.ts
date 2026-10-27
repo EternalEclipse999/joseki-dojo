@@ -4,8 +4,11 @@ import { StubEngine, testConfig } from '../../test/helpers'
 import { AnalysisScheduler } from '../analysis/scheduler'
 import { CardRepo } from '../cards/repo'
 import { CardService } from '../cards/service'
+import { GraphBook } from '../graph/book'
+import { walkGraph } from '../graph/fixture'
+import { encodeGraph, encodeWeights } from '../graph/format'
 import { decodeJdb, encodeJdb } from '../jdb'
-import { TEST_THRESHOLDS, walkBook } from '../progress/fixture'
+import { TEST_THRESHOLDS, uniformWeights, walkBook } from '../progress/fixture'
 import { GraphCardRepo } from '../progress/repo'
 import { GraphProgressService } from '../progress/service'
 import { StartBook } from '../starts/book'
@@ -174,10 +177,38 @@ describe('ReviewService', () => {
     expect(graphCards.allCards().map((c) => [c.kind, c.color])).toEqual([['move', 'B'], ['move', 'B']])
   })
 
+  it('shows the progress the training gained over the review, when prepared and when read again (part 3 spec 7)', async () => {
+    // walkGraph() with Q16 on the list, weighted at 7k.
+    const graph = walkGraph()
+    graph.nodes[1].listIds.push('walk-q16')
+    const weighted = GraphBook.load(encodeGraph(graph), encodeWeights(uniformWeights(graph, ['7k']), graph))
+    const progress = new GraphProgressService({ repo: new GraphCardRepo(openDb(':memory:')), graph: weighted, starts: StartBook.empty(), thresholds: () => TEST_THRESHOLDS, level: () => '7k' })
+    const { reviews, logs } = setup(null, undefined, undefined, progress)
+    const review = await reviews.prepare('s1')
+    // A free game: the whole list for Black, whose move cards at the empty corner and at Q16 R14 are new.
+    expect(review.progress).toEqual({ listId: null, color: 'B', before: 0, after: progress.progress('B').overall.percent, newPositions: 2 })
+    expect(review.progress!.after).toBeGreaterThan(0)
+    const got = reviews.get('s1')
+    expect(got.status === 'ok' && got.review.progress).toEqual(review.progress)
+    expect(logs).toEqual([])
+  })
+
+  it('still returns the review when only the progress lookup fails', async () => {
+    const progress = { recordTraining: () => {}, deltaOf: () => { throw new Error('boom') } } as unknown as GraphProgressService
+    const { reviews, published, logs } = setup(null, undefined, undefined, progress)
+    const review = await reviews.prepare('s1')
+    expect(review.progress).toBeUndefined()
+    expect(published.some((m) => m.type === 'reviewReady')).toBe(true)
+    const got = reviews.get('s1')
+    expect(got.status).toBe('ok')
+    expect(got.status === 'ok' && got.review.progress).toBeFalsy()
+    expect(logs).toEqual(['progress lookup failed for session s1: boom', 'progress lookup failed for session s1: boom'])
+  })
+
   it('never lets a failing graph card hook break the review or the card repetition', async () => {
     const starts = StartBook.fromBase(decodeJdb(encodeJdb(testStartsTree()))).withList(JSON.stringify(TEST_STARTS_LIST), () => {})
     const cards = new CardService({ repo: new CardRepo(openDb(':memory:')), starts })
-    const progress = { recordTraining: () => { throw new Error('boom') } } as unknown as GraphProgressService
+    const progress = { recordTraining: () => { throw new Error('boom') }, deltaOf: () => null } as unknown as GraphProgressService
     const { engine, reviews, published, logs } = setup(null, cards, { id: starts.list()[0].id, name: 'X', mirror: false }, progress)
     engine.lead = () => 0
     const review = await reviews.prepare('s1')

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { colorSign, Position, type CardKind, type CardListItem, type CardSummary, type Color, type DueCard, type Move, type ProblemAnswer, type Rating, type RepetitionInfo, type ReviewData, type StartCardState, type Vertex } from '@joseki-dojo/shared'
+import { colorSign, Position, type CardKind, type CardListItem, type CardStage, type CardSummary, type Color, type DueCard, type Move, type ProblemAnswer, type Rating, type RepetitionInfo, type ReviewData, type StartCardState, type Vertex } from '@joseki-dojo/shared'
 import { DEFAULT_CONFIG, type Thresholds } from '../config'
 import { EngineError } from '../engine/engine'
 import type { AnalysisResponse, KataGoQueryBody } from '../engine/katago-types'
@@ -7,6 +7,7 @@ import { baseQuery } from '../engine/query'
 import { moveRating } from '../progress/record'
 import type { MoveRaw } from '../progress/repo'
 import { replayCard } from '../progress/replay'
+import type { GraphQueueItem } from '../progress/service'
 import { categorize } from '../review/compute'
 import type { StartBook } from '../starts/book'
 import type { SessionRecord } from '../store/records'
@@ -35,6 +36,11 @@ export interface CardServiceDeps {
   }
   /** One-line diagnostics: an old training that a level replay could not rebuild. */
   log?: (line: string) => void
+  /**
+   * Part 3 spec 6.2: the list positions for a colour that the queue serves by the due of their graph cards; null without
+   * weights for the player's level, when the position cards make the queue as before (spec 6.4).
+   */
+  graphQueue?: () => GraphQueueItem[] | null
 }
 
 interface PositionData {
@@ -56,6 +62,24 @@ const addDays = (d: Date, n: number): Date => {
   x.setDate(x.getDate() + n)
   return x
 }
+
+/** An entry of the queue: a card, or (part 3 spec 6.2) a list position's graph item for a colour, of kind 'position'. */
+type Entry = { id: string; kind: CardKind; due: string; stage: CardStage; learning: boolean } & ({ card: CardRow; item: null } | { card: null; item: GraphQueueItem })
+
+const cardEntry = (card: CardRow): Entry => ({ id: card.id, kind: card.kind, due: card.state.due, stage: stageOf(card.state), learning: inLearningSteps(card.state), card, item: null })
+
+/** Part 3 spec 6.2: a graph item's id is no card's, so it cannot be deleted. */
+const itemEntry = (item: GraphQueueItem): Entry => ({ id: `graph:${item.listId}:${item.color}`, kind: 'position', due: item.due, stage: item.stage, learning: item.learning, card: null, item })
+
+/**
+ * Part 3 spec 6.2: the queue's order with weights — by due; on an equal due a card (a problem) before a graph item, and the
+ * deeper of two graph items first (one card can set the due of nested positions); then by id, as the repo orders the
+ * cards (due, id).
+ */
+const queueOrder = (a: Entry, b: Entry): number =>
+  Date.parse(a.due) - Date.parse(b.due) ||
+  (a.item && b.item ? b.item.moves.length - a.item.moves.length : Number(a.item !== null) - Number(b.item !== null)) ||
+  (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 
 /** What a level-change replay derives anew for a review. */
 type Replayed = Pick<ReviewRow, 'auto' | 'worst' | 'raw'>
@@ -106,10 +130,10 @@ export class CardService {
     this.recordProblems(rec, review)
   }
 
-  /** Spec (repetition) 4.2: a finished training of a listed start is a repetition of its position card. */
+  /** Spec (repetition) 4.2: a finished training of a listed start is a repetition of its position card; a deep start is none (part 3 spec 5.5). */
   private recordPosition(rec: SessionRecord, review: ReviewData): void {
     const start = rec.settings.start
-    if (!start || start.dubious) return
+    if (!start || start.dubious || start.graph) return
     const entry = this.d.starts.list().find((e) => e.id === start.id)
     // Spec 4.2: only a training that began at the start position repeats the card (a replay from move N has more initial moves).
     if (!entry || rec.initialMoves.length > entry.moves.length) return
@@ -192,33 +216,49 @@ export class CardService {
     return this.d.repo.cards().filter((c) => !this.orphan(c))
   }
 
+  /**
+   * The queue's entries of `cards`, by due: without weights for the player's level the cards in the repo's order; with them
+   * (part 3 spec 6.2, 6.4) the problems and the graph items instead of the position cards, in queueOrder.
+   */
+  private entries(cards: CardRow[]): Entry[] {
+    const items = this.d.graphQueue?.() ?? null
+    if (!items) return cards.map(cardEntry)
+    return [...cards.filter((c) => c.kind === 'move').map(cardEntry), ...items.map(itemEntry)].sort(queueOrder)
+  }
+
+  /** Spec (repetition) 5.1 over the queue's entries: with weights a graph item counts as a position (part 3 spec 6.2). */
   summary(): CardSummary {
     const now = this.now()
-    const cards = this.servable()
-    const due = (c: CardRow): Date => new Date(c.state.due)
-    const dueNow = cards.filter((c) => due(c) <= now)
+    const entries = this.entries(this.servable())
+    const due = (e: Entry): Date => new Date(e.due)
+    const dueNow = entries.filter((e) => due(e) <= now)
     const today = dayStart(now)
-    const forecast = Array.from({ length: 7 }, (_, d) => cards.filter((c) => (d === 0 ? due(c) < addDays(today, 1) : due(c) >= addDays(today, d) && due(c) < addDays(today, d + 1))).length)
+    const forecast = Array.from({ length: 7 }, (_, d) => entries.filter((e) => (d === 0 ? due(e) < addDays(today, 1) : due(e) >= addDays(today, d) && due(e) < addDays(today, d + 1))).length)
     return {
       dueNow: dueNow.length,
-      dueByKind: { position: dueNow.filter((c) => c.kind === 'position').length, move: dueNow.filter((c) => c.kind === 'move').length },
+      dueByKind: { position: dueNow.filter((e) => e.kind === 'position').length, move: dueNow.filter((e) => e.kind === 'move').length },
       forecast,
-      total: cards.length,
-      learned: cards.filter((c) => stageOf(c.state) === 'learned').length,
-      nextDue: dueNow.length > 0 || cards.length === 0 ? null : cards[0].state.due,
+      total: entries.length,
+      learned: entries.filter((e) => e.stage === 'learned').length,
+      nextDue: dueNow.length > 0 || entries.length === 0 ? null : entries[0].due,
     }
   }
 
+  /** The tab's list: every card, orphans included; with weights the problems and the graph items (part 3 spec 6.2). */
   list(kind?: CardKind): CardListItem[] {
     const moves = new Map(this.d.starts.list().map((e) => [e.id, e.moves]))
-    return this.d.repo
-      .cards()
-      .filter((c) => !kind || c.kind === kind)
-      .map((c) => {
+    return this.entries(this.d.repo.cards())
+      .filter((e) => !kind || e.kind === kind)
+      .map((e): CardListItem => {
+        if (e.item !== null) {
+          const { listId, color } = e.item
+          return { id: e.id, kind: 'position', startId: listId, moves: e.item.moves, due: e.due, stage: e.stage, lastRating: null, reps: 0, orphan: false, problem: null, graph: { color } }
+        }
+        const c = e.card
         const startId = c.kind === 'position' ? startIdOf(c) : null
         const p = c.kind === 'move' ? (c.data as unknown as ProblemData) : null
         return {
-          id: c.id, kind: c.kind, startId, moves: (startId && moves.get(startId)) || [], due: c.state.due, stage: stageOf(c.state),
+          id: c.id, kind: c.kind, startId, moves: (startId && moves.get(startId)) || [], due: e.due, stage: e.stage,
           lastRating: this.d.repo.lastRating(c.id), reps: c.state.reps, orphan: this.orphan(c),
           problem: p && { source: p.source, group: p.group, moveNumber: p.moveNumber, ...zoneStones(p.moves, p.corner) },
         }
@@ -228,19 +268,23 @@ export class CardService {
   /**
    * Spec (repetition) 5.2: the most overdue card, a position or a problem; when none is due, the earliest one in its learning
    * steps due within LEARN_AHEAD_MS (so a card rated «Снова» comes back in the same session); otherwise the next due time.
+   * Part 3 spec 6.2: with weights the same over the problems and the graph items (queueOrder); an item is served as its
+   * list position and colour.
    */
   due(): DueCard {
     const now = this.now().getTime()
-    const cards = this.servable()
-    const dueAt = (c: CardRow): number => new Date(c.state.due).getTime()
-    const next = cards.find((c) => dueAt(c) <= now) ?? cards.find((c) => inLearningSteps(c.state) && dueAt(c) <= now + LEARN_AHEAD_MS)
-    if (!next) return { card: null, nextDue: cards[0]?.state.due ?? null }
-    if (next.kind === 'move') {
-      const p = next.data as unknown as ProblemData
-      return { card: { id: next.id, kind: 'move', problem: { source: p.source, corner: p.corner, userColor: p.userColor, moves: p.moves, userMove: p.userMove, userLoss: p.userLoss, moveNumber: p.moveNumber, group: p.group } } }
+    const entries = this.entries(this.servable())
+    const dueAt = (e: Entry): number => new Date(e.due).getTime()
+    const next = entries.find((e) => dueAt(e) <= now) ?? entries.find((e) => e.learning && dueAt(e) <= now + LEARN_AHEAD_MS)
+    if (!next) return { card: null, nextDue: entries[0]?.due ?? null }
+    if (next.item !== null) return { card: { id: next.id, kind: 'graph', startId: next.item.listId, userColor: next.item.color } }
+    const card = next.card
+    if (card.kind === 'move') {
+      const p = card.data as unknown as ProblemData
+      return { card: { id: card.id, kind: 'move', problem: { source: p.source, corner: p.corner, userColor: p.userColor, moves: p.moves, userMove: p.userMove, userLoss: p.userLoss, moveNumber: p.moveNumber, group: p.group } } }
     }
-    const data = next.data as unknown as PositionData
-    return { card: { id: next.id, kind: 'position', startId: data.startId, userColor: data.userColor, botRank: data.botRank } }
+    const data = card.data as unknown as PositionData
+    return { card: { id: card.id, kind: 'position', startId: data.startId, userColor: data.userColor, botRank: data.botRank } }
   }
 
   /** Spec (repetition) 5.4: judge a problem answer and record it as the card's review. */
@@ -330,6 +374,7 @@ export class CardService {
     return { moves: p.moves, toMove: p.toMove }
   }
 
+  /** A graph item (part 3 spec 6.2) is no card: card_not_found. */
   remove(id: string): void {
     const card = this.d.repo.card(id)
     if (!card || card.deleted) throw new CardError('card_not_found')

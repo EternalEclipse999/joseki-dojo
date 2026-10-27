@@ -54,6 +54,16 @@ describe('GraphCardRepo', () => {
     expect(db.prepare('SELECT key, first_at FROM graph_seen').all()).toEqual([{ key: 'W:1', first_at: '2026-10-21T10:00:00.000Z' }])
   })
 
+  it('keeps the first progress delta stored for a training (part 3 spec 7)', () => {
+    const repo = new GraphCardRepo(openDb(':memory:'))
+    expect(repo.delta('s1')).toBeNull()
+    const delta = { listId: 'walk-q16', color: 'B' as const, before: 0.25, after: 0.375, newPositions: 2 }
+    repo.insertDelta('s1', delta)
+    repo.insertDelta('s1', { ...delta, after: 0.5, newPositions: 0 })
+    repo.insertDelta('s2', { ...delta, listId: null, color: 'W' })
+    expect([repo.delta('s1'), repo.delta('s2')]).toEqual([delta, { ...delta, listId: null, color: 'W' }])
+  })
+
   it('rolls a failed transaction back', () => {
     const repo = new GraphCardRepo(openDb(':memory:'))
     expect(() =>

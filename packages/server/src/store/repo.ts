@@ -176,10 +176,13 @@ export class SessionRepo {
       .run(row)
   }
 
-  /** Spec (starts) 5.3: finished sessions per start position id. */
+  /** Spec (starts) 5.3: finished sessions per start position id; a deep start counts no show (part 3 spec 5.5). */
   startShows(): Map<string, number> {
     const rows = this.db
-      .prepare(`SELECT json_extract(start_json, '$.id') AS start_id, COUNT(*) AS n FROM sessions WHERE status = 'finished' AND start_json IS NOT NULL GROUP BY start_id`)
+      .prepare(
+        `SELECT json_extract(start_json, '$.id') AS start_id, COUNT(*) AS n FROM sessions
+         WHERE status = 'finished' AND start_json IS NOT NULL AND json_extract(start_json, '$.graph') IS NULL GROUP BY start_id`,
+      )
       .all() as { start_id: string; n: number }[]
     return new Map(rows.map((r) => [r.start_id, r.n]))
   }

@@ -179,7 +179,7 @@ select[aria-disabled='true'] { opacity: 0.5; cursor: progress; }
 .start-info-progress { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 13px; font-weight: 400; color: var(--text-2); white-space: nowrap; }
 .start-info-due { display: inline-flex; align-items: center; gap: 6px; }
 /* A colour switch being read: the previous colour's numbers stay in place, dimmed, until the new ones come. */
-.progress-summary.stale, .start-tree.stale .start-progress, .start-tree.stale .start-info-progress { opacity: 0.45; }
+.progress-summary.stale, .start-tree.stale .start-progress, .start-tree.stale .start-info-progress, .start-tree.stale .start-info-card { opacity: 0.45; }
 .corner-mark { cursor: pointer; }
 .corner-mark-disc { fill: var(--board); }
 .corner-mark text { fill: var(--board-accent); font-weight: 600; }
@@ -204,6 +204,8 @@ select[aria-disabled='true'] { opacity: 0.5; cursor: progress; }
 .card-row-text { display: grid; gap: 2px; flex: 1; min-width: 0; }
 .card-row-text span { font-size: 12px; color: var(--text-2); }
 
+/* The progress a training gained, at the top of the review (part 3 spec 7). */
+.progress-gain { display: grid; gap: 4px; padding: 10px 12px; border-radius: var(--radius); background: var(--surface); font-size: 14px; }
 /* The repetition panel above the review (repetition spec 5.3): KataGo's rating, the four buttons, the queue's actions. */
 .repetition-panel { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--accent-bg); }
 .repetition-panel .label { margin-bottom: 0; }

@@ -1,6 +1,6 @@
 import type { JSX } from 'preact'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { localize, translator, type AnalysisSettings, type ClientMessage, type HealthResponse, type InstallStatus, type Language, type LocalizedText, type NewsId, type ProblemAnswer, type ProblemView, type Rating, type RepetitionInfo, type ResolvedSettings, type ReviewData, type SessionSettings, type SessionView, type StartCardState, type StartsInfo, type TrapsInfo, type Vertex } from '@joseki-dojo/shared'
+import { DEFAULT_BOT_RANK, localize, translator, type AnalysisSettings, type ClientMessage, type HealthResponse, type InstallStatus, type Language, type LocalizedText, type NewsId, type ProblemAnswer, type ProblemView, type Rating, type RepetitionInfo, type ResolvedSettings, type ReviewData, type SessionSettings, type SessionView, type StartCardState, type StartsInfo, type TrapsInfo, type Vertex } from '@joseki-dojo/shared'
 import { LoaderCircle, RefreshCw } from 'lucide-preact'
 import { buildStartTree } from './start-tree'
 import { answerProblem, DojoSocket, failureText, fetchCardSummary, fetchDueCard, fetchHealth, fetchInstall, fetchNews, fetchProgress, fetchReview, fetchSettings, fetchStartCards, fetchStarts, fetchTraps, fetchUi, markNews, rateReview, recheckHealth, saveLanguage } from './api'
@@ -414,8 +414,9 @@ export function App() {
     setStarting(true)
     send(msg)
   }
-  const startWith = (settings: SessionSettings): void => {
-    setLastSettings(settings)
+  /** Starts a training; `replay`: the settings the review's own «next» starts again, by default these. */
+  const startWith = (settings: SessionSettings, replay: SessionSettings = settings): void => {
+    setLastSettings(replay)
     sendStarting({ type: 'startSession', settings })
   }
   const resetToStart = (): void => {
@@ -472,7 +473,14 @@ export function App() {
         resetToStart()
         setSection('game')
         queueStart.current = true
-        startWith({ mode: 'list', environment: 'empty', userColor: due.card.userColor, botRank: due.card.botRank, corner: 'random', startId: due.card.startId })
+        const { card } = due
+        const listed = { mode: 'list', environment: 'empty', userColor: card.userColor, corner: 'random', startId: card.startId } as const
+        if (card.kind === 'graph') {
+          // Part 3 spec 6.3: a list position of the queue with weights starts by its due card, at the bot rank of the
+          // settings. The review's own «next» starts the same position as a plain list training: no `queue` in the replay.
+          const plain: SessionSettings = { ...listed, botRank: lastSettings?.botRank ?? defaultRank ?? DEFAULT_BOT_RANK }
+          startWith({ ...plain, queue: true }, plain)
+        } else startWith({ ...listed, botRank: card.botRank })
       })
       .catch((e: unknown) => {
         setStarting(false)

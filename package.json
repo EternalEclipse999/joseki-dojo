@@ -20,6 +20,7 @@
     "traps:gpu": "tsx scripts/traps/gpu.ts",
     "thresholds:gpu": "tsx scripts/thresholds/gpu.ts",
     "tree:gpu": "tsx scripts/tree/gpu.ts",
+    "trainer:sim": "tsx scripts/trainer/sim.ts",
     "dev": "concurrently -k -n server,web -c blue,green \"npm run dev -w @joseki-dojo/server\" \"npm run dev -w @joseki-dojo/web\"",
     "build": "npm run build -w @joseki-dojo/web",
     "start": "npm run build && npm run start -w @joseki-dojo/server",

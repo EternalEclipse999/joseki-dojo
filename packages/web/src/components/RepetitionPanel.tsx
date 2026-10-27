@@ -18,6 +18,8 @@ export interface RepetitionPanelProps {
   busy?: boolean
   /** The card repeated: a position (the review of its training, the default) or a problem (its own screen). */
   kind?: CardKind
+  /** Part 3 spec 6.2: the training gained progress (the review shows it), so no «не засчитано» without `info`. */
+  counted?: boolean
 }
 
 /** Repetition spec 5.2: the queue's «Дальше» and «Закончить повторение»; nothing for a card shown outside the queue. */
@@ -41,9 +43,10 @@ export function QueueActions({ queue, busy }: { queue: RepetitionLink['queue']; 
  * buttons that replace it, when the card comes back, and the queue's «Дальше» / «Закончить». A position's rating names
  * its reason (the worst move) in the same line; a problem's verdict above the panel already does. Without `info` (a
  * training with no move of the player's in the corner zone is not a repetition) the panel says so above the queue's
- * buttons.
+ * buttons — unless the training is `counted` in the progress (part 3 spec 6.2: a deep start of the queue has no position
+ * card): then only the queue's buttons remain.
  */
-export function RepetitionPanel({ info, link, busy, kind = 'position' }: RepetitionPanelProps) {
+export function RepetitionPanel({ info, link, busy, kind = 'position', counted = false }: RepetitionPanelProps) {
   const { language, t } = useI18n()
   const { onRate, queue, error } = link
   const problem = kind === 'move'
@@ -57,7 +60,7 @@ export function RepetitionPanel({ info, link, busy, kind = 'position' }: Repetit
   return (
     <section class="repetition-panel" aria-label={title}>
       <div class="label">{title}</div>
-      {!info && <p>{t('review.repetition.notCounted')}</p>}
+      {!info && !counted && <p>{t('review.repetition.notCounted')}</p>}
       {info && (
         <>
           <p>

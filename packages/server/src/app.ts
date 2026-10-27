@@ -42,6 +42,7 @@ import { SessionRepo } from './store/repo'
 import { PlayerService } from './settings/player'
 import { UiService } from './settings/ui'
 import { StartBook } from './starts/book'
+import { TrainerService } from './trainer/service'
 import { TrapBook } from './traps/book'
 
 export interface AppServices {
@@ -110,6 +111,8 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
   const health = new HealthMonitor(config, engine)
   const thresholdsOf = (level: string) => thresholdsFor(level, options.thresholds ?? null, config.thresholds)
   const levelThresholds = () => thresholdsOf(config.player.level)
+  const graphCards = new GraphCardRepo(db)
+  const progress = new GraphProgressService({ repo: graphCards, graph, starts, thresholds: levelThresholds, level: () => config.player.level, log: options.log })
   const cards = new CardService({
     repo: new CardRepo(db),
     starts,
@@ -120,8 +123,10 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
       thresholds: levelThresholds,
       visits: () => config.analysis.reviewVisits,
     },
+    // Part 3 spec 6.2: with weights for the player's level the queue serves the list positions by their graph cards.
+    graphQueue: () => progress.queueItems(),
   })
-  const progress = new GraphProgressService({ repo: new GraphCardRepo(db), graph, starts, thresholds: levelThresholds, level: () => config.player.level })
+  const trainer = new TrainerService({ graph, progress, repo: graphCards, starts, config })
   const reviews = new ReviewService({ repo, analysis, config, publish, traps, thresholds: options.thresholds ?? null, cards, progress, log: options.log })
   const variations = new VariationService({ repo, engine, config, problems: (id) => cards.problemBase(id) })
   const sessions = new SessionService({
@@ -134,6 +139,7 @@ export function createServices(config: AppConfig, engine: KataGoEngine, options:
     strong: new StrongBot(engine),
     traps,
     starts,
+    trainer,
     log: options.log,
     onFinished: (id) => {
       reviews.prepare(id).catch((err: unknown) => publish(id, toErrorMessage(err)))

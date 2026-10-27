@@ -78,7 +78,7 @@ export class ReviewService {
       this.d.log?.(`graph card hook failed for session ${sessionId}: ${err instanceof Error ? err.message : String(err)}`)
     }
     this.d.publish(sessionId, { type: 'reviewReady', sessionId })
-    return this.withRepetition(review)
+    return this.withCards(review)
   }
 
   get(sessionId: string): ReviewResult {
@@ -90,7 +90,7 @@ export class ReviewService {
       if (!row || row.visits < this.d.config.analysis.reviewVisits) return { status: 'not_ready' }
       analyses.push(row.analysis)
     }
-    return { status: 'ok', review: this.withRepetition(this.assemble(rec, analyses)) }
+    return { status: 'ok', review: this.withCards(this.assemble(rec, analyses)) }
   }
 
   /**
@@ -109,15 +109,22 @@ export class ReviewService {
     return this.assemble(rec, analyses, thresholds)
   }
 
-  /** Spec (repetition) 5.3: the card repetition of this training, if any. */
-  private withRepetition(review: ReviewData): ReviewData {
-    let repetition = null
+  /** Spec (repetition) 5.3: the card repetition of this training, if any; part 3 spec 7: the progress it gained, if any. */
+  private withCards(review: ReviewData): ReviewData {
+    const { sessionId } = review
+    const repetition = this.lookup('card', sessionId, () => this.d.cards?.repetitionOf(sessionId))
+    const progress = this.lookup('progress', sessionId, () => this.d.progress?.deltaOf(sessionId))
+    return { ...review, ...(repetition ? { repetition } : {}), ...(progress ? { progress } : {}) }
+  }
+
+  /** A lookup that never breaks the review: a failure is logged and gives nothing. */
+  private lookup<T>(what: string, sessionId: string, find: () => T | null | undefined): T | null {
     try {
-      repetition = this.d.cards?.repetitionOf(review.sessionId) ?? null
+      return find() ?? null
     } catch (err) {
-      this.d.log?.(`card lookup failed for session ${review.sessionId}: ${err instanceof Error ? err.message : String(err)}`)
+      this.d.log?.(`${what} lookup failed for session ${sessionId}: ${err instanceof Error ? err.message : String(err)}`)
+      return null
     }
-    return repetition ? { ...review, repetition } : review
   }
 
   /** The review at `thresholds`, by default the player level's. */

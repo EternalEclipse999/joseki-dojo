@@ -23,3 +23,20 @@ export function pickLeastShown(ids: readonly string[], shows: (id: string) => nu
   }
   return ids[ids.length - 1]
 }
+
+/** One of `items` ∝ `weight` (one draw); the last one with weight when the sum rounds short. */
+export function pick<T>(items: readonly T[], weight: (item: T) => number, rng: Rng): T {
+  let last = items.length - 1
+  let total = 0
+  for (let i = 0; i < items.length; i++) {
+    const w = weight(items[i])
+    total += w
+    if (w > 0) last = i
+  }
+  let r = rng() * total
+  for (let i = 0; i < items.length; i++) {
+    r -= weight(items[i])
+    if (r < 0) return items[i]
+  }
+  return items[last]
+}

@@ -4,6 +4,7 @@ import {
   gtpToVertex,
   inZone,
   isBotRank,
+  sameVertex,
   vertexToGtp,
   type Actor,
   type Move,
@@ -18,19 +19,23 @@ import {
   type Vertex,
 } from '@joseki-dojo/shared'
 import type { AnalysisScheduler } from '../analysis/scheduler'
-import type { MoveChooser } from '../bot/bot'
+import type { BotGuide, MoveChooser } from '../bot/bot'
 import { StrongBot, type StrongChooser } from '../bot/strong'
 import type { Rng } from '../bot/rng'
 import type { AppConfig } from '../config'
 import type { AnalysisEngine } from '../engine/engine'
 import { baseQuery } from '../engine/query'
 import { toErrorMessage } from '../errors'
+import { fromTopRight, mirrorDiagonal } from '../jdb'
 import { trapReview } from '../review/trap'
 import { StartBook, type ListStart } from '../starts/book'
 import { TrapBook } from '../traps/book'
 import { movesBefore, type SessionRecord } from '../store/records'
 import type { SessionRepo } from '../store/repo'
+import type { GraphStart, TrainerService } from '../trainer/service'
 import { Session, SessionError } from './session'
+
+type Trainer = Pick<TrainerService, 'randomStart' | 'queueStart' | 'guideFor'>
 
 export interface SessionServiceDeps {
   repo: SessionRepo
@@ -42,6 +47,8 @@ export interface SessionServiceDeps {
   traps?: TrapBook
   /** The start positions; default: an empty book (the start modes are unavailable). */
   starts?: StartBook
+  /** Part 3 spec 5: the deep starts of «Случайно» and the queue and the bot's guide on their way; default: none, the starts as before. */
+  trainer?: Trainer
   engine: AnalysisEngine
   config: AppConfig
   publish: (sessionId: string, msg: ServerMessage) => void
@@ -56,6 +63,11 @@ export interface SessionServiceDeps {
 
 const MODES: readonly Mode[] = ['free', 'traps', 'random', 'list']
 
+const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err))
+
+/** A start's name and group on the list (StartRef), from its list entry; no name for a start off the list. */
+const nameOf = (named: ListStart | null): Pick<StartRef, 'name' | 'group'> => ({ name: named?.name ?? null, ...(named?.group ? { group: named.group } : {}) })
+
 export function validateSettings(s: SessionSettings): void {
   const ok =
     MODES.includes(s.mode) &&
@@ -64,7 +76,9 @@ export function validateSettings(s: SessionSettings): void {
     typeof s.botRank === 'string' &&
     isBotRank(s.botRank) &&
     (s.corner === 'random' || CORNERS.includes(s.corner)) &&
-    (s.mode !== 'list' || (typeof s.startId === 'string' && s.startId !== ''))
+    (s.mode !== 'list' || (typeof s.startId === 'string' && s.startId !== '')) &&
+    // Part 3 spec 6.3: the queue starts a list position for a colour it knows.
+    (s.queue === undefined || s.queue === false || (s.queue === true && s.mode === 'list' && s.userColor !== 'random'))
   if (!ok) throw new SessionError({ key: 'error.settings.invalid' }, 'bad_request')
 }
 
@@ -100,7 +114,7 @@ export class SessionService {
       corner: settings.corner === 'random' ? CORNERS[Math.floor(this.rng() * CORNERS.length)] : settings.corner,
     }
     if (resolved.mode === 'traps') return this.startTrap(resolved)
-    if (resolved.mode === 'random' || resolved.mode === 'list') return this.startPosition(resolved, settings.startId)
+    if (resolved.mode === 'random' || resolved.mode === 'list') return this.startPosition(resolved, settings.startId, settings.queue === true)
     return this.create(resolved, [], null)
   }
 
@@ -116,18 +130,28 @@ export class SessionService {
     return this.create({ ...resolved, trap }, initialMoves, null)
   }
 
-  /** Spec (starts) 5.2–5.3: a start from the list or picked by shows, put in the corner; the bot moves first when it is its turn. */
-  private startPosition(resolved: ResolvedSettings, startId: string | undefined): SessionView {
+  /**
+   * Spec (starts) 5.2–5.3: a start from the list or picked by shows, put in the corner; the bot moves first when it is its
+   * turn. Part 3 spec 5.1: with weights for the player's level, «Случайно» and the queue's training of a list position
+   * (`queue`) start deeper in the graph; without them, or with nothing to lead to, they start as before. «Случайно» keeps
+   * its share of dubious starts: the share is drawn first, as StartBook.pick draws it, and the trainer chooses the others.
+   */
+  private startPosition(resolved: ResolvedSettings, startId: string | undefined, queue: boolean): SessionView {
     if (this.starts.count === 0) throw new SessionError({ key: 'error.starts.unavailable' }, 'bad_request')
     let id: string | null
     let named: ListStart | null = null
     if (resolved.mode === 'list') {
       named = startId === undefined ? null : this.starts.listStart(startId)
       if (startId === undefined || !named) throw new SessionError({ key: 'error.starts.notOnList' }, 'bad_request')
+      const deep = queue ? this.deepStart('the queue start', (t) => t.queueStart(startId, resolved.userColor)) : null
+      if (deep) return this.startDeep(resolved, deep)
       id = startId
     } else {
+      const dubious = this.starts.drawDubious(this.rng)
+      const deep = dubious ? null : this.deepStart('the random start', (t) => t.randomStart(resolved.userColor))
+      if (deep) return this.startDeep(resolved, deep)
       const shows = this.d.repo.startShows()
-      id = this.starts.pick((s) => shows.get(s) ?? 0, this.rng)
+      id = this.starts.pick((s) => shows.get(s) ?? 0, this.rng, dubious)
     }
     if (id === null) throw new SessionError({ key: 'error.starts.unavailable' }, 'bad_request')
     const mirror = this.rng() < 0.5
@@ -137,7 +161,32 @@ export class SessionService {
     const initialMoves = this.starts.place(id, resolved.corner, mirror, swapColors)
     // «Случайно» names a start only by the list positions: a branch can share the moves of an unnamed start of the base.
     if (!named && this.starts.isListed(id)) named = this.starts.listStart(id)
-    const start: StartRef = { id, name: named?.name ?? null, ...(named?.group ? { group: named.group } : {}), mirror, ...(dubious ? { dubious: true, swapColors } : {}) }
+    const start: StartRef = { id, ...nameOf(named), mirror, ...(dubious ? { dubious: true, swapColors } : {}) }
+    return this.create({ ...resolved, start }, initialMoves, null)
+  }
+
+  /** Part 3 spec 5: the trainer's deep start; null without a trainer, and when it fails (logged): the start is chosen as before. */
+  private deepStart(what: string, get: (trainer: Trainer) => GraphStart | null): GraphStart | null {
+    if (!this.d.trainer) return null
+    try {
+      return get(this.d.trainer)
+    } catch (err) {
+      this.log(`trainer: ${what} failed, the start is chosen as before: ${messageOf(err)}`)
+      return null
+    }
+  }
+
+  /**
+   * Part 3 spec 5.3–5.5: a deep start's setup put in the corner, mirrored on the coin, colours from Black (the player's
+   * colour is its role), a tenuki as a pass; its path kept as the graph's keys, which no corner or mirror changes. It is
+   * named by the deepest list position on its way.
+   */
+  private startDeep(resolved: ResolvedSettings, deep: GraphStart): SessionView {
+    const mirror = this.rng() < 0.5
+    const onBoard = (m: Vertex): Vertex => fromTopRight(mirror ? mirrorDiagonal(m) : m, resolved.corner)
+    const initialMoves = deep.setup.map((m, i): Move => ({ color: i % 2 === 0 ? 'B' : 'W', vertex: m === 'tenuki' ? 'pass' : onBoard(m) }))
+    const graph = { setup: initialMoves.length, path: deep.path, leave: deep.leave }
+    const start: StartRef = { id: deep.nameId, ...nameOf(this.starts.listStart(deep.nameId)), mirror, graph }
     return this.create({ ...resolved, start }, initialMoves, null)
   }
 
@@ -238,11 +287,13 @@ export class SessionService {
     return s.view()
   }
 
-  private commit(s: Session, vertex: MoveVertex, actor: Actor): void {
+  /** `guided`: the bot played its guide's move on a deep start's way (part 3 spec 5.4). */
+  private commit(s: Session, vertex: MoveVertex, actor: Actor, guided = false): void {
     const played = s.apply(vertex, actor)
     this.d.repo.insertMove(s.id, s.turn - 1, played)
     // Spec 8.5: the bot leaving the corner ends the joseki (or is its mistake to punish); the text is the same either way.
-    if (actor === 'bot' && !played.inZone && s.canProposeEnd()) s.proposeEnd()
+    // Part 3 spec 5.4: not after a guided move — the bot's tenuki on the path and its leaving move at the target are the variation's.
+    if (actor === 'bot' && !guided && !played.inZone && s.canProposeEnd()) s.proposeEnd()
     this.afterPositionChanged(s)
   }
 
@@ -267,13 +318,13 @@ export class SessionService {
     this.publishState(s)
     const t = s.turn
     try {
-      const vertex = await this.botVertex(s)
+      const { vertex, guided } = await this.botMove(s)
       s.botThinking = false
       if (s.turn !== t || !s.isPlaying) {
         this.publishState(s)
         return
       }
-      this.commit(s, vertex, 'bot')
+      this.commit(s, vertex, 'bot', guided)
     } catch (err) {
       s.botThinking = false
       this.publishState(s)
@@ -281,8 +332,11 @@ export class SessionService {
     }
   }
 
-  /** The bot's move: the scripted trick, a strong zone reply after it, or the human-like move. */
-  private botVertex(s: Session): Promise<MoveVertex> {
+  /**
+   * The bot's move: the scripted trick, a strong zone reply after it, or the human-like move, guided on a deep start's
+   * path; `guided` when the bot played its guide's move (it plays its own when the guide's is not legal).
+   */
+  private async botMove(s: Session): Promise<{ vertex: MoveVertex; guided: boolean }> {
     const { trap } = s.record.settings
     const req = {
       moves: s.allMoves,
@@ -303,13 +357,42 @@ export class SessionService {
       const n = req.moves.length
       if (n === trap.index) {
         const { trick } = this.traps.place(trap.id, s.corner, s.userColor, trap.mirror)
-        return Promise.resolve(trick.vertex)
+        return { vertex: trick.vertex, guided: false }
       }
       if (n === trap.index + 2 || n === trap.index + 4 || n === trap.index + 6) {
-        return this.strong.chooseMove({ ...req, visits: this.d.config.analysis.reviewVisits })
+        return { vertex: await this.strong.chooseMove({ ...req, visits: this.d.config.analysis.reviewVisits }), guided: false }
       }
     }
-    return this.d.bot.chooseMove(req)
+    // Part 3 spec 5.4: never in a trap.
+    const guide = trap ? null : this.guideOf(s)
+    if (!guide) return { vertex: await this.d.bot.chooseMove(req), guided: false }
+    const offered: { move: MoveVertex | null } = { move: null }
+    const vertex = await this.d.bot.chooseMove({ ...req, guide: (natural, rng) => (offered.move = guide(natural, rng)) })
+    return { vertex, guided: offered.move !== null && sameVertex(offered.move, vertex) }
+  }
+
+  /**
+   * Part 3 spec 5.4: the trainer's guide for the bot's move, or null. A trainer that fails is logged and the bot plays as
+   * without a guide: a throw of guideFor gives no guide, a throw of the guide gives null (after any draw it made).
+   */
+  private guideOf(s: Session): BotGuide | null {
+    let guide: BotGuide | null
+    try {
+      guide = this.d.trainer?.guideFor(s.record) ?? null
+    } catch (err) {
+      this.log(`trainer: no guide for session ${s.id}, the bot plays unguided: ${messageOf(err)}`)
+      return null
+    }
+    if (!guide) return null
+    const trainerGuide = guide
+    return (natural, rng) => {
+      try {
+        return trainerGuide(natural, rng)
+      } catch (err) {
+        this.log(`trainer: the guide of session ${s.id} failed, the bot plays unguided: ${messageOf(err)}`)
+        return null
+      }
+    }
   }
 
   private load(sessionId: string): Session {

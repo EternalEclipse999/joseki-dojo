@@ -1,6 +1,6 @@
 import type { Move, Vertex } from '@joseki-dojo/shared'
 import { describe, expect, it } from 'vitest'
-import { fromNodeMove, pathMoves, toNodeMove, trainingKey, zoneKey } from './key'
+import { fromNodeMove, keyHasBothColors, pathMoves, toNodeMove, trainingKey, zoneKey } from './key'
 
 const mv = (color: 'B' | 'W', x: number, y: number): Move => ({ color, vertex: [x, y] })
 const pass = (color: 'B' | 'W'): Move => ({ color, vertex: 'pass' })
@@ -48,6 +48,17 @@ describe('zone keys', () => {
     // The same stones in the bottom-left and top-left corners, with a tenuki in another corner that adds no zone stone.
     expect(trainingKey([mv('B', 3, 15), mv('W', 5, 16)], 'BL', 'B')).toEqual(zoneKey(tr, 'B'))
     expect(trainingKey([mv('B', 3, 3), mv('W', 5, 2), mv('B', 15, 15), pass('W')], 'TL', 'B')).toEqual(zoneKey(tr, 'B'))
+  })
+
+  it('tells whether both colours have a stone in the zone', () => {
+    const has = (moves: Move[], toMove: 'B' | 'W'): boolean => keyHasBothColors(zoneKey(moves, toMove).key)
+    expect(has([], 'B')).toBe(false)
+    expect(has([mv('B', 15, 3)], 'W')).toBe(false)
+    expect(has([mv('B', 15, 3), pass('W')], 'B')).toBe(false)
+    expect(has([mv('B', 15, 3), mv('W', 13, 2)], 'B')).toBe(true)
+    // The side to move is no stone; a captured stone is none either.
+    expect(has([pass('B'), mv('W', 18, 10)], 'B')).toBe(false)
+    expect(has([mv('W', 18, 0), mv('B', 17, 0), pass('W'), mv('B', 18, 1)], 'W')).toBe(false)
   })
 
   it('replays a graph path with colours alternating from Black and a pass for tenuki', () => {

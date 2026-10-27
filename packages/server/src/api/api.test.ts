@@ -17,6 +17,7 @@ import { weightedBook } from '../progress/fixture'
 import { GraphCardRepo } from '../progress/repo'
 import { StartBook } from '../starts/book'
 import { TEST_STARTS_LIST, testStartsTree } from '../starts/fixture'
+import { DEEP_LINE, deepBook } from '../trainer/fixture'
 import { TrapBook } from '../traps/book'
 import { testTrapsTree } from '../traps/fixture'
 import { decodeJdb, encodeJdb } from '../jdb'
@@ -391,8 +392,8 @@ describe('GET /api/progress', () => {
       new GraphCardRepo(withGraph.db).upsert({ key: lineKey(['Q16']), kind: 'move', color: 'W', state, createdAt: now.toISOString() })
       const get = async (query: string) => (await other.inject({ method: 'GET', url: `/api/progress${query}`, headers: { host: '127.0.0.1:1' } })).json()
       // White's move card at Q16 is learned; its rest card (all of Q16's weight, as Q16 has no good edges) is not there.
-      expect(await get('?color=W')).toEqual({ hasWeights: true, level: '7k', color: 'W', overall: { percent: 0.5, due: 0 }, positions: { 'list-q16': { percent: 0.5, weight: 1, due: false } } })
-      expect((await get('?color=B')).positions).toEqual({ 'list-q16': { percent: 0, weight: 1, due: false } })
+      expect(await get('?color=W')).toEqual({ hasWeights: true, level: '7k', color: 'W', overall: { percent: 0.5, due: 0 }, positions: { 'list-q16': { percent: 0.5, weight: 1, due: false, dueAt: state.due } } })
+      expect((await get('?color=B')).positions).toEqual({ 'list-q16': { percent: 0, weight: 1, due: false, dueAt: null } })
     } finally {
       await other.close()
       await withGraph.engine.stop()
@@ -496,6 +497,28 @@ describe('/api/cards', () => {
       await other.close()
       await withStarts.engine.stop()
       withStarts.db.close()
+    }
+  })
+
+  it("serves a list position by its graph cards' due on a server with weights (part 3 spec 6.2)", async () => {
+    const config = testConfig()
+    const starts = StartBook.fromBase(decodeJdb(encodeJdb(testStartsTree()))).withList(JSON.stringify(TEST_STARTS_LIST), () => {})
+    const startId = starts.list()[0].id
+    // The list's Q16 O17 R14 is the graph's list position; Black's move card after White's tenuki there is due.
+    const graph = deepBook([config.player.level], startId)
+    const withGraph = createServices(config, fakeEngine(), serviceOptions(config, { starts, graph }))
+    const other = await buildApp(withGraph)
+    try {
+      const now = new Date()
+      const state = { ...newState(now), state: State.Review, reps: 1, stability: 21, last_review: now.toISOString(), due: new Date(now.getTime() - 60_000).toISOString() }
+      new GraphCardRepo(withGraph.db).upsert({ key: graph.nodeKey(graph.node(lineKey(DEEP_LINE.slice(0, 4)))!), kind: 'move', color: 'B', state, createdAt: now.toISOString() })
+      const get = async (url: string) => (await other.inject({ method: 'GET', url, headers: { host: '127.0.0.1:1' } })).json()
+      expect(await get('/api/cards/due')).toEqual({ card: { id: `graph:${startId}:B`, kind: 'graph', startId, userColor: 'B' } })
+      expect(await get('/api/cards/summary')).toMatchObject({ dueNow: 1, dueByKind: { position: 1, move: 0 }, total: 1, learned: 1 })
+    } finally {
+      await other.close()
+      await withGraph.engine.stop()
+      withGraph.db.close()
     }
   })
 })

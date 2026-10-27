@@ -437,6 +437,10 @@ export const ru = {
   'review.repetition.continue': 'Дальше',
   'review.repetition.finish': 'Закончить повторение',
   'review.repetition.notCounted': 'Не засчитано как повторение: засчитываются тренировки со стартовой позиции, в которых вы сыграли в углу.',
+  // Part 3 spec 7: the progress the training gained, at the top of the review. {before} and {after} are formatted percents («34 %»).
+  'review.progress.position': 'Освоено: {before} → {after}',
+  'review.progress.overall': 'Освоено во всём списке: {before} → {after}',
+  'review.progress.new': { one: 'Новая позиция: {count}', few: 'Новые позиции: {count}', many: 'Новых позиций: {count}', other: 'Новых позиций: {count}' },
   // The problem screen (repetition spec 5.4). {color} is a common.black/white text, {category} a category.* text.
   'problem.title': 'Найдите хороший ход',
   'problem.source.mistake': 'В партии вы здесь ошиблись',

@@ -1,4 +1,4 @@
-import type { ReviewData } from '@joseki-dojo/shared'
+import { gtpToVertex, type Corner, type ReviewData, type Vertex } from '@joseki-dojo/shared'
 import { State } from 'ts-fsrs'
 import { describe, expect, it } from 'vitest'
 import { newState } from '../cards/schedule'
@@ -6,12 +6,13 @@ import { GraphBook } from '../graph/book'
 import { CYCLE_LIST_ID, cycleGraph, lineKey } from '../graph/fixture'
 import { encodeGraph, encodeWeights } from '../graph/format'
 import type { SessionRecord } from '../store/records'
-import { computeProgress } from './compute'
+import { computeProgress, nodeCards } from './compute'
 import { keyBefore, TEST_THRESHOLDS as TH, training, uniformWeights, walkBook, type Step, type TrainingShape } from './fixture'
-import { moveRating, restRating, walkTraining, type TrainingWalk } from './record'
+import { graphWalk, moveRating, restRating, walkTraining, type TrainingWalk } from './record'
 
 const book = walkBook()
 const key = (node: number): string => book.nodeKey(node)
+const v = (gtp: string): Vertex => gtpToVertex(gtp) as Vertex
 const walk = ([rec, review]: [SessionRecord, ReviewData], seen: (key: string) => boolean = () => false, origin = 0) => walkTraining(rec, review, book, seen, TH, origin)
 const keysOf = (w: TrainingWalk): string[] => [...w.moves.map((m) => m.key), ...(w.rest ? [w.rest.key, ...w.rest.raw.moves.map((m) => m.key), ...w.rest.raw.opponent.map((o) => o.key)] : []), ...w.met]
 
@@ -53,8 +54,8 @@ describe('walkTraining', () => {
     expect(walk(training([['Q16', 0.7, true], ['R14'], ['O16', 0.7]]))).toEqual({
       color: 'B',
       moves: [
-        { key: key(0), raw: { loss: 0.7, best: true }, auto: 'easy' },
-        { key: key(2), raw: { loss: 0.7, best: false }, auto: 'hard' },
+        { key: key(0), raw: { loss: 0.7, best: true, move: v('Q16') }, auto: 'easy' },
+        { key: key(2), raw: { loss: 0.7, best: false, move: v('O16') }, auto: 'hard' },
       ],
       rest: null,
       met: [],
@@ -85,7 +86,7 @@ describe('walkTraining', () => {
     const after = keyBefore(t[0], 2)
     expect(walk(t)).toEqual({
       color: 'B',
-      moves: [{ key: key(0), raw: { loss: 0, best: false }, auto: 'good' }],
+      moves: [{ key: key(0), raw: { loss: 0, best: false, move: v('Q16') }, auto: 'good' }],
       rest: { key: key(1), raw: { moves: [{ loss: 0.3, key: after, seenBefore: false }], opponent: [{ loss: 0, replyLoss: 0.3, key: after, seenBefore: false }] }, auto: 'good' },
       met: [after],
     })
@@ -96,8 +97,8 @@ describe('walkTraining', () => {
     const t = training([['Q16'], ['tenuki'], ['tenuki', 1], ['R14'], ['O16']])
     const w = walk(t)
     expect(w.moves).toEqual([
-      { key: key(0), raw: { loss: 0, best: false }, auto: 'good' },
-      { key: key(3), raw: { loss: 1, best: false }, auto: 'hard' },
+      { key: key(0), raw: { loss: 0, best: false, move: v('Q16') }, auto: 'good' },
+      { key: key(3), raw: { loss: 1, best: false, move: 'tenuki' }, auto: 'hard' },
     ])
     const after = keyBefore(t[0], 4)
     expect(w.rest).toEqual({ key: key(3), raw: { moves: [{ loss: 0, key: after, seenBefore: false }], opponent: [{ loss: 0, replyLoss: 0, key: after, seenBefore: false }] }, auto: 'good' })
@@ -131,6 +132,16 @@ describe('walkTraining', () => {
     }
   })
 
+  it("keeps the player's move in the node's orientation, the leaving one too, the same in every corner, mirrored or not (part 3 spec 4)", () => {
+    // Black's P14 is not an edge of node 2; mirrored, the training reaches node 2 by Q16 O17, the mirror of its Q16 R14.
+    const moves = (shape: TrainingShape = {}) => walk(training([['Q16'], ['R14'], ['P14'], ['R13']], shape)).moves.map((m) => m.raw.move)
+    expect(moves()).toEqual([v('Q16'), v('P14')])
+    for (const corner of ['TL', 'TR', 'BL', 'BR'] as const) {
+      expect(moves({ settings: { corner } })).toEqual([v('Q16'), v('P14')])
+      expect(moves({ settings: { corner }, mirror: true })).toEqual([v('Q16'), v('P14')])
+    }
+  })
+
   it("walks a training that White starts as the one Black starts, under the colour of the player's role", () => {
     const steps: Step[] = [['Q16', 0, true], ['R14'], ['O16', 0.7], ['R12'], ['Q12', 2.5], ['tenuki'], ['P13']]
     const black = walk(training(steps))
@@ -154,7 +165,7 @@ describe('walkTraining', () => {
 
   it('gives no review to the start moves', () => {
     const t = training([['O16', 0.3]], { initial: ['Q16', 'R14'], settings: { mode: 'list' } })
-    expect(walk(t, () => false, 2)).toEqual({ color: 'B', moves: [{ key: key(2), raw: { loss: 0.3, best: false }, auto: 'good' }], rest: null, met: [] })
+    expect(walk(t, () => false, 2)).toEqual({ color: 'B', moves: [{ key: key(2), raw: { loss: 0.3, best: false, move: v('O16') }, auto: 'good' }], rest: null, met: [] })
   })
 
   it('counts nothing of a replay from move N', () => {
@@ -218,6 +229,58 @@ describe('walkTraining', () => {
   })
 })
 
+describe('graphWalk', () => {
+  /** A training's moves (Black first) walked through `graph`: the nodes before them, the leaving move, the node after. */
+  const run = (steps: Step[], shape: TrainingShape = {}, graph = book) => {
+    const [rec] = training(steps, shape)
+    const w = graphWalk([...rec.initialMoves, ...rec.moves].map(({ color, vertex }) => ({ color, vertex })), rec.settings.corner, graph)
+    return { nodes: w.steps.map((s) => s.node), exit: w.exit, at: w.at?.node ?? null }
+  }
+
+  it('walks the nodes before each move to the move that leaves the graph, the leaving move included (part 2 spec 3.1)', () => {
+    // In the graph to the end: the node after the last move.
+    expect(run([['Q16'], ['R14'], ['O16']])).toEqual({ nodes: [0, 1, 2], exit: null, at: 4 })
+    // White's R12 is not an edge of node 4.
+    expect(run([['Q16'], ['R14'], ['O16'], ['R12'], ['Q12'], ['tenuki'], ['P13']])).toEqual({ nodes: [0, 1, 2, 4], exit: 3, at: null })
+    // White's R17 is an edge without a node.
+    expect(run([['Q16'], ['R17'], ['Q17']])).toEqual({ nodes: [0, 1], exit: 1, at: null })
+    // Black's tenuki at node 3 is the back edge of the tenuki two-cycle.
+    expect(run([['Q16'], ['tenuki'], ['tenuki'], ['R14'], ['O16']])).toEqual({ nodes: [0, 1, 3], exit: 2, at: null })
+    expect(run([['Q16'], ['R14'], ['P14'], ['R13'], ['Q13']])).toEqual({ nodes: [0, 1, 2], exit: 2, at: null })
+    // A transposition reaches node 5 both ways.
+    expect(run([['R14'], ['tenuki'], ['Q16'], ['R16']])).toEqual({ nodes: [0, 6, 7, 5], exit: 3, at: null })
+    expect(run([['Q16'], ['tenuki'], ['R14'], ['R16']])).toEqual({ nodes: [0, 1, 3, 5], exit: 3, at: null })
+  })
+
+  it('is at the empty corner before the first move, and nowhere without a graph', () => {
+    expect(graphWalk([], 'TR', book)).toEqual({ steps: [], exit: null, at: { node: 0, mirrored: false } })
+    expect(run([['Q16'], ['R14']], {}, GraphBook.empty())).toEqual({ nodes: [], exit: null, at: null })
+  })
+
+  it("gives the moves in the node's orientation, the same in every corner, mirrored too but at a symmetric position", () => {
+    const steps: Step[] = [['Q16'], ['R14'], ['O16'], ['R12'], ['Q12']]
+    const walked = (corner: Corner, mirror: boolean) => {
+      const [rec] = training(steps, { settings: { corner }, mirror })
+      const { steps: s, exit } = graphWalk([...rec.initialMoves, ...rec.moves].map(({ color, vertex }) => ({ color, vertex })), corner, book)
+      return { nodes: s.map((x) => x.node), mirrored: s.map((x) => x.mirrored), moves: s.map((x) => x.move), exit }
+    }
+    for (const corner of ['TL', 'TR', 'BL', 'BR'] as const) {
+      expect(walked(corner, false)).toEqual({ nodes: [0, 1, 2, 4], mirrored: [false, false, false, false], moves: [v('Q16'), v('R14'), v('O16'), v('R12')], exit: 3 })
+      // Mirrored, the training reaches node 2 (kept as Q16 R14) by its mirror Q16 O17; at Q16, a symmetric position whose
+      // node has one orientation, White's O17 stays as played.
+      expect(walked(corner, true)).toEqual({ nodes: [0, 1, 2, 4], mirrored: [false, false, true, true], moves: [v('Q16'), v('O17'), v('O16'), v('R12')], exit: 3 })
+    }
+  })
+
+  it('leaves a two-cycle on its cut edge wherever it enters it', () => {
+    const cycle = GraphBook.load(encodeGraph(cycleGraph()), null)
+    // Entered at X (node 7): Black's tenuki goes on to Y (node 6), White's tenuki back leaves.
+    expect(run([['Q16'], ['R14'], ['O16'], ['R12'], ['tenuki'], ['tenuki'], ['P17']], {}, cycle)).toEqual({ nodes: [0, 1, 2, 4, 7, 6], exit: 5, at: null })
+    // Entered at Y by its own move order: White's tenuki leaves at once.
+    expect(run([['Q16'], ['R14'], ['tenuki'], ['R12'], ['O16'], ['tenuki'], ['tenuki']], {}, cycle)).toEqual({ nodes: [0, 1, 2, 3, 5, 6], exit: 5, at: null })
+  })
+})
+
 describe('walkTraining and the progress', () => {
   // cycleGraph(): X = Q16 R14 O16 R12 (Black to move, 4 moves deep) and Y, its stones with White to move (5 moves deep), a
   // tenuki apart both ways, Y entered by its own move order too; the cut is Y's tenuki back to X. At every node each edge
@@ -238,7 +301,7 @@ describe('walkTraining and the progress', () => {
     // For Black, Y's rest card takes all of Y's weight: half the plays from Q16 R14 reach Y (a quarter by each order), 0.5 of
     // the position's 2.5. X's rest card takes none.
     const learned = { ...newState(NOW), state: State.Review, reps: 1, stability: 21 } // a percent of 1
-    const percent = (key: string) => computeProgress(cycle, '5k', 'B', (k, kind) => (k === key && kind === 'rest' ? learned : null), NOW).positions[CYCLE_LIST_ID].percent
+    const percent = (key: string) => computeProgress(cycle, '5k', 'B', nodeCards(cycle, [{ key, kind: 'rest', color: 'B', state: learned, createdAt: NOW.toISOString() }], 'B'), NOW).view.positions[CYCLE_LIST_ID].percent
     expect(percent(Y)).toBeCloseTo(0.2, 4) // thirds, quantised by the weights file
     expect(percent(X)).toBe(0)
   })

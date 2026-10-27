@@ -87,6 +87,12 @@ describe('loadConfig', () => {
     expect(() => loadConfig(configFile({ maxSessionMoves: -1 }))).toThrow(ConfigError)
   })
 
+  it('loads a file that still sets the removed trainer.epsilon, whatever its value, and ignores it', () => {
+    for (const epsilon of [0.2, null, 0, -0.1, '0.2']) {
+      expect(loadConfig(configFile({ trainer: { epsilon }, player: { level: '5k' } })).player.level).toBe('5k')
+    }
+  })
+
   it('keeps the installer record', () => {
     const setup = { kind: 'gpu', lockId: '1.18.1/9d7a6afed8ff/637746e44f0e' }
     expect(loadConfig(configFile({ setup })).setup).toEqual(setup)
